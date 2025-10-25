@@ -11,6 +11,7 @@ const CONFIG = {
 // Global state
 let wallet = null; // Session wallet (Keypair)
 let backpackWallet = null; // Backpack wallet provider
+let currentFeeBps = 25; // Default fee in basis points (0.25%)
 
 // BTC Price Chart
 let btcChart = null;
@@ -715,6 +716,9 @@ async function fetchMarketData() {
         const decimals = readU8(p, o); o += 1;
         const bScaled = readI64LE(p, o); o += 8;
         const feeBps = readU16LE(p, o); o += 2;
+
+        // Store fee for buy calculations
+        currentFeeBps = feeBps;
         const qY = readI64LE(p, o); o += 8;
         const qN = readI64LE(p, o); o += 8;
         const fees = readI64LE(p, o); o += 8;
@@ -1166,8 +1170,12 @@ async function executeTrade() {
     let estimatedCost;
 
     if (action === 'buy') {
-        // Calculate how much XNT to spend
-        estimatedCost = numShares * sharePrice;
+        // Calculate how much XNT to spend (need to account for fees)
+        // User wants numShares, but contract deducts fee first
+        // So we need to gross up: grossAmount = netAmount / (1 - fee)
+        const netCost = numShares * sharePrice;
+        const feeMultiplier = 1 - (currentFeeBps / 10000);
+        estimatedCost = netCost / feeMultiplier; // Gross amount including fees
         // Convert to e6 units: 1 XNT = 10_000_000 e6 (due to LAMPORTS_PER_E6 = 100)
         amount_e6 = Math.floor(estimatedCost * 10_000_000);
     } else {
