@@ -36,6 +36,7 @@ body {
     font-size: 14px;
     line-height: 1.5;
     overflow-x: hidden;
+    zoom: 0.7; /* Zoom out by 30% */
 }
 
 .hidden {
@@ -193,6 +194,159 @@ body {
 .market-volume {
     font-size: 13px;
     color: var(--text-secondary);
+}
+
+/* ===== MARKET CYCLE TIMER ===== */
+
+.market-cycle-timer {
+    margin-top: 20px;
+    padding: 16px 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.cycle-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cycle-state {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 4px 12px;
+    border-radius: 4px;
+    background: var(--bg-hover);
+}
+
+.cycle-state.active {
+    background: rgba(0, 200, 150, 0.2);
+    color: var(--green);
+}
+
+.cycle-state.waiting {
+    background: rgba(255, 165, 0, 0.2);
+    color: var(--orange);
+}
+
+.cycle-state.error {
+    background: var(--red-bg);
+    color: var(--red);
+}
+
+.cycle-clock-display {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.current-time {
+    font-size: 32px;
+    font-weight: 700;
+    font-family: 'SF Mono', Monaco, monospace;
+    color: var(--text-primary);
+    line-height: 1;
+    letter-spacing: 1px;
+}
+
+.next-market-time {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    font-family: 'SF Mono', Monaco, monospace;
+}
+
+/* ===== WINNER BANNER ===== */
+
+.winner-banner {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, rgba(0, 200, 150, 0.1), rgba(0, 200, 150, 0.05));
+    border: 1px solid var(--green);
+    border-radius: 8px;
+    text-align: center;
+}
+
+.winner-banner.no-winner {
+    background: linear-gradient(135deg, rgba(255, 71, 87, 0.1), rgba(255, 71, 87, 0.05));
+    border-color: var(--red);
+}
+
+
+.winner-content {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+
+.winner-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+}
+
+.winner-outcome {
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--green);
+}
+
+.winner-banner.no-winner .winner-outcome {
+    color: var(--red);
+}
+
+.winner-reason {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-family: 'SF Mono', Monaco, monospace;
+}
+
+/* ===== BTC PRICE CHART ===== */
+
+.btc-chart-container {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.chart-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.chart-current-price {
+    font-size: 24px;
+    font-weight: 700;
+    font-family: 'SF Mono', Monaco, monospace;
+    color: var(--green);
+}
+
+#btcChart {
+    max-height: 200px;
 }
 
 /* ===== ORACLE SECTION ===== */
@@ -464,7 +618,7 @@ body {
     left: 16px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 18px;
+    font-size: 14px;
     color: var(--text-dim);
     font-weight: 600;
 }
@@ -474,7 +628,7 @@ body {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     color: var(--text-primary);
-    padding: 14px 16px 14px 36px;
+    padding: 14px 16px 14px 56px;
     border-radius: 8px;
     font-size: 18px;
     font-family: 'SF Mono', Monaco, monospace;
@@ -509,6 +663,30 @@ body {
 .quick-btn:hover {
     background: var(--bg-hover);
     border-color: var(--border-light);
+    color: var(--text-primary);
+}
+
+.trade-cost-display {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 16px;
+}
+
+.cost-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.cost-amount {
+    font-size: 16px;
+    font-weight: 700;
+    font-family: 'SF Mono', Monaco, monospace;
     color: var(--text-primary);
 }
 
@@ -818,6 +996,195 @@ body {
 .log-tx .log-message {
     color: #c084fc;
     font-family: 'SF Mono', Monaco, monospace;
+}
+
+/* ===== POSITION & STATUS SECTION ===== */
+
+.status-section {
+    margin-bottom: 20px;
+}
+
+.status-section:last-child {
+    margin-bottom: 0;
+}
+
+.status-section-title {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.holdings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.holding-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.holding-yes {
+    border-left: 3px solid var(--green);
+    background: rgba(0, 200, 150, 0.05);
+}
+
+.holding-no {
+    border-left: 3px solid var(--red);
+    background: rgba(255, 71, 87, 0.05);
+}
+
+.holding-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.holding-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.holding-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.holding-yes .holding-badge {
+    background: var(--green-bg);
+    color: var(--green);
+}
+
+.holding-no .holding-badge {
+    background: var(--red-bg);
+    color: var(--red);
+}
+
+.holding-amount {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: 'SF Mono', Monaco, monospace;
+    margin-bottom: 4px;
+}
+
+.holding-yes .holding-amount {
+    color: var(--green);
+}
+
+.holding-no .holding-amount {
+    color: var(--red);
+}
+
+.holding-value {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'SF Mono', Monaco, monospace;
+}
+
+.summary-stats {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+}
+
+.stat-row:not(:last-child) {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.stat-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.stat-value {
+    font-size: 13px;
+    font-weight: 700;
+    font-family: 'SF Mono', Monaco, monospace;
+    color: var(--text-primary);
+}
+
+.redeemable-balance {
+    background: var(--bg-secondary);
+    border: 2px solid var(--green);
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.redeemable-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.redeemable-amount {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: 'SF Mono', Monaco, monospace;
+    color: var(--green);
+    margin-bottom: 12px;
+}
+
+.redeemable-breakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.breakdown-item {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: 'SF Mono', Monaco, monospace;
+}
+
+.btn-close-balance {
+    width: 100%;
+    background: var(--green);
+    color: white;
+    border: none;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.btn-close-balance:hover {
+    background: #00b386;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 200, 150, 0.3);
+}
+
+.btn-close-balance:active {
+    transform: translateY(0);
 }
 
 /* ===== SCROLLBAR ===== */

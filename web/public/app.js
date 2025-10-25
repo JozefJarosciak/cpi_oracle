@@ -4,12 +4,32 @@ const CONFIG = {
     PROGRAM_ID: 'EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF',
     ORACLE_STATE: '4KYeNyv1B9YjjQkfJk2C6Uqo71vKzFZriRe5NXg6GyCq',
     AMM_SEED: 'amm_btc_v3',
-    LAMPORTS_PER_E6: 100
+    LAMPORTS_PER_E6: 100,
+    STATUS_URL: '/market_status.json'
 };
 
 // Global state
 let wallet = null; // Session wallet (Keypair)
 let backpackWallet = null; // Backpack wallet provider
+
+// BTC Price Chart
+let btcChart = null;
+let priceHistory = []; // Stores actual BTC prices (one per second)
+const MAX_PRICE_SECONDS = 60; // Show last 60 seconds
+const PRICE_HISTORY_KEY = 'btc_price_history';
+const PRICE_HISTORY_MAX_AGE_MS = 60000; // Keep data for 60 seconds
+
+// High-resolution chart for smooth scrolling
+const CHART_UPDATE_INTERVAL_MS = 55; // Update chart every 55ms (~18 points/sec, 10% reduction)
+const POINTS_PER_SECOND = 1000 / CHART_UPDATE_INTERVAL_MS; // ~18.18 points per second
+const MAX_CHART_POINTS = Math.floor(MAX_PRICE_SECONDS * POINTS_PER_SECOND); // 1090 points total (must be integer)
+let chartDataPoints = []; // High-resolution data for smooth scrolling
+let chartUpdateTimer = null;
+
+// Price interpolation
+let lastActualPrice = null;
+let currentTargetPrice = null;
+
 let connection = null;
 let ammPda = null;
 let vaultPda = null;
@@ -65,14 +85,20 @@ function addLog(message, type = 'info') {
 
     entry.appendChild(time);
     entry.appendChild(msg);
-    logContent.appendChild(entry);
 
-    // Auto-scroll to bottom
-    logContent.scrollTop = logContent.scrollHeight;
+    // Prepend to show newest on top
+    if (logContent.firstChild) {
+        logContent.insertBefore(entry, logContent.firstChild);
+    } else {
+        logContent.appendChild(entry);
+    }
 
-    // Keep only last 100 entries
+    // Auto-scroll to top to show newest entry
+    logContent.scrollTop = 0;
+
+    // Keep only last 100 entries (remove from bottom since we add to top)
     while (logContent.children.length > 100) {
-        logContent.removeChild(logContent.firstChild);
+        logContent.removeChild(logContent.lastChild);
     }
 }
 
@@ -108,9 +134,15 @@ window.addEventListener('load', async () => {
     // Try to restore session
     await restoreSession();
 
+    // Load price history from localStorage
+    loadPriceHistory();
+
+    // Initialize BTC chart
+    initBTCChart();
+
     // Start polling
     startPolling();
-    addLog('System ready. Auto-refresh every 5s', 'success');
+    addLog('System ready. Auto-refresh every 1s', 'success');
 });
 
 // ============= SESSION MANAGEMENT =============
@@ -273,6 +305,12 @@ function showNoWallet() {
         document.getElementById('sidebarWalletDisconnected').classList.remove('hidden');
         document.getElementById('sidebarWalletConnected').classList.add('hidden');
     }
+
+    // Position & Status
+    if (document.getElementById('positionStatusDisconnected')) {
+        document.getElementById('positionStatusDisconnected').classList.remove('hidden');
+        document.getElementById('positionStatusConnected').classList.add('hidden');
+    }
 }
 
 function showHasWallet(backpackAddr) {
@@ -291,6 +329,12 @@ function showHasWallet(backpackAddr) {
         document.getElementById('sessionAddr').textContent = sessionAddr;
         document.getElementById('sidebarWalletDisconnected').classList.add('hidden');
         document.getElementById('sidebarWalletConnected').classList.remove('hidden');
+    }
+
+    // Position & Status
+    if (document.getElementById('positionStatusDisconnected')) {
+        document.getElementById('positionStatusDisconnected').classList.add('hidden');
+        document.getElementById('positionStatusConnected').classList.remove('hidden');
     }
 }
 
@@ -317,6 +361,240 @@ async function updateWalletBalance() {
     } catch (err) {
         console.error('Failed to get balance:', err);
     }
+}
+
+// ============= BTC PRICE CHART =============
+
+// Save price history to localStorage
+function savePriceHistory() {
+    try {
+        const data = {
+            prices: priceHistory,
+            lastUpdate: Date.now()
+        };
+        localStorage.setItem(PRICE_HISTORY_KEY, JSON.stringify(data));
+    } catch (err) {
+        console.warn('Failed to save price history:', err);
+    }
+}
+
+// Load price history from localStorage
+function loadPriceHistory() {
+    try {
+        const stored = localStorage.getItem(PRICE_HISTORY_KEY);
+        if (!stored) return;
+
+        const data = JSON.parse(stored);
+        const age = Date.now() - data.lastUpdate;
+
+        // Only load if data is less than 60 seconds old
+        if (age < PRICE_HISTORY_MAX_AGE_MS && data.prices && Array.isArray(data.prices)) {
+            priceHistory.push(...data.prices);
+            console.log('Loaded', priceHistory.length, 'price points from localStorage (age:', Math.round(age/1000), 's)');
+
+            // Update chart if already initialized
+            if (btcChart && priceHistory.length > 0) {
+                const chartData = [...Array(MAX_PRICE_POINTS - priceHistory.length).fill(null), ...priceHistory];
+                btcChart.data.datasets[0].data = chartData;
+                btcChart.update('none');
+            }
+        }
+    } catch (err) {
+        console.warn('Failed to load price history:', err);
+    }
+}
+
+function initBTCChart() {
+    const ctx = document.getElementById('btcChart');
+    if (!ctx) {
+        console.log('BTC Chart canvas not found');
+        return;
+    }
+
+    // Check if Chart.js is loaded
+    if (typeof Chart === 'undefined') {
+        console.error('Chart.js not loaded yet! Retrying in 500ms...');
+        setTimeout(initBTCChart, 500);
+        return;
+    }
+
+    console.log('Initializing BTC Chart...');
+
+    // Initialize with empty data (high resolution for smooth scrolling)
+    const labels = Array(MAX_CHART_POINTS).fill('');
+    const data = Array(MAX_CHART_POINTS).fill(null);
+
+    btcChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'BTC Price',
+                data: data,
+                borderColor: '#00c896',
+                backgroundColor: 'rgba(0, 200, 150, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.5, // Higher tension for smoother curves
+                pointRadius: 0,
+                pointHoverRadius: 0,
+                pointHitRadius: 0,
+                pointBorderWidth: 0,
+                pointHoverBorderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    enabled: true,
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    titleColor: '#fff',
+                    bodyColor: '#00c896',
+                    borderColor: '#00c896',
+                    borderWidth: 1,
+                    padding: 10,
+                    displayColors: false,
+                    callbacks: {
+                        title: () => 'BTC Price',
+                        label: (context) => '$' + context.parsed.y.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    display: false,
+                    grid: {
+                        display: false
+                    }
+                },
+                y: {
+                    display: true,
+                    position: 'right',
+                    beginAtZero: false,
+                    grid: {
+                        color: 'rgba(139, 146, 168, 0.1)',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: '#5a6178',
+                        font: {
+                            family: "'SF Mono', Monaco, monospace",
+                            size: 11
+                        },
+                        callback: function(value) {
+                            return '$' + value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                        },
+                        maxTicksLimit: 6
+                    }
+                }
+            },
+            animation: {
+                duration: 300, // Smooth animation for Y-axis scale changes
+                easing: 'easeInOutQuart' // Smooth easing function
+            }
+        }
+    });
+
+    console.log('BTC Chart initialized successfully!');
+
+    // Start the smooth scrolling update loop
+    startChartUpdateLoop();
+}
+
+// Continuous chart update loop for butter-smooth scrolling
+function startChartUpdateLoop() {
+    if (chartUpdateTimer) {
+        clearInterval(chartUpdateTimer);
+    }
+
+    chartUpdateTimer = setInterval(() => {
+        if (!btcChart || !currentTargetPrice) return;
+
+        // Calculate interpolated price
+        let displayPrice = currentTargetPrice;
+        if (lastActualPrice !== null && currentTargetPrice !== lastActualPrice) {
+            // Smooth interpolation (we're always catching up to the target)
+            // Using 0.15 for faster catch-up while still smooth
+            displayPrice = lastActualPrice + (currentTargetPrice - lastActualPrice) * 0.15;
+            lastActualPrice = displayPrice;
+        }
+
+        // Add new point to chart data
+        chartDataPoints.push(displayPrice);
+
+        // Keep only the last MAX_CHART_POINTS
+        if (chartDataPoints.length > MAX_CHART_POINTS) {
+            chartDataPoints.shift(); // Remove oldest point - this creates the scrolling effect!
+        }
+
+        // Pad with nulls if we don't have enough data yet
+        const chartData = [...Array(MAX_CHART_POINTS - chartDataPoints.length).fill(null), ...chartDataPoints];
+
+        // Update chart
+        btcChart.data.datasets[0].data = chartData;
+        btcChart.update('none'); // No animation - we handle smoothness manually
+
+        // Update price display
+        updatePriceDisplay(displayPrice);
+    }, CHART_UPDATE_INTERVAL_MS);
+}
+
+// Update the price display element
+function updatePriceDisplay(price) {
+    const priceEl = document.getElementById('chartCurrentPrice');
+    if (!priceEl) return;
+
+    priceEl.textContent = '$' + price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // Color based on trend
+    if (priceHistory.length > 1) {
+        const prevPrice = priceHistory[priceHistory.length - 2];
+        if (price > prevPrice) {
+            priceEl.style.color = '#00c896'; // Green for up
+        } else if (price < prevPrice) {
+            priceEl.style.color = '#ff4757'; // Red for down
+        }
+    }
+}
+
+// Called when we get a new actual BTC price from the oracle
+function updateBTCChart(price) {
+    if (!btcChart) {
+        console.log('BTC Chart not initialized yet');
+        return;
+    }
+
+    // Validate price
+    if (!price || isNaN(price) || price <= 0) {
+        console.warn('Invalid price for chart:', price);
+        return;
+    }
+
+    console.log('New BTC price: $' + price.toFixed(2));
+
+    // Add actual price to history (for persistence and trend calculation)
+    priceHistory.push(price);
+
+    // Keep only last MAX_PRICE_SECONDS
+    if (priceHistory.length > MAX_PRICE_SECONDS) {
+        priceHistory.shift();
+    }
+
+    // Save to localStorage for persistence across page refreshes
+    savePriceHistory();
+
+    // Update interpolation targets
+    lastActualPrice = currentTargetPrice || price;
+    currentTargetPrice = price;
 }
 
 // ============= ORACLE DATA =============
@@ -371,8 +649,8 @@ async function fetchOracleData() {
         const age = Math.floor(Date.now() / 1000) - Number(maxTs);
 
         // Display current BTC price
-        const priceUsd = (Number(price_e6) / 1_000_000).toFixed(2);
-        const priceFormatted = '$' + Number(priceUsd).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        const btcPrice = Number(price_e6) / 1_000_000; // Numeric value for chart
+        const priceFormatted = '$' + btcPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
         if (document.getElementById('oracleCurrentPrice')) {
             document.getElementById('oracleCurrentPrice').textContent = priceFormatted;
@@ -380,6 +658,9 @@ async function fetchOracleData() {
         if (document.getElementById('tickerPrice')) {
             document.getElementById('tickerPrice').textContent = priceFormatted;
         }
+
+        // Update BTC chart with numeric price
+        updateBTCChart(btcPrice);
 
         // Display age
         const ageText = age < 60 ? `${age}s ago` : `${Math.floor(age / 60)}m ago`;
@@ -450,16 +731,20 @@ async function fetchMarketData() {
         const yesProb = a / (a + c);
         const noProb = 1 - yesProb;
 
+        // Store current prices globally for position valuation
+        currentYesPrice = yesProb;
+        currentNoPrice = noProb;
+
         // Calculate total shares (simplified: use vault as proxy for liquidity)
         const yesShares = Math.max(0, -qY / 1_000_000);
         const noShares = Math.max(0, -qN / 1_000_000);
 
-        // Update YES/NO prices (in dollars instead of percentages)
+        // Update YES/NO prices (in XNT instead of percentages)
         if (document.getElementById('yesPercentage')) {
-            document.getElementById('yesPercentage').textContent = '$' + yesProb.toFixed(2);
+            document.getElementById('yesPercentage').textContent = yesProb.toFixed(2);
         }
         if (document.getElementById('noPercentage')) {
-            document.getElementById('noPercentage').textContent = '$' + noProb.toFixed(2);
+            document.getElementById('noPercentage').textContent = noProb.toFixed(2);
         }
 
         // Update YES/NO shares
@@ -472,23 +757,25 @@ async function fetchMarketData() {
 
         // Update outcome button prices
         if (document.getElementById('yesBtnPrice')) {
-            document.getElementById('yesBtnPrice').textContent = '$' + yesProb.toFixed(2);
+            document.getElementById('yesBtnPrice').textContent = yesProb.toFixed(2);
         }
         if (document.getElementById('noBtnPrice')) {
-            document.getElementById('noBtnPrice').textContent = '$' + noProb.toFixed(2);
+            document.getElementById('noBtnPrice').textContent = noProb.toFixed(2);
         }
 
         // Update vault display (in header)
+        // Convert e6 to XNT: vault_e6 / 10_000_000 = XNT (LAMPORTS_PER_E6 = 100)
         if (document.getElementById('vaultDisplay')) {
-            document.getElementById('vaultDisplay').textContent = '$' + (vault / 1_000_000).toFixed(0);
+            document.getElementById('vaultDisplay').textContent = (vault / 10_000_000).toFixed(0);
         }
 
         // Update vault total display (in oracle section)
         if (document.getElementById('vaultTotalDisplay')) {
-            document.getElementById('vaultTotalDisplay').textContent = '$' + (vault / 1_000_000).toFixed(2);
+            document.getElementById('vaultTotalDisplay').textContent = (vault / 10_000_000).toFixed(2);
         }
 
-        // Update market status badge
+        // Update market status badge and track globally
+        currentMarketStatus = status;
         const statusText = status === 0 ? 'OPEN' : status === 1 ? 'STOPPED' : 'SETTLED';
         if (document.getElementById('marketStatusBadge')) {
             document.getElementById('marketStatusBadge').textContent = statusText;
@@ -498,21 +785,44 @@ async function fetchMarketData() {
             else document.getElementById('marketStatusBadge').style.background = '#ff4757';
         }
 
-        // Update snapshot price display
-        if (document.getElementById('oracleSnapshotPrice')) {
-            if (startPriceE6 > 0) {
-                const snapshotPrice = (startPriceE6 / 1_000_000).toFixed(2);
-                document.getElementById('oracleSnapshotPrice').textContent = '$' + snapshotPrice;
-                document.getElementById('oracleSnapshotPrice').style.color = '#00ff00';
+        // Determine winning side if market is settled
+        if (status === 2) {
+            // Use the actual winner field from the contract
+            // winner: 0 = no winner yet, 1 = YES won, 2 = NO won
+            if (winner === 1) {
+                currentWinningSide = 'yes';
+            } else if (winner === 2) {
+                currentWinningSide = 'no';
             } else {
-                document.getElementById('oracleSnapshotPrice').textContent = 'Not taken';
-                document.getElementById('oracleSnapshotPrice').style.color = '#888';
+                // Fallback: use probability if winner field not set
+                currentWinningSide = yesProb > 0.5 ? 'yes' : 'no';
             }
+            // Store actual payout per share (convert from e6 to XNT)
+            // pps_e6 / 10_000_000 = XNT per share (LAMPORTS_PER_E6 = 100)
+            currentPayoutPerShare = pps / 10_000_000;
+        } else {
+            currentWinningSide = null;
+            currentPayoutPerShare = 0;
         }
+
+        // Store snapshot price for updateCycleDisplay to use (don't update label here to avoid flickering)
+        currentSnapshotPrice = startPriceE6 > 0 ? startPriceE6 / 1_000_000 : null;
 
         // Update button states
         if (document.getElementById('snapshotBtn')) {
             document.getElementById('snapshotBtn').disabled = status !== 0;
+        }
+
+        // Update trade button cost display with new prices
+        updateTradeButton();
+
+        // Show winner banner if market is settled
+        if (status === 2 && winner > 0 && startPriceE6 > 0) {
+            displaySettledMarketWinner(winner, startPriceE6);
+        } else if (status !== 2) {
+            // Hide banner if market is not settled
+            const bannerEl = document.getElementById('winnerBanner');
+            if (bannerEl) bannerEl.style.display = 'none';
         }
 
     } catch (err) {
@@ -521,6 +831,10 @@ async function fetchMarketData() {
 }
 
 // ============= POSITION DATA =============
+
+// Global variables to store current market prices
+let currentYesPrice = 0.50;
+let currentNoPrice = 0.50;
 
 async function fetchPositionData() {
     if (!wallet) return;
@@ -534,8 +848,8 @@ async function fetchPositionData() {
         const accountInfo = await connection.getAccountInfo(posPda);
 
         if (!accountInfo) {
-            document.getElementById('posYes').textContent = '0.00';
-            document.getElementById('posNo').textContent = '0.00';
+            // No position exists - show zeros
+            updatePositionDisplay(0, 0);
             return;
         }
 
@@ -547,12 +861,129 @@ async function fetchPositionData() {
             const sharesY = readI64LE(d, o); o += 8;
             const sharesN = readI64LE(d, o); o += 8;
 
-            document.getElementById('posYes').textContent = (sharesY / 1_000_000).toFixed(2);
-            document.getElementById('posNo').textContent = (sharesN / 1_000_000).toFixed(2);
+            const sharesYesFloat = sharesY / 1_000_000;
+            const sharesNoFloat = sharesN / 1_000_000;
+
+            updatePositionDisplay(sharesYesFloat, sharesNoFloat);
         }
 
     } catch (err) {
         console.error('Position fetch failed:', err);
+    }
+}
+
+function updatePositionDisplay(sharesYes, sharesNo) {
+    // Update new position status display
+    if (document.getElementById('posYesDisplay')) {
+        document.getElementById('posYesDisplay').textContent = sharesYes.toFixed(2);
+    }
+    if (document.getElementById('posNoDisplay')) {
+        document.getElementById('posNoDisplay').textContent = sharesNo.toFixed(2);
+    }
+
+    // Calculate position values using current market prices
+    const yesValue = sharesYes * currentYesPrice;
+    const noValue = sharesNo * currentNoPrice;
+    const totalValue = yesValue + noValue;
+
+    if (document.getElementById('posYesValue')) {
+        document.getElementById('posYesValue').textContent = '≈ ' + yesValue.toFixed(2) + ' XNT';
+    }
+    if (document.getElementById('posNoValue')) {
+        document.getElementById('posNoValue').textContent = '≈ ' + noValue.toFixed(2) + ' XNT';
+    }
+    if (document.getElementById('totalPosValue')) {
+        document.getElementById('totalPosValue').textContent = totalValue.toFixed(2) + ' XNT';
+    }
+
+    // Calculate net exposure (YES - NO in XNT terms)
+    const netExposure = yesValue - noValue;
+    const netExposureEl = document.getElementById('netExposure');
+    if (netExposureEl) {
+        if (Math.abs(netExposure) < 0.01) {
+            netExposureEl.textContent = 'Neutral';
+            netExposureEl.style.color = '#8b92a8';
+        } else if (netExposure > 0) {
+            netExposureEl.textContent = '+' + netExposure.toFixed(2) + ' XNT YES';
+            netExposureEl.style.color = '#00c896';
+        } else {
+            netExposureEl.textContent = '-' + Math.abs(netExposure).toFixed(2) + ' XNT NO';
+            netExposureEl.style.color = '#ff4757';
+        }
+    }
+
+    // Update redeemable balance if market is settled
+    updateRedeemableBalance(sharesYes, sharesNo);
+}
+
+// Global variable to track market settlement state
+let currentMarketStatus = 0;
+let currentWinningSide = null; // 'yes' or 'no'
+let currentSnapshotPrice = null;
+let currentPayoutPerShare = 0; // Actual payout per winning share (in XNT)
+
+function updateRedeemableBalance(sharesYes, sharesNo) {
+    const redeemableSection = document.getElementById('redeemableSection');
+    if (!redeemableSection) return;
+
+    // Only show redeemable balance when market is SETTLED (status = 2)
+    if (currentMarketStatus === 2 && currentWinningSide) {
+        redeemableSection.style.display = 'block';
+
+        // Calculate redeemable value using ACTUAL payout per share from the contract
+        // Use currentPayoutPerShare (not always 1.0 - depends on vault balance)
+        let yesValue, noValue, totalRedeemable;
+        const payoutPerWinningShare = currentPayoutPerShare || 1.0; // Fallback to 1.0 if not set
+
+        if (currentWinningSide === 'yes') {
+            yesValue = sharesYes * payoutPerWinningShare; // Winning shares
+            noValue = sharesNo * 0.0;                     // Losing shares worth 0.00 XNT
+        } else {
+            yesValue = sharesYes * 0.0;                   // Losing shares worth 0.00 XNT
+            noValue = sharesNo * payoutPerWinningShare;   // Winning shares
+        }
+
+        totalRedeemable = yesValue + noValue;
+
+        // Update display
+        if (document.getElementById('redeemableAmount')) {
+            document.getElementById('redeemableAmount').textContent = totalRedeemable.toFixed(2) + ' XNT';
+        }
+
+        if (document.getElementById('redeemableBreakdown')) {
+            const yesPayoutStr = currentWinningSide === 'yes' ? payoutPerWinningShare.toFixed(4) : '0.00';
+            const noPayoutStr = currentWinningSide === 'no' ? payoutPerWinningShare.toFixed(4) : '0.00';
+            const yesLine = `YES: ${sharesYes.toFixed(2)} × ${yesPayoutStr} = ${yesValue.toFixed(2)} XNT`;
+            const noLine = `NO: ${sharesNo.toFixed(2)} × ${noPayoutStr} = ${noValue.toFixed(2)} XNT`;
+            document.getElementById('redeemableBreakdown').innerHTML = `
+                <span class="breakdown-item">${yesLine}</span>
+                <span class="breakdown-item">${noLine}</span>
+            `;
+        }
+    } else {
+        // Market not settled - hide redeemable balance
+        redeemableSection.style.display = 'none';
+    }
+}
+
+function updateLastTradeInfo(action, side, numShares, cost) {
+    const actionEl = document.getElementById('lastTradeAction');
+    const sizeEl = document.getElementById('lastTradeSize');
+
+    if (actionEl) {
+        const actionText = `${action.toUpperCase()} ${side.toUpperCase()}`;
+        actionEl.textContent = actionText;
+
+        // Color code the action
+        if (action === 'buy') {
+            actionEl.style.color = side === 'yes' ? '#00c896' : '#ff4757';
+        } else {
+            actionEl.style.color = '#ffa502';
+        }
+    }
+
+    if (sizeEl) {
+        sizeEl.textContent = `${numShares} shares (~${cost.toFixed(2)} XNT)`;
     }
 }
 
@@ -703,21 +1134,36 @@ async function executeTrade() {
         return;
     }
 
-    // Get USD amount from input and convert to e6 units
-    const amountUSD = parseFloat(document.getElementById('tradeAmountUSD').value);
-    if (isNaN(amountUSD) || amountUSD <= 0) {
-        addLog('ERROR: Invalid trade amount', 'error');
-        showError('Invalid amount');
+    // Get number of shares from input
+    const numShares = parseFloat(document.getElementById('tradeAmountShares').value);
+    if (isNaN(numShares) || numShares <= 0) {
+        addLog('ERROR: Invalid number of shares', 'error');
+        showError('Invalid shares');
         return;
     }
 
-    const amount_e6 = Math.floor(amountUSD * 1_000_000);
-
-    // Use current action and side from UI helpers
+    // Use current action and side
     const action = currentAction;
     const side = currentSide;
+    const sharePrice = side === 'yes' ? currentYesPrice : currentNoPrice;
 
-    const tradeDesc = `${action.toUpperCase()} ${side.toUpperCase()} $${amountUSD.toFixed(2)}`;
+    // For BUY: pass spending amount in e6. For SELL: pass number of shares in e6
+    let amount_e6;
+    let estimatedCost;
+
+    if (action === 'buy') {
+        // Calculate how much XNT to spend
+        estimatedCost = numShares * sharePrice;
+        // Convert XNT to e6 units: 1 XNT = 10_000_000 e6 units (LAMPORTS_PER_E6 = 100)
+        amount_e6 = Math.floor(estimatedCost * 10_000_000);
+    } else {
+        // For selling, pass number of shares
+        // 1 share = 1_000_000 e6 units (standard e6 scaling)
+        amount_e6 = Math.floor(numShares * 1_000_000);
+        estimatedCost = numShares * sharePrice;
+    }
+
+    const tradeDesc = `${action.toUpperCase()} ${numShares} ${side.toUpperCase()} shares (~${estimatedCost.toFixed(2)} XNT)`;
     addLog(`Executing trade: ${tradeDesc}`, 'info');
     showStatus('Executing trade...');
 
@@ -729,6 +1175,21 @@ async function executeTrade() {
             [stringToUint8Array('pos'), ammPda.toBytes(), wallet.publicKey.toBytes()],
             new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID)
         );
+
+        // Check if position account exists, if not initialize it
+        const positionExists = await connection.getAccountInfo(posPda);
+        if (!positionExists) {
+            addLog('Position not initialized. Initializing now...', 'info');
+            const initSuccess = await initPosition();
+            if (!initSuccess) {
+                addLog('ERROR: Failed to initialize position. Cannot trade.', 'error');
+                showError('Position initialization failed');
+                return;
+            }
+            // Wait a bit for the position to be created
+            await new Promise(r => setTimeout(r, 1000));
+            addLog('Position initialized successfully! Proceeding with trade...', 'success');
+        }
 
         const discriminator = await createDiscriminator('trade');
 
@@ -777,6 +1238,9 @@ async function executeTrade() {
 
         addLog(`Trade SUCCESS: ${tradeDesc}`, 'success');
         showStatus('Trade success: ' + signature.substring(0, 16) + '...');
+
+        // Update last trade info
+        updateLastTradeInfo(action, side, numShares, estimatedCost);
 
         setTimeout(() => {
             fetchMarketData();
@@ -1030,12 +1494,12 @@ async function withdrawToBackpack() {
 
         if (lamports + minFeeBuffer >= balance) {
             addLog('ERROR: Insufficient balance for withdrawal', 'error');
-            showError('Insufficient balance (need to keep ~0.001 SOL for fees)');
+            showError('Insufficient balance (need to keep ~0.001 XNT for fees)');
             return;
         }
 
-        addLog(`Withdrawing ${amount.toFixed(4)} SOL to Backpack...`, 'info');
-        showStatus('Withdrawing ' + amount.toFixed(4) + ' SOL to Backpack...');
+        addLog(`Withdrawing ${amount.toFixed(4)} XNT to Backpack...`, 'info');
+        showStatus('Withdrawing ' + amount.toFixed(4) + ' XNT to Backpack...');
 
         const transaction = new solanaWeb3.Transaction().add(
             solanaWeb3.SystemProgram.transfer({
@@ -1057,7 +1521,7 @@ async function withdrawToBackpack() {
         addLog('Confirming transaction...', 'info');
         await connection.confirmTransaction(signature, 'confirmed');
 
-        addLog(`Withdrawal SUCCESS: ${amount.toFixed(4)} SOL transferred`, 'success');
+        addLog(`Withdrawal SUCCESS: ${amount.toFixed(4)} XNT transferred`, 'success');
         showStatus('Withdrawal success! Tx: ' + signature.substring(0, 16) + '...');
 
         // Clear input and update balance
@@ -1373,10 +1837,10 @@ async function debugInit() {
         // Step 1: Check wallet balance
         const balance = await connection.getBalance(wallet.publicKey);
         const solBalance = balance / solanaWeb3.LAMPORTS_PER_SOL;
-        addLog(`Wallet balance: ${solBalance.toFixed(4)} SOL`, 'info');
+        addLog(`Wallet balance: ${solBalance.toFixed(4)} XNT`, 'info');
 
         if (solBalance < 0.1) {
-            addLog(`WARNING: Low balance! You need at least 0.1 SOL. Please fund from Backpack wallet.`, 'warning');
+            addLog(`WARNING: Low balance! You need at least 0.1 XNT. Please fund from Backpack wallet.`, 'warning');
             addLog(`Current session wallet: ${wallet.publicKey.toString()}`, 'info');
             return;
         }
@@ -1406,7 +1870,7 @@ async function debugInit() {
 
         // Step 4: Test BUY YES trade
         addLog('Testing BUY YES $1.00 trade...', 'info');
-        document.getElementById('tradeAmountUSD').value = '1.00';
+        document.getElementById('tradeAmountShares').value = '10';
         selectOutcome('yes');
         switchTab('buy');
         await executeTrade();
@@ -1415,7 +1879,7 @@ async function debugInit() {
 
         // Step 5: Test BUY NO trade
         addLog('Testing BUY NO $1.00 trade...', 'info');
-        document.getElementById('tradeAmountUSD').value = '1.00';
+        document.getElementById('tradeAmountShares').value = '10';
         selectOutcome('no');
         switchTab('buy');
         await executeTrade();
@@ -1433,20 +1897,239 @@ async function debugInit() {
     }
 }
 
+// ============= MARKET CYCLE STATUS =============
+
+async function displaySettledMarketWinner(winner, startPriceE6) {
+    const bannerEl = document.getElementById('winnerBanner');
+    const outcomeEl = document.getElementById('winnerOutcome');
+    const reasonEl = document.getElementById('winnerReason');
+
+    if (!bannerEl || !outcomeEl || !reasonEl) return;
+
+    try {
+        // Fetch current oracle price as settle price
+        const response = await fetch(CONFIG.ORACLE_URL + '?t=' + Date.now());
+        if (!response.ok) return;
+
+        const oracle = await response.json();
+        const settlePriceE6 = oracle.price_e6;
+
+        const startPrice = startPriceE6 / 1_000_000;
+        const settlePrice = settlePriceE6 / 1_000_000;
+
+        const startPriceStr = startPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const settlePriceStr = settlePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        const winnerText = winner === 1 ? 'YES' : 'NO';
+        const direction = settlePrice > startPrice ? 'UP' : settlePrice < startPrice ? 'DOWN' : 'SIDEWAYS';
+        const arrow = settlePrice > startPrice ? '↗' : settlePrice < startPrice ? '↘' : '→';
+
+        // Update banner content
+        outcomeEl.textContent = `${winnerText} WON!`;
+        reasonEl.textContent = `BTC went ${direction}: $${startPriceStr} ${arrow} $${settlePriceStr}`;
+
+        // Add appropriate class
+        if (winner === 2) {
+            bannerEl.classList.add('no-winner');
+        } else {
+            bannerEl.classList.remove('no-winner');
+        }
+
+        bannerEl.style.display = 'block';
+    } catch (err) {
+        console.error('Failed to display winner banner:', err);
+    }
+}
+
+async function fetchCycleStatus() {
+    try {
+        const response = await fetch(CONFIG.STATUS_URL + '?t=' + Date.now());
+        if (!response.ok) {
+            throw new Error('Status file not found');
+        }
+        const status = await response.json();
+        updateCycleDisplay(status);
+    } catch (err) {
+        // Status file doesn't exist yet or settlement bot not running
+        updateCycleDisplay({ state: 'OFFLINE' });
+    }
+}
+
+function updateWinnerBanner(status) {
+    const bannerEl = document.getElementById('winnerBanner');
+    const outcomeEl = document.getElementById('winnerOutcome');
+    const reasonEl = document.getElementById('winnerReason');
+
+    if (!bannerEl || !outcomeEl || !reasonEl) return;
+
+    // Show banner if we have lastResolution data and we're in WAITING state
+    if (status.state === 'WAITING' && status.lastResolution) {
+        const res = status.lastResolution;
+        const startPrice = res.startPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const settlePrice = res.settlePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        // Determine if price went up or down
+        const direction = res.settlePrice > res.startPrice ? 'UP' : res.settlePrice < res.startPrice ? 'DOWN' : 'SIDEWAYS';
+        const arrow = res.settlePrice > res.startPrice ? '↑' : res.settlePrice < res.startPrice ? '↓' : '→';
+
+        // Calculate correct winner based on price movement
+        // UP or SAME → YES wins, DOWN → NO wins
+        const displayWinner = res.settlePrice >= res.startPrice ? 'YES' : 'NO';
+
+        // Update banner content with prices
+        outcomeEl.textContent = `${displayWinner} WON`;
+        reasonEl.textContent = `$${startPrice} ${arrow} $${settlePrice}`;
+
+        // Add appropriate class
+        if (displayWinner === 'NO') {
+            bannerEl.classList.add('no-winner');
+        } else {
+            bannerEl.classList.remove('no-winner');
+        }
+
+        bannerEl.style.display = 'block';
+    } else {
+        bannerEl.style.display = 'none';
+    }
+}
+
+function updateCycleDisplay(status) {
+    const stateEl = document.getElementById('cycleState');
+    const currentTimeEl = document.getElementById('currentTime');
+    const nextMarketTimeEl = document.getElementById('nextMarketTime');
+
+    if (!stateEl || !currentTimeEl || !nextMarketTimeEl) return;
+
+    // Update current time clock
+    const now = new Date();
+    const currentTimeStr = now.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    });
+    currentTimeEl.textContent = currentTimeStr;
+
+    // Remove all state classes
+    stateEl.classList.remove('active', 'waiting', 'error');
+
+    // Update winner banner
+    updateWinnerBanner(status);
+
+    if (status.state === 'ACTIVE') {
+        stateEl.textContent = 'MARKET ACTIVE';
+        stateEl.classList.add('active');
+
+        // Show snapshot price with label
+        if (document.getElementById('snapshotLabel')) {
+            document.getElementById('snapshotLabel').textContent = 'START PRICE';
+        }
+        if (document.getElementById('oracleSnapshotPrice')) {
+            if (currentSnapshotPrice !== null) {
+                const formattedPrice = '$' + currentSnapshotPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                document.getElementById('oracleSnapshotPrice').textContent = formattedPrice;
+                document.getElementById('oracleSnapshotPrice').style.color = '#00ff00';
+            } else {
+                document.getElementById('oracleSnapshotPrice').textContent = 'Not taken';
+                document.getElementById('oracleSnapshotPrice').style.color = '#888';
+            }
+        }
+
+        // Show when market ends
+        if (status.marketEndTime) {
+            const endTime = new Date(status.marketEndTime);
+            const endTimeStr = endTime.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+            nextMarketTimeEl.textContent = `Closes: ${endTimeStr}`;
+        } else {
+            nextMarketTimeEl.textContent = 'Market open';
+        }
+    } else if (status.state === 'WAITING') {
+        stateEl.textContent = 'STARTING SOON';
+        stateEl.classList.add('waiting');
+
+        // Show when next market starts
+        if (status.nextCycleStartTime) {
+            const nextStartTime = new Date(status.nextCycleStartTime);
+            const nextTimeStr = nextStartTime.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+            nextMarketTimeEl.textContent = `Next: ${nextTimeStr}`;
+        } else {
+            nextMarketTimeEl.textContent = 'Waiting...';
+        }
+
+        // Display last market start price only
+        if (status.lastResolution && document.getElementById('oracleSnapshotPrice')) {
+            const res = status.lastResolution;
+            const startPrice = res.startPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            // Change label to show it's last market result
+            if (document.getElementById('snapshotLabel')) {
+                document.getElementById('snapshotLabel').textContent = 'LAST START PRICE';
+            }
+
+            document.getElementById('oracleSnapshotPrice').textContent = '$' + startPrice;
+            document.getElementById('oracleSnapshotPrice').style.color = '#00ff00';
+        }
+    } else if (status.state === 'ERROR') {
+        stateEl.textContent = 'ERROR';
+        stateEl.classList.add('error');
+        nextMarketTimeEl.textContent = 'Check bot';
+    } else {
+        // OFFLINE or unknown
+        stateEl.textContent = 'OFFLINE';
+        stateEl.classList.add('waiting');
+        nextMarketTimeEl.textContent = 'Bot not running';
+
+        // Show current snapshot price if available
+        if (document.getElementById('snapshotLabel')) {
+            document.getElementById('snapshotLabel').textContent = 'START PRICE';
+        }
+        if (document.getElementById('oracleSnapshotPrice')) {
+            if (currentSnapshotPrice !== null) {
+                const formattedPrice = '$' + currentSnapshotPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                document.getElementById('oracleSnapshotPrice').textContent = formattedPrice;
+                document.getElementById('oracleSnapshotPrice').style.color = '#00ff00';
+            } else {
+                document.getElementById('oracleSnapshotPrice').textContent = 'Not taken';
+                document.getElementById('oracleSnapshotPrice').style.color = '#888';
+            }
+        }
+    }
+}
+
+function formatCountdown(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
 // ============= POLLING =============
 
 function startPolling() {
     fetchOracleData();
     fetchMarketData();
+    fetchCycleStatus();
 
     setInterval(() => {
         fetchOracleData();
         fetchMarketData();
+        fetchCycleStatus();
         if (wallet) {
             updateWalletBalance();
             fetchPositionData();
+        } else {
+            // Even without wallet, update redeemable section visibility
+            updateRedeemableBalance(0, 0);
         }
-    }, 5000);
+    }, 1000);
 }
 
 // ============= UI HELPERS =============
@@ -1498,15 +2181,24 @@ function selectOutcome(side) {
     updateTradeButton();
 }
 
-function setAmount(usd) {
-    document.getElementById('tradeAmountUSD').value = usd.toFixed(2);
+function setShares(shares) {
+    document.getElementById('tradeAmountShares').value = shares;
     updateTradeButton();
 }
 
 function updateTradeButton() {
-    const amount = parseFloat(document.getElementById('tradeAmountUSD').value) || 0;
-    const text = currentAction + ' ' + currentSide.toUpperCase() + ' for $' + amount.toFixed(2);
+    const shares = parseFloat(document.getElementById('tradeAmountShares').value) || 0;
+    const sharePrice = currentSide === 'yes' ? currentYesPrice : currentNoPrice;
+    const cost = shares * sharePrice;
+
+    const action = currentAction === 'buy' ? 'Buy' : 'Sell';
+    const text = `${action} ${shares} ${currentSide.toUpperCase()} shares (~${cost.toFixed(2)} XNT)`;
     document.getElementById('tradeBtnText').textContent = text;
+
+    // Update cost display
+    if (document.getElementById('tradeCost')) {
+        document.getElementById('tradeCost').textContent = `~${cost.toFixed(2)} XNT`;
+    }
 }
 
 function clearLog() {
@@ -1517,16 +2209,9 @@ function clearLog() {
 // ============= INITIALIZATION =============
 
 window.addEventListener('DOMContentLoaded', () => {
-    addLog('System ready. Auto-refresh every 5s', 'info');
-    
     // Add input listener for trade amount
-    const tradeAmountInput = document.getElementById('tradeAmountUSD');
+    const tradeAmountInput = document.getElementById('tradeAmountShares');
     if (tradeAmountInput) {
         tradeAmountInput.addEventListener('input', updateTradeButton);
     }
-    
-    // Start polling and session restoration
-    initializeSystem();
-    restoreSession();
-    startPolling();
 });
