@@ -82,6 +82,32 @@ ANCHOR_WALLET=./userA.json node app/trade.js settle-oracle --oracle <ORACLE_STAT
 ANCHOR_WALLET=./userA.json node app/trade.js close
 ```
 
+### Web Interface
+
+A simple web interface is available for monitoring the market (read-only):
+
+```bash
+cd webapp
+./start.sh
+
+# Or manually:
+npm install
+npm start
+```
+
+Access at: http://localhost:3434
+
+**Features:**
+- Real-time oracle price display (BTC)
+- Market state monitoring
+- Terminal-style UI (VT100 inspired)
+- Minimal dependencies (Express + Solana web3.js)
+- No build process required
+
+**Note:** The web interface is read-only. Use CLI tools in `app/` for market operations (init, trade, settle).
+
+**Alternative:** A full-featured Next.js/React frontend is available in `frontend/` with wallet integration, but requires more setup.
+
 ## Architecture
 
 ### Smart Contract Structure

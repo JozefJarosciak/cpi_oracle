@@ -1,0 +1,12 @@
+{
+  "name": "btc-prediction-market",
+  "version": "1.0.0",
+  "description": "Simple web interface for BTC prediction market",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

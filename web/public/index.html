@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTC Prediction Market</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="prediction-platform">
+        <!-- Top Navigation -->
+        <nav class="top-nav">
+            <div class="nav-brand">
+                <span class="brand-icon">⬡</span>
+                <span class="brand-name">BTC Predictor</span>
+            </div>
+            <div class="nav-center">
+                <div class="oracle-ticker">
+                    <span class="ticker-label">Current BTC</span>
+                    <span class="ticker-price" id="tickerPrice">$--</span>
+                </div>
+            </div>
+            <div class="nav-right">
+                <div id="walletNavDisconnected">
+                    <button class="btn-connect" onclick="connectBackpack()">Connect Wallet</button>
+                </div>
+                <div id="walletNavConnected" class="hidden">
+                    <div class="wallet-dropdown">
+                        <div class="wallet-balance">
+                            <span class="balance-amount" id="navWalletBal">0.00</span>
+                            <span class="balance-unit">SOL</span>
+                        </div>
+                        <div class="wallet-address-short" id="navWalletAddr">--</div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Market View -->
+        <div class="market-container">
+            <!-- Market Question Card -->
+            <div class="market-card">
+                <div class="market-header">
+                    <h1 class="market-question">Will BTC price go UP from snapshot?</h1>
+                    <div class="market-meta">
+                        <span class="market-status" id="marketStatusBadge">OPEN</span>
+                        <span class="market-volume">Vol: <span id="vaultDisplay">$0</span></span>
+                    </div>
+                </div>
+
+                <!-- Market Info Grid -->
+                <div class="market-info-grid">
+                    <div class="info-card info-vault">
+                        <div class="info-label">VAULT LIQUIDITY</div>
+                        <div class="info-value" id="vaultTotalDisplay">$0.00</div>
+                    </div>
+                    <div class="info-card info-snapshot">
+                        <div class="info-label">SNAPSHOT PRICE</div>
+                        <div class="info-value" id="oracleSnapshotPrice">Not taken</div>
+                    </div>
+                </div>
+
+                <!-- Trading Quotes -->
+                <div class="trading-quotes">
+                    <div class="quote-card quote-yes">
+                        <div class="quote-header">
+                            <span class="quote-label">YES</span>
+                            <span class="quote-price" id="yesPercentage">$0.50</span>
+                        </div>
+                        <div class="quote-shares" id="yesShares">0 shares</div>
+                    </div>
+                    <div class="quote-card quote-no">
+                        <div class="quote-header">
+                            <span class="quote-label">NO</span>
+                            <span class="quote-price" id="noPercentage">$0.50</span>
+                        </div>
+                        <div class="quote-shares" id="noShares">0 shares</div>
+                    </div>
+                </div>
+
+                <!-- Trading Interface -->
+                <div class="trading-section">
+                    <div class="trade-tabs">
+                        <button class="tab-btn active" id="buyTab" onclick="switchTab('buy')">Buy</button>
+                        <button class="tab-btn" id="sellTab" onclick="switchTab('sell')">Sell</button>
+                    </div>
+
+                    <div class="trade-form">
+                        <div class="outcome-selector">
+                            <button class="outcome-btn outcome-btn-yes active" id="yesBtn" onclick="selectOutcome('yes')">
+                                <span class="outcome-btn-label">YES</span>
+                                <span class="outcome-btn-price" id="yesBtnPrice">$0.50</span>
+                            </button>
+                            <button class="outcome-btn outcome-btn-no" id="noBtn" onclick="selectOutcome('no')">
+                                <span class="outcome-btn-label">NO</span>
+                                <span class="outcome-btn-price" id="noBtnPrice">$0.50</span>
+                            </button>
+                        </div>
+
+                        <div class="trade-amount">
+                            <div class="amount-input-group">
+                                <span class="amount-prefix">$</span>
+                                <input type="number" id="tradeAmountUSD" class="amount-input" placeholder="1.00" step="0.01" value="1.00">
+                            </div>
+                            <div class="quick-amounts">
+                                <button class="quick-btn" onclick="setAmount(1)">$1</button>
+                                <button class="quick-btn" onclick="setAmount(5)">$5</button>
+                                <button class="quick-btn" onclick="setAmount(10)">$10</button>
+                                <button class="quick-btn" onclick="setAmount(50)">$50</button>
+                            </div>
+                        </div>
+
+                        <button class="btn-trade" id="tradeBtn" onclick="executeTrade()">
+                            <span id="tradeBtnText">Buy YES for $1.00</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <!-- Wallet Details -->
+                <div class="sidebar-card">
+                    <div class="card-title">Wallet</div>
+                    <div id="sidebarWalletDisconnected">
+                        <p class="empty-text">Connect wallet to start trading</p>
+                    </div>
+                    <div id="sidebarWalletConnected" class="hidden">
+                        <div class="wallet-detail">
+                            <div class="detail-label">Trading Wallet</div>
+                            <div class="detail-value-small" id="sessionAddr">--</div>
+                            <div class="wallet-balance-large">
+                                <span id="walletBal">0.0000</span> SOL
+                            </div>
+                        </div>
+                        <div class="position-grid" style="margin: 12px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div class="position-item" style="background: rgba(0,200,150,0.1); border: 1px solid rgba(0,200,150,0.3); border-radius: 4px; padding: 8px; text-align: center;">
+                                <div class="position-label" style="font-size: 11px; color: #888; margin-bottom: 4px;">YES</div>
+                                <div class="position-value" id="posYes" style="font-size: 16px; font-weight: 600; color: #00ff00;">0.00</div>
+                            </div>
+                            <div class="position-item" style="background: rgba(255,69,87,0.1); border: 1px solid rgba(255,69,87,0.3); border-radius: 4px; padding: 8px; text-align: center;">
+                                <div class="position-label" style="font-size: 11px; color: #888; margin-bottom: 4px;">NO</div>
+                                <div class="position-value" id="posNo" style="font-size: 16px; font-weight: 600; color: #ff4757;">0.00</div>
+                            </div>
+                        </div>
+                        <div class="wallet-actions-compact">
+                            <input type="number" id="withdrawAmount" class="input-compact" placeholder="SOL to withdraw" step="0.01">
+                            <button class="btn-compact" onclick="withdrawToBackpack()">Withdraw</button>
+                            <button class="btn-compact btn-ghost" onclick="disconnectWallet()">Disconnect</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Market Controls -->
+                <div class="sidebar-card">
+                    <div class="card-title">Market Controls</div>
+                    <div class="control-buttons">
+                        <button class="btn-control" style="background: #ff9500;" onclick="restartMarket()">Restart & Snapshot</button>
+                        <button class="btn-control" onclick="stopMarket()">Stop Trading</button>
+                        <button class="btn-control" onclick="settleByOracle()">Settle Market</button>
+                        <button class="btn-control" style="background: #00c896;" onclick="redeemWinnings()">Redeem Winnings</button>
+                        <button class="btn-control" onclick="debugInit()">Debug: Init Market</button>
+                    </div>
+                </div>
+
+                <!-- Activity Log -->
+                <div class="sidebar-card activity-card">
+                    <div class="card-title">
+                        Activity
+                        <button class="btn-clear" onclick="clearLog()">Clear</button>
+                    </div>
+                    <div class="activity-log" id="logContent">
+                        <div class="log-entry log-info">
+                            <span class="log-time">--:--:--</span>
+                            <span class="log-message">Initializing...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
