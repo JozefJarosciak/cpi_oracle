@@ -4,6 +4,7 @@ const path = require('path');
 
 const PORT = 3434;
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const STATUS_FILE = path.join(__dirname, '..', 'market_status.json');
 
 const MIME_TYPES = {
     '.html': 'text/html',
@@ -16,7 +17,34 @@ const MIME_TYPES = {
 };
 
 const server = http.createServer((req, res) => {
-    let filePath = req.url === '/' ? '/index.html' : req.url;
+    // Handle market_status.json specially (serve from project root)
+    if (req.url.startsWith('/market_status.json')) {
+        fs.readFile(STATUS_FILE, (err, content) => {
+            if (err) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ state: 'OFFLINE' }));
+            } else {
+                res.writeHead(200, {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                });
+                res.end(content);
+            }
+        });
+        return;
+    }
+
+    // Route handling
+    let filePath;
+    if (req.url === '/') {
+        filePath = '/index.html';
+    } else if (req.url === '/hl' || req.url === '/hyperliquid') {
+        filePath = '/hyperliquid.html';
+    } else {
+        filePath = req.url;
+    }
     filePath = path.join(PUBLIC_DIR, filePath);
 
     const ext = path.extname(filePath);
