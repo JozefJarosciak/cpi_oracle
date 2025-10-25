@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // app/market_bot.js — Market operator bot for managing market lifecycle
-// Commands: restart, stop, settle
+// Commands: restart, stop, settle, stop-settle
 // Usage: ANCHOR_WALLET=./operator.json node app/market_bot.js restart
 
 const fs = require("fs");
@@ -64,7 +64,7 @@ function discriminator(ixName) {
 async function main() {
   const command = process.argv[2];
 
-  if (!command || !["restart", "stop", "settle"].includes(command)) {
+  if (!command || !["restart", "stop", "settle", "stop-settle"].includes(command)) {
     console.log(`
 ${C.bold("Market Bot CLI")}
 
@@ -72,19 +72,21 @@ ${C.y("Usage:")}
   ANCHOR_WALLET=./operator.json node app/market_bot.js <command>
 
 ${C.y("Commands:")}
-  ${C.g("restart")}  - Close existing market, init new one, and take snapshot
-  ${C.g("stop")}     - Stop trading on current market
-  ${C.g("settle")}   - Settle market by oracle price
+  ${C.g("restart")}      - Close existing market, init new one, and take snapshot
+  ${C.g("stop")}         - Stop trading on current market
+  ${C.g("settle")}       - Settle market by oracle price
+  ${C.g("stop-settle")}  - Stop trading AND settle market in one command
 
 ${C.y("Environment:")}
   ANCHOR_WALLET       - Path to operator keypair (default: ~/.config/solana/id.json)
   ANCHOR_PROVIDER_URL - RPC endpoint (default: http://127.0.0.1:8899)
-  ORACLE_STATE        - Oracle state account public key (required for settle)
+  ORACLE_STATE        - Oracle state account public key (required for settle/stop-settle)
 
 ${C.y("Examples:")}
   ANCHOR_WALLET=./operator.json node app/market_bot.js restart
   ANCHOR_WALLET=./operator.json node app/market_bot.js stop
   ORACLE_STATE=4KYeNyv1B9YjjQkfJk2C6Uqo71vKzFZriRe5NXg6GyCq node app/market_bot.js settle
+  ORACLE_STATE=4KYeNyv1B9YjjQkfJk2C6Uqo71vKzFZriRe5NXg6GyCq node app/market_bot.js stop-settle
 `);
     process.exit(1);
   }
@@ -117,6 +119,9 @@ ${C.y("Examples:")}
       break;
     case "settle":
       await cmdSettle(conn, kp, ammPda);
+      break;
+    case "stop-settle":
+      await cmdStopSettle(conn, kp, ammPda);
       break;
   }
 }
@@ -269,6 +274,66 @@ async function cmdSettle(conn, kp, ammPda) {
     const sig = await sendAndConfirmTransaction(conn, tx, [kp]);
     logSuccess(`Market settled: ${sig}`);
     log(C.bold("\n✓ Market resolved by oracle. Traders can now redeem winnings.\n"));
+  } catch (err) {
+    logError(`Failed to settle market:`, err.message);
+    process.exit(1);
+  }
+}
+
+/* ---------------- Command: Stop AND Settle Market ---------------- */
+async function cmdStopSettle(conn, kp, ammPda) {
+  log(C.bold("\n=== STOPPING AND SETTLING MARKET ===\n"));
+
+  if (!ORACLE_STATE) {
+    logError("ORACLE_STATE environment variable not set");
+    log("Set it like: ORACLE_STATE=4KYeNyv1B9YjjQkfJk2C6Uqo71vKzFZriRe5NXg6GyCq");
+    process.exit(1);
+  }
+
+  // Step 1: Stop trading
+  log("Step 1: Stopping trading...");
+  const stopIx = new TransactionInstruction({
+    programId: PID,
+    keys: [
+      { pubkey: ammPda, isSigner: false, isWritable: true },
+      { pubkey: kp.publicKey, isSigner: true, isWritable: false },
+    ],
+    data: discriminator("stop_market"),
+  });
+
+  try {
+    const tx = new Transaction().add(stopIx);
+    const sig = await sendAndConfirmTransaction(conn, tx, [kp]);
+    logSuccess(`Market stopped: ${sig}`);
+  } catch (err) {
+    logError(`Failed to stop market:`, err.message);
+    process.exit(1);
+  }
+
+  // Wait a moment between transactions
+  await new Promise((r) => setTimeout(r, 1500));
+
+  // Step 2: Settle by oracle
+  log("\nStep 2: Settling by oracle...");
+  const settleData = Buffer.alloc(8 + 1);
+  discriminator("settle_by_oracle").copy(settleData, 0);
+  settleData.writeUInt8(1, 8); // ge_wins_yes = true
+
+  const settleIx = new TransactionInstruction({
+    programId: PID,
+    keys: [
+      { pubkey: ammPda, isSigner: false, isWritable: true },
+      { pubkey: ORACLE_STATE, isSigner: false, isWritable: false },
+    ],
+    data: settleData,
+  });
+
+  try {
+    const budgetIx = ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 });
+    const tx = new Transaction().add(budgetIx, settleIx);
+    const sig = await sendAndConfirmTransaction(conn, tx, [kp]);
+    logSuccess(`Market settled: ${sig}`);
+    log(C.bold("\n✓ Market stopped and settled! Traders can now redeem winnings.\n"));
   } catch (err) {
     logError(`Failed to settle market:`, err.message);
     process.exit(1);

@@ -147,9 +147,9 @@ body {
 
 .market-container {
     display: grid;
-    grid-template-columns: 1fr 360px;
+    grid-template-columns: 1fr 380px;
     gap: 20px;
-    max-width: 1400px;
+    max-width: 1500px;
     margin: 0 auto;
     padding: 24px;
     min-height: calc(100vh - 60px);
@@ -551,10 +551,16 @@ body {
 
 /* ===== TRADING SECTION ===== */
 
+.trade-card {
+    position: sticky;
+    top: 76px;
+    z-index: 10;
+}
+
 .trade-tabs {
     display: flex;
     gap: 8px;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 
 .tab-btn {
@@ -582,8 +588,8 @@ body {
 .outcome-selector {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 20px;
+    gap: 10px;
+    margin-bottom: 16px;
 }
 
 .outcome-btn {
@@ -591,7 +597,7 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 4px;
-    padding: 16px;
+    padding: 12px;
     background: var(--bg-secondary);
     border: 2px solid var(--border-color);
     border-radius: 8px;
@@ -634,9 +640,13 @@ body {
     font-family: 'SF Mono', Monaco, monospace;
 }
 
+.trade-amount {
+    margin-bottom: 16px;
+}
+
 .amount-label {
     display: block;
-    font-size: 13px;
+    font-size: 12px;
     color: var(--text-secondary);
     margin-bottom: 8px;
     font-weight: 600;
@@ -662,9 +672,9 @@ body {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     color: var(--text-primary);
-    padding: 14px 16px 14px 56px;
+    padding: 12px 14px 12px 56px;
     border-radius: 8px;
-    font-size: 18px;
+    font-size: 16px;
     font-family: 'SF Mono', Monaco, monospace;
     font-weight: 600;
 }
@@ -677,8 +687,8 @@ body {
 
 .quick-amounts {
     display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: 6px;
+    margin-bottom: 0;
 }
 
 .quick-btn {
@@ -686,9 +696,9 @@ body {
     background: var(--bg-secondary);
     color: var(--text-secondary);
     border: 1px solid var(--border-color);
-    padding: 8px;
+    padding: 6px;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
@@ -704,21 +714,21 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
+    padding: 10px 14px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
 }
 
 .cost-label {
-    font-size: 13px;
+    font-size: 12px;
     color: var(--text-secondary);
     font-weight: 600;
 }
 
 .cost-amount {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     font-family: 'SF Mono', Monaco, monospace;
     color: var(--text-primary);
@@ -758,9 +768,9 @@ body {
     background: var(--green);
     color: white;
     border: none;
-    padding: 16px;
+    padding: 14px;
     border-radius: 8px;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     cursor: pointer;
     transition: all 0.2s;
