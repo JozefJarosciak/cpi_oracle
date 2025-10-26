@@ -13,7 +13,7 @@ const {
 
 /* ---------------- CONFIG ---------------- */
 const RPC = process.env.ANCHOR_PROVIDER_URL || "http://127.0.0.1:8899";
-const WALLET = process.env.ANCHOR_WALLET || `${process.env.HOME}/.config/solana/id.json`;
+const WALLET = process.env.ANCHOR_WALLET || "./operator.json"; // Default to operator.json (fee_dest)
 const ORACLE_STATE = process.env.ORACLE_STATE ? new PublicKey(process.env.ORACLE_STATE) : null;
 
 // === PROGRAM IDs / SEEDS ===
@@ -193,6 +193,112 @@ async function settleMarket(conn, kp, ammPda) {
   const sig = await sendAndConfirmTransaction(conn, tx, [kp]);
   logSuccess(`Market settled: ${sig}`);
   return true;
+}
+
+async function findAllPositions(conn, ammPda) {
+  log("Scanning for active positions...");
+
+  // Get all program accounts for our program that match Position size
+  const accounts = await conn.getProgramAccounts(PID, {
+    filters: [
+      {
+        dataSize: 8 + 32 + 8 + 8, // discriminator + owner pubkey + yes_shares + no_shares
+      },
+    ],
+  });
+
+  const positions = [];
+  for (const { pubkey, account } of accounts) {
+    try {
+      const data = account.data;
+      if (data.length < 8 + 32 + 8 + 8) continue;
+
+      // Skip discriminator (8 bytes)
+      let offset = 8;
+
+      // Read owner pubkey (32 bytes)
+      const ownerBytes = data.slice(offset, offset + 32);
+      const owner = new PublicKey(ownerBytes);
+      offset += 32;
+
+      // Read shares (i64 each)
+      const yesShares = Number(data.readBigInt64LE(offset)); offset += 8;
+      const noShares = Number(data.readBigInt64LE(offset));
+
+      // Only include positions with actual shares
+      if (yesShares > 0 || noShares > 0) {
+        positions.push({
+          pubkey,
+          owner,
+          yesShares,
+          noShares,
+        });
+      }
+    } catch (err) {
+      // Skip invalid accounts
+    }
+  }
+
+  logInfo(`Found ${positions.length} positions with shares`);
+  return positions;
+}
+
+async function autoRedeemAllPositions(conn, kp, ammPda, vaultPda) {
+  log(C.bold("\n=== AUTO-REDEEMING ALL POSITIONS ==="));
+
+  const positions = await findAllPositions(conn, ammPda);
+
+  if (positions.length === 0) {
+    logInfo("No positions to redeem");
+    return;
+  }
+
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const pos of positions) {
+    try {
+      const yesSharesDisplay = (pos.yesShares / 1_000_000).toFixed(2);
+      const noSharesDisplay = (pos.noShares / 1_000_000).toFixed(2);
+
+      log(`Redeeming for ${pos.owner.toString().slice(0, 8)}... (UP: ${yesSharesDisplay}, DOWN: ${noSharesDisplay})`);
+
+      // Use admin_redeem instruction
+      const redeemIx = new TransactionInstruction({
+        programId: PID,
+        keys: [
+          { pubkey: ammPda, isSigner: false, isWritable: true },
+          { pubkey: kp.publicKey, isSigner: true, isWritable: true }, // Admin (fee_dest)
+          { pubkey: pos.owner, isSigner: false, isWritable: true }, // User receives payout
+          { pubkey: pos.pubkey, isSigner: false, isWritable: true }, // Position account
+          { pubkey: kp.publicKey, isSigner: false, isWritable: true }, // fee_dest (same as admin)
+          { pubkey: vaultPda, isSigner: false, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        ],
+        data: discriminator("admin_redeem"),
+      });
+
+      const budgetIx = ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 });
+      const tx = new Transaction().add(budgetIx, redeemIx);
+      const sig = await sendAndConfirmTransaction(conn, tx, [kp], { skipPreflight: false });
+
+      logSuccess(`  ✓ Redeemed: ${sig.slice(0, 16)}...`);
+      successCount++;
+
+      // Small delay to avoid rate limits
+      await new Promise(r => setTimeout(r, 500));
+
+    } catch (err) {
+      logError(`  ✗ Failed for ${pos.owner.toString().slice(0, 8)}...: ${err.message}`);
+      failCount++;
+    }
+  }
+
+  log(C.bold(`\n=== AUTO-REDEEM COMPLETE ===`));
+  logSuccess(`${successCount} positions redeemed`);
+  if (failCount > 0) {
+    logError(`${failCount} positions failed`);
+  }
 }
 
 /* ---------------- Oracle & Market Data Functions ---------------- */
@@ -386,6 +492,10 @@ async function runCycle(conn, kp, ammPda, vaultPda) {
     if (marketData) {
       log(`Resolution: ${C.bold(marketData.winningSide)} won (Start: $${marketData.startPrice?.toFixed(2)}, Settle: $${settlePrice?.toFixed(2)})`);
     }
+
+    // Auto-redeem all positions (prevents locked funds)
+    await autoRedeemAllPositions(conn, kp, ammPda, vaultPda);
+    await new Promise(r => setTimeout(r, 1000));
 
     // Update status: WAITING with last resolution data
     const lastResolution = marketData && marketData.startPrice && settlePrice ? {

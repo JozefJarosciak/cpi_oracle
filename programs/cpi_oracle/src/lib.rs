@@ -252,6 +252,43 @@ pub struct Redeem<'info> {
 }
 
 #[derive(Accounts)]
+pub struct AdminRedeem<'info> {
+    #[account(mut, seeds = [Amm::SEED], bump = amm.bump)]
+    pub amm: Account<'info, Amm>,
+
+    /// Admin signer (must be fee_dest)
+    #[account(mut)]
+    pub admin: Signer<'info>,
+
+    /// The user who will receive the payout (NOT a signer)
+    /// CHECK: derived from position owner
+    #[account(mut)]
+    pub user: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        seeds = [Position::SEED, amm.key().as_ref(), user.key().as_ref()],
+        bump,
+        constraint = pos.owner == user.key() @ ReaderError::NotOwner
+    )]
+    pub pos: Account<'info, Position>,
+
+    /// CHECK: fee treasury (lamports)
+    #[account(mut, address = amm.fee_dest)]
+    pub fee_dest: UncheckedAccount<'info>,
+
+    /// CHECK: writable SOL vault PDA (system-owned, 0 space)
+    #[account(
+        mut,
+        seeds = [Amm::VAULT_SOL_SEED, amm.key().as_ref()],
+        bump = amm.vault_sol_bump
+    )]
+    pub vault_sol: UncheckedAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 pub struct CloseAmm<'info> {
     #[account(
         mut,
@@ -650,6 +687,102 @@ pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
     );
     Ok(())
 }
+
+    // ---------- ADMIN REDEEM (force redeem on behalf of user) ----------
+    pub fn admin_redeem(ctx: Context<AdminRedeem>) -> Result<()> {
+        let sys = &ctx.accounts.system_program;
+
+        // Only fee_dest can call this
+        require_keys_eq!(ctx.accounts.admin.key(), ctx.accounts.amm.fee_dest, ReaderError::NotOwner);
+
+        // Must be settled
+        require!(ctx.accounts.amm.status() == MarketStatus::Settled, ReaderError::WrongState);
+
+        // ---- read-only views
+        let pos_ro = &ctx.accounts.pos;
+        let amm_ro = &ctx.accounts.amm;
+
+        // winning side balance for this user
+        let (win_sh_e6, _lose_sh_e6) = match amm_ro.winner {
+            1 => (pos_ro.yes_shares_e6, pos_ro.no_shares_e6),
+            2 => (pos_ro.no_shares_e6,  pos_ro.yes_shares_e6),
+            _ => (0, 0),
+        };
+
+        // nothing to do → wipe anyway and return
+        if win_sh_e6 <= 0 {
+            let pos_mut = &mut ctx.accounts.pos;
+            pos_mut.yes_shares_e6 = 0;
+            pos_mut.no_shares_e6  = 0;
+            msg!("ADMIN_REDEEM: No winning shares; position wiped.");
+            return Ok(());
+        }
+
+        // Theoretical payout at snapshot pps (bounded by mirror)
+        let w_snap = amm_ro.w_total_e6.max(0);
+        let win_clip = if win_sh_e6 < 0 { 0 } else { win_sh_e6.min(w_snap) };
+        let theoretical_e6: i64 =
+            ((win_clip as i128) * (amm_ro.pps_e6 as i128) / 1_000_000i128) as i64;
+
+        // Mirror coverage bound
+        let mirror_bound_e6 = theoretical_e6.min(amm_ro.vault_e6.max(0));
+
+        // Lamports availability bound (keep >= 1 SOL)
+        let vault_ai = &ctx.accounts.vault_sol.to_account_info();
+        let vault_lamports_now = vault_ai.lamports();
+        let available_lamports = vault_lamports_now.saturating_sub(MIN_VAULT_LAMPORTS);
+        let mirror_bound_lamports = e6_to_lamports(mirror_bound_e6);
+        let pay_lamports = mirror_bound_lamports.min(available_lamports);
+
+        if pay_lamports == 0 {
+            msg!("⚠️  ADMIN_REDEEM: Reserve/coverage bound: pay=0 (vault={}, keep_reserve={})",
+                 vault_lamports_now, MIN_VAULT_LAMPORTS);
+
+            if WIPE_ON_PAY_ZERO {
+                let pos_mut = &mut ctx.accounts.pos;
+                pos_mut.yes_shares_e6 = 0;
+                pos_mut.no_shares_e6  = 0;
+                msg!("Position wiped despite zero payout.");
+            }
+            return Ok(());
+        }
+
+        // Convert actual lamports paid back to e6 for mirror accounting
+        let pay_e6_effective = lamports_to_e6(pay_lamports);
+
+        // Pay user from vault (PDA signed) - NOTE: funds go to USER, not admin
+        let amm_key = ctx.accounts.amm.key();
+        let seeds: &[&[u8]] = &[
+            Amm::VAULT_SOL_SEED,
+            amm_key.as_ref(),
+            core::slice::from_ref(&ctx.accounts.amm.vault_sol_bump),
+        ];
+        transfer_sol_signed(
+            sys,
+            &ctx.accounts.vault_sol.to_account_info(),
+            &ctx.accounts.user.to_account_info(),
+            pay_lamports,
+            &[seeds],
+        )?;
+
+        // ---- mutate mirrors and WIPE position
+        let amm_mut = &mut ctx.accounts.amm;
+        amm_mut.vault_e6 = amm_mut.vault_e6.saturating_sub(pay_e6_effective);
+
+        let pos_mut = &mut ctx.accounts.pos;
+        pos_mut.yes_shares_e6 = 0;
+        pos_mut.no_shares_e6  = 0;
+
+        let kept = vault_ai.lamports();
+        msg!(
+            "💸 ADMIN_REDEEM user={} pay={} lamports ({:.9} SOL); kept_reserve={} lamports",
+            ctx.accounts.user.key(),
+            pay_lamports,
+            (pay_lamports as f64)/1e9,
+            kept.min(MIN_VAULT_LAMPORTS)
+        );
+        Ok(())
+    }
 
 
     // ---------- CLOSE AMM (new) ----------
