@@ -42,12 +42,31 @@
 
                 <!-- Winner Banner -->
                 <div class="trade-banner" id="winnerBanner" style="display: none;">
-                    <span id="winnerOutcome">YES WON</span>
+                    <span id="winnerOutcome">UP WON</span>
                     <span class="banner-price" id="winnerReason">$95,000 ↑ $96,500</span>
                 </div>
 
                 <!-- Chart -->
                 <div class="chart-container">
+                    <div class="chart-price-header" style="display: flex; justify-content: space-between; padding: 10px 20px; background: rgba(0,0,0,0.2);">
+                        <div style="display: flex; flex-direction: column; gap: 2px;">
+                            <div style="font-size: 10px; color: #888; text-transform: uppercase;">Price to Beat</div>
+                            <div id="chartBeatPrice" style="font-size: 18px; font-weight: 700; color: #ff8c00;">--</div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+                            <div style="font-size: 10px; color: #888; text-transform: uppercase;">Current Price</div>
+                            <div id="chartCurrentPrice" style="font-size: 18px; font-weight: 700; color: #00ff00;">$0.00</div>
+                        </div>
+                    </div>
+                    <div class="price-arrow-indicator" id="priceArrowIndicator" style="display: none;">
+                        <div class="arrow-icon-wrapper">
+                            <div class="arrow-icon" id="arrowIcon">↑</div>
+                        </div>
+                        <div class="arrow-content">
+                            <div class="arrow-label-change" id="arrowLabelChange">+$0</div>
+                            <div class="arrow-label-percent" id="arrowLabelPercent">+0.00%</div>
+                        </div>
+                    </div>
                     <canvas id="btcChart"></canvas>
                 </div>
 
@@ -81,12 +100,12 @@
                 <div class="book-header">MARKET PRICES</div>
                 <div class="book-sides">
                     <div class="book-side book-yes">
-                        <div class="book-label">YES (LONG)</div>
+                        <div class="book-label">UP (LONG)</div>
                         <div class="book-price" id="yesPercentage">0.50</div>
                         <div class="book-size" id="yesShares">0 shares</div>
                     </div>
                     <div class="book-side book-no">
-                        <div class="book-label">NO (SHORT)</div>
+                        <div class="book-label">DOWN (SHORT)</div>
                         <div class="book-price" id="noPercentage">0.50</div>
                         <div class="book-size" id="noShares">0 shares</div>
                     </div>
@@ -160,11 +179,38 @@
                     <div class="panel-header">REDEEMABLE</div>
                     <div class="redeem-amount" id="redeemableAmount">0.00 XNT</div>
                     <div class="redeem-breakdown" id="redeemableBreakdown">
-                        <div>YES: 0 × 0.00 = 0.00</div>
-                        <div>NO: 0 × 0.00 = 0.00</div>
+                        <div>UP: 0 × 0.00 = 0.00</div>
+                        <div>DOWN: 0 × 0.00 = 0.00</div>
                     </div>
                     <button class="btn-redeem" onclick="redeemWinnings()">REDEEM</button>
                 </div>
+
+                <!-- Activity Log (Hidden for minimal UI) -->
+                <div id="logContent" style="display: none;"></div>
+
+                <!-- Hidden elements for compatibility -->
+                <div id="positionStatusDisconnected" style="display: none;"></div>
+                <div id="sidebarWalletDisconnected" style="display: none;"></div>
+                <div id="sidebarWalletConnected" style="display: none;"></div>
+                <div id="sessionAddr" style="display: none;"></div>
+                <div id="walletBal" style="display: none;"></div>
+                <div id="withdrawAmount" style="display: none;"></div>
+                <div id="navWalletAddr" style="display: none;"></div>
+                <div id="vaultDisplay" style="display: none;"></div>
+                <div id="marketStatusBadge" style="display: none;"></div>
+                <div id="buyTab" style="display: none;"></div>
+                <div id="sellTab" style="display: none;"></div>
+                <div id="redeemableSectionSidebar" style="display: none;"></div>
+                <div id="redeemableAmountSidebar" style="display: none;"></div>
+                <div id="redeemableBreakdownSidebar" style="display: none;"></div>
+                <div id="btnRedeemSidebar" style="display: none;"></div>
+                <div id="netExposure" style="display: none;"></div>
+                <div id="lastTradeAction" style="display: none;"></div>
+                <div id="lastTradeSize" style="display: none;"></div>
+                <div id="snapshotBtn" style="display: none;"></div>
+                <div id="snapshotLabel" style="display: none;"></div>
+                <div id="oracleAge" style="display: none;"></div>
+                <div id="oracleCurrentPrice" style="display: none;"></div>
             </div>
         </div>
     </div>
