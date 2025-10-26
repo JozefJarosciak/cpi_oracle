@@ -61,6 +61,11 @@ body {
     gap: 20px;
 }
 
+.top-right {
+    display: flex;
+    align-items: center;
+}
+
 .brand {
     font-size: 18px;
     font-weight: 700;
