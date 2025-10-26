@@ -1117,6 +1117,8 @@ let currentPayoutPerShare = 0; // Actual payout per winning share (in XNT)
 function updateRedeemableBalance(sharesYes, sharesNo) {
     const redeemableSectionSidebar = document.getElementById('redeemableSectionSidebar');
     const btnRedeemSidebar = document.getElementById('btnRedeemSidebar');
+    const redeemableSection = document.getElementById('redeemableSection');
+    const btnRedeem = document.getElementById('btnRedeem');
 
     // Calculate redeemable value using ACTUAL payout per share from the contract
     let yesValue, noValue, totalRedeemable;
@@ -1129,6 +1131,12 @@ function updateRedeemableBalance(sharesYes, sharesNo) {
         }
         if (btnRedeemSidebar) {
             btnRedeemSidebar.disabled = false;
+        }
+        if (redeemableSection) {
+            redeemableSection.classList.remove('disabled');
+        }
+        if (btnRedeem) {
+            btnRedeem.disabled = false;
         }
 
         if (currentWinningSide === 'yes') {
@@ -1148,6 +1156,12 @@ function updateRedeemableBalance(sharesYes, sharesNo) {
         if (btnRedeemSidebar) {
             btnRedeemSidebar.disabled = true;
         }
+        if (redeemableSection) {
+            redeemableSection.classList.add('disabled');
+        }
+        if (btnRedeem) {
+            btnRedeem.disabled = true;
+        }
 
         yesValue = 0;
         noValue = 0;
@@ -1160,6 +1174,10 @@ function updateRedeemableBalance(sharesYes, sharesNo) {
     if (document.getElementById('redeemableAmountSidebar')) {
         document.getElementById('redeemableAmountSidebar').textContent = totalText;
     }
+    // Update main redeem amount (for proto1)
+    if (document.getElementById('redeemableAmount')) {
+        document.getElementById('redeemableAmount').textContent = totalText;
+    }
 
     // Create breakdown text
     const yesPayoutStr = (currentMarketStatus === 2 && currentWinningSide === 'yes') ? payoutPerWinningShare.toFixed(4) : '0.00';
@@ -1170,6 +1188,10 @@ function updateRedeemableBalance(sharesYes, sharesNo) {
     // Update sidebar breakdown
     if (document.getElementById('redeemableBreakdownSidebar')) {
         document.getElementById('redeemableBreakdownSidebar').innerHTML = `${yesLine}<br>${noLine}`;
+    }
+    // Update main breakdown (for proto1)
+    if (document.getElementById('redeemableBreakdown')) {
+        document.getElementById('redeemableBreakdown').innerHTML = `${yesLine}<br>${noLine}`;
     }
 }
 
