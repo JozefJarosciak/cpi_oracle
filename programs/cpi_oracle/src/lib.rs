@@ -878,15 +878,20 @@ fn emit_trade(amm: &Amm, side: u8, action: u8, net_e6: i64, dq_e6: i64, avg_h: f
     });
 }
 fn log_trade_buy(tag: &str, spend_e6: i64, shares_e6: f64, avg_h: f64, p: f64, amm: &Amm) {
-    msg!("{tag}: spend=${:.6} -> shares={:.6} @avg={:.6}  pYes={:.6}",
-         usd(spend_e6), shares_e6/1_000_000.0, avg_h, p);
-    msg!("          qY={:.6}sh qN={:.6}sh vault=${:.6} fees=${:.6}",
+    // spend_e6 is in e6, shares_e6 is ALREADY a float in e6 scale (not yet divided)
+    let spend_xnt = spend_e6 as f64 / 1_000_000.0;
+    let shares = shares_e6 / 1_000_000.0;
+    msg!("{tag}: spend={:.6} XNT -> shares={:.6} @avg={:.6}  pYes={:.6}",
+         spend_xnt, shares, avg_h, p);
+    msg!("          qY={:.6}sh qN={:.6}sh vault={:.6} XNT fees={:.6} XNT",
          sh(amm.q_yes), sh(amm.q_no), usd(amm.vault_e6), usd(amm.fees));
 }
 fn log_trade_sell(tag: &str, sold_e6: f64, proceeds_e6: i64, avg_h: f64, p: f64, amm: &Amm) {
-    msg!("{tag}: shares={:.6} -> proceeds=${:.6} @avg={:.6}  pYes={:.6}",
-         sold_e6/1_000_000.0, usd(proceeds_e6), avg_h, p);
-    msg!("          qY={:.6}sh qN={:.6}sh vault=${:.6} fees=${:.6}",
+    let shares = sold_e6 / 1_000_000.0;
+    let proceeds_xnt = proceeds_e6 as f64 / 1_000_000.0;
+    msg!("{tag}: shares={:.6} -> proceeds={:.6} XNT @avg={:.6}  pYes={:.6}",
+         shares, proceeds_xnt, avg_h, p);
+    msg!("          qY={:.6}sh qN={:.6}sh vault={:.6} XNT fees={:.6} XNT",
          sh(amm.q_yes), sh(amm.q_no), usd(amm.vault_e6), usd(amm.fees));
 }
 
