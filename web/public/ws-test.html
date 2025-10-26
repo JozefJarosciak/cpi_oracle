@@ -54,7 +54,8 @@
                 if (data.type === 'history') {
                     addLog(`📜 History: ${data.trades.length} trades`, 'success');
                 } else if (data.type === 'trade') {
-                    addLog(`📊 Trade: ${data.trade.action} ${data.trade.side} - ${data.trade.shares} shares`, 'success');
+                    const user = data.trade.user ? data.trade.user.slice(0, 5) : 'Unknown';
+                    addLog(`📊 Trade: ${user} ${data.trade.action} ${data.trade.side} - ${data.trade.shares} shares @ ${data.trade.avgPrice} XNT`, 'success');
                 }
             } catch (e) {
                 addLog(`Parse error: ${e.message}`, 'error');

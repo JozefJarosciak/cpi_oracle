@@ -39,7 +39,10 @@
                             <span class="balance-amount" id="navWalletBal">0.00</span>
                             <span class="balance-unit">XNT</span>
                         </div>
-                        <div class="wallet-address-short" id="navWalletAddr">--</div>
+                        <div class="wallet-address-short">
+                            <span id="navWalletAddr">--</span>
+                            <button class="key-icon-btn" onclick="exportPrivateKey()" title="Export Private Key">🔑</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -128,6 +131,31 @@
                             <span class="empty-icon">📊</span>
                             <span class="empty-text">Waiting for trades...</span>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Trollbox -->
+                <div class="trollbox-section">
+                    <div class="trollbox-header">
+                        <span class="trollbox-title">💬 Trollbox</span>
+                        <span class="trollbox-count" id="chatCount">0 messages</span>
+                    </div>
+                    <div class="trollbox-messages" id="trollboxMessages">
+                        <div class="trollbox-empty">
+                            <span class="empty-icon">💬</span>
+                            <span class="empty-text">No messages yet...</span>
+                        </div>
+                    </div>
+                    <div class="trollbox-input-wrapper">
+                        <input
+                            type="text"
+                            id="trollboxInput"
+                            class="trollbox-input"
+                            placeholder="Type a message... (max 300 chars)"
+                            maxlength="300"
+                            onkeypress="if(event.key==='Enter') sendChatMessage()"
+                        >
+                        <button class="trollbox-send-btn" onclick="sendChatMessage()">Send</button>
                     </div>
                 </div>
             </div>
@@ -264,6 +292,9 @@
                             <input type="number" id="withdrawAmount" class="input-compact" placeholder="Amount to withdraw" step="0.01">
                             <button class="btn-compact" onclick="withdrawToBackpack()">Withdraw</button>
                             <button class="btn-compact btn-ghost" onclick="disconnectWallet()">Disconnect</button>
+                            <button class="btn-compact btn-export" onclick="exportPrivateKey()" title="Export session wallet private key">
+                                🔑 Export Key
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -432,10 +463,10 @@
             const sideDisplay = side === 'yes' ? 'UP' : 'DOWN';
             const tradeClass = `${action}-${side === 'yes' ? 'up' : 'down'}`;
 
-            // Format user address (first 4 + last 4)
+            // Format user address (first 5 chars)
             const userAddr = trade.user || 'Unknown';
-            const shortAddr = userAddr.length > 8 ?
-                userAddr.slice(0, 4) + '...' + userAddr.slice(-4) : userAddr;
+            const shortAddr = userAddr.length > 5 ?
+                userAddr.slice(0, 5) : userAddr;
 
             // Format time
             const now = new Date();
@@ -472,48 +503,9 @@
             document.getElementById('tradeCount').textContent = `${tradeHistory.length} trade${tradeHistory.length !== 1 ? 's' : ''}`;
         }
 
-        // Hook into trade execution
-        // Wait for app.js to load, then wrap executeTrade
-        window.addEventListener('load', function() {
-            setTimeout(function() {
-                const originalExecuteTrade = window.executeTrade;
-                window.executeTrade = async function() {
-                    // Call original function
-                    if (originalExecuteTrade) {
-                        const result = await originalExecuteTrade();
-
-                        // Extract trade info from UI state
-                        try {
-                            const action = document.getElementById('buyTab').classList.contains('active') ? 'BUY' : 'SELL';
-                            const side = document.getElementById('yesBtn').classList.contains('active') ? 'YES' : 'NO';
-                            const shares = parseFloat(document.getElementById('tradeAmountShares').value || 0).toFixed(2);
-                            const costText = document.getElementById('tradeCost').textContent;
-                            const cost = costText.replace(/[^0-9.]/g, '');
-                            const price = (parseFloat(cost) / parseFloat(shares)).toFixed(2);
-
-                            // Get user address if available
-                            let userAddr = 'You';
-                            if (window.wallet && window.wallet.publicKey) {
-                                userAddr = window.wallet.publicKey.toString();
-                            }
-
-                            addTradeToHistory({
-                                action: action,
-                                side: side,
-                                shares: shares,
-                                price: price,
-                                cost: parseFloat(cost).toFixed(2),
-                                user: userAddr
-                            });
-                        } catch (e) {
-                            console.log('Could not add trade to history:', e);
-                        }
-
-                        return result;
-                    }
-                };
-            }, 1000); // Wait for app.js to fully load
-        });
+        // Note: We no longer add trades immediately on user action.
+        // Instead, we wait for the WebSocket to broadcast the confirmed on-chain trade.
+        // This ensures we only show trades that are actually confirmed on the blockchain.
 
         // ============= WEBSOCKET TRADE MONITOR =============
         let tradeSocket = null;
@@ -526,7 +518,19 @@
         }
 
         function connectTradeMonitor() {
-            const wsUrl = `ws://${window.location.hostname}:3435`;
+            // Use wss:// if page is served over https://, otherwise ws://
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
+            // Try without port first (for nginx proxy), fallback to :3435
+            let wsUrl;
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                // Local development: use explicit port
+                wsUrl = `${wsProtocol}//${window.location.hostname}:3435`;
+            } else {
+                // Production: assume nginx proxy on /ws path
+                wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+            }
+
             console.log('Connecting to trade monitor:', wsUrl);
             updateWsStatus('connecting');
 
@@ -570,9 +574,23 @@
                             shares: trade.shares,
                             price: trade.avgPrice,
                             cost: trade.amount,
-                            user: 'User', // Could enhance to show actual user address
+                            user: trade.user || 'Unknown', // Show actual user public key
                             timestamp: trade.timestamp
                         }, true); // Save to localStorage
+                    } else if (data.type === 'chat_history') {
+                        // Load historical chat messages
+                        console.log(`💬 Loaded ${data.messages.length} chat messages`);
+                        data.messages.forEach(msg => {
+                            displayChatMessage(msg);
+                        });
+                    } else if (data.type === 'chat') {
+                        // New chat message
+                        console.log(`💬 NEW CHAT: ${data.message.user}: ${data.message.text}`);
+                        displayChatMessage(data.message);
+                    } else if (data.type === 'error') {
+                        // Rate limit or other error
+                        console.warn(`⚠️ Server error: ${data.message}`);
+                        displayChatError(data.message);
                     }
                 } catch (err) {
                     console.error('Failed to parse trade message:', err);
@@ -599,6 +617,122 @@
             // Then connect to WebSocket for live updates
             setTimeout(connectTradeMonitor, 2000); // Wait for page to settle
         });
+
+        // Trollbox functions
+        let chatMessages = [];
+
+        function displayChatMessage(msg) {
+            const messagesDiv = document.getElementById('trollboxMessages');
+
+            // Remove empty state if present
+            const emptyState = messagesDiv.querySelector('.trollbox-empty');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            // Create message element
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'trollbox-message';
+
+            const timestamp = new Date(msg.timestamp).toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+
+            msgDiv.innerHTML = `
+                <span class="chat-time">${timestamp}</span>
+                <span class="chat-user">${msg.user}:</span>
+                <span class="chat-text">${escapeHtml(msg.text)}</span>
+            `;
+
+            messagesDiv.appendChild(msgDiv);
+
+            // Auto-scroll to bottom
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            // Add to array
+            chatMessages.push(msg);
+
+            // Update count
+            const chatCount = document.getElementById('chatCount');
+            if (chatCount) {
+                chatCount.textContent = `${chatMessages.length} message${chatMessages.length !== 1 ? 's' : ''}`;
+            }
+
+            // Keep max 100 messages in DOM
+            const messages = messagesDiv.querySelectorAll('.trollbox-message');
+            if (messages.length > 100) {
+                messages[0].remove();
+            }
+        }
+
+        function displayChatError(message) {
+            const messagesDiv = document.getElementById('trollboxMessages');
+
+            // Create error message element
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'trollbox-message trollbox-error';
+            msgDiv.style.color = '#ff5353';
+            msgDiv.style.fontStyle = 'italic';
+
+            const timestamp = new Date().toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+
+            msgDiv.innerHTML = `
+                <span class="chat-time">${timestamp}</span>
+                <span class="chat-text">⚠️ ${escapeHtml(message)}</span>
+            `;
+
+            messagesDiv.appendChild(msgDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (msgDiv.parentNode) {
+                    msgDiv.remove();
+                }
+            }, 5000);
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('trollboxInput');
+            const text = input.value.trim();
+
+            if (!text) return;
+
+            if (!tradeSocket || tradeSocket.readyState !== WebSocket.OPEN) {
+                alert('Not connected to chat server');
+                return;
+            }
+
+            // Get username from wallet or use "Anon"
+            let username = 'Anon';
+            if (window.backpackConnected && window.publicKey) {
+                username = window.publicKey.toString().slice(0, 5);
+            }
+
+            // Send to server
+            tradeSocket.send(JSON.stringify({
+                type: 'chat',
+                user: username,
+                text: text
+            }));
+
+            // Clear input
+            input.value = '';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
     </script>
 </body>
 </html>

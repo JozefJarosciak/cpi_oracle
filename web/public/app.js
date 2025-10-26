@@ -232,7 +232,16 @@ async function connectBackpack() {
                 const { backpackAddress: savedAddress, sessionKeypair } = JSON.parse(existingSession);
                 if (savedAddress === backpackAddress) {
                     // ALWAYS use the saved session wallet for this Backpack
-                    const secretKey = Uint8Array.from(sessionKeypair);
+                    // Get encryption key from Backpack signature
+                    addLog('Requesting signature for wallet decryption...', 'info');
+                    const encryptionKey = await getEncryptionKeyFromBackpack(backpackWallet);
+
+                    // Decrypt the session keypair using signature as password
+                    const decryptedKeypair = await decryptData(sessionKeypair, encryptionKey);
+                    if (!decryptedKeypair) {
+                        throw new Error('Failed to decrypt session wallet');
+                    }
+                    const secretKey = Uint8Array.from(decryptedKeypair);
                     wallet = solanaWeb3.Keypair.fromSecretKey(secretKey);
                     showHasWallet(backpackAddress);
                     updateWalletBalance();
@@ -258,10 +267,16 @@ async function connectBackpack() {
         // Generate a NEW session keypair - this will be permanent for this Backpack
         wallet = solanaWeb3.Keypair.generate();
 
+        // Get encryption key from Backpack signature
+        addLog('Requesting signature for wallet encryption...', 'info');
+        const encryptionKey = await getEncryptionKeyFromBackpack(backpackWallet);
+
         // Save session to localStorage - PERMANENT link to this Backpack
+        // Encrypt the private key using signature as password (SECRET!)
+        const encryptedKeypair = await encryptData(Array.from(wallet.secretKey), encryptionKey);
         const sessionData = {
             backpackAddress,
-            sessionKeypair: Array.from(wallet.secretKey)
+            sessionKeypair: encryptedKeypair
         };
         localStorage.setItem('btc_market_session', JSON.stringify(sessionData));
 
@@ -295,6 +310,241 @@ function disconnectWallet() {
 
     showNoWallet();
     addLog('Wallet disconnected. Your session wallet is saved and will be restored when you reconnect.', 'success');
+}
+
+// Simple base58 encoder using the base58 alphabet
+function bs58encode(bytes) {
+    const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    const base = BigInt(58);
+
+    // Convert bytes to BigInt
+    let num = BigInt(0);
+    for (let i = 0; i < bytes.length; i++) {
+        num = num * BigInt(256) + BigInt(bytes[i]);
+    }
+
+    // Convert to base58
+    let encoded = '';
+    while (num > 0) {
+        const remainder = num % base;
+        num = num / base;
+        encoded = ALPHABET[Number(remainder)] + encoded;
+    }
+
+    // Add leading zeros
+    for (let i = 0; i < bytes.length && bytes[i] === 0; i++) {
+        encoded = '1' + encoded;
+    }
+
+    return encoded;
+}
+
+// ============= ENCRYPTION FUNCTIONS =============
+
+// Get encryption key from Backpack signature (secure!)
+async function getEncryptionKeyFromBackpack(backpackWallet) {
+    const message = new TextEncoder().encode('x1-markets-session-wallet-encryption-v1');
+
+    try {
+        // Request signature from Backpack - this is a SECRET derived from private key
+        const signature = await backpackWallet.signMessage(message);
+
+        // Convert signature bytes to hex string for use as password
+        const signatureHex = Array.from(signature).map(b => b.toString(16).padStart(2, '0')).join('');
+        return signatureHex;
+    } catch (err) {
+        console.error('Failed to get signature from Backpack:', err);
+        throw new Error('User denied signature request or Backpack error');
+    }
+}
+
+// Derive encryption key from password/passphrase
+async function deriveKey(password) {
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        enc.encode(password),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits', 'deriveKey']
+    );
+
+    return crypto.subtle.deriveKey(
+        {
+            name: 'PBKDF2',
+            salt: enc.encode('x1-markets-salt-v1'), // Static salt (OK for this use case)
+            iterations: 100000,
+            hash: 'SHA-256'
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+    );
+}
+
+// Encrypt data using AES-GCM
+async function encryptData(data, password) {
+    const key = await deriveKey(password);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const enc = new TextEncoder();
+
+    const encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        enc.encode(JSON.stringify(data))
+    );
+
+    // Return iv + encrypted data as base64
+    const combined = new Uint8Array(iv.length + encrypted.byteLength);
+    combined.set(iv, 0);
+    combined.set(new Uint8Array(encrypted), iv.length);
+
+    return btoa(String.fromCharCode.apply(null, combined));
+}
+
+// Decrypt data using AES-GCM
+async function decryptData(encryptedBase64, password) {
+    try {
+        const key = await deriveKey(password);
+        const combined = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
+
+        const iv = combined.slice(0, 12);
+        const encrypted = combined.slice(12);
+
+        const decrypted = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: iv },
+            key,
+            encrypted
+        );
+
+        const dec = new TextDecoder();
+        return JSON.parse(dec.decode(decrypted));
+    } catch (err) {
+        console.error('Decryption failed:', err);
+        return null;
+    }
+}
+
+function exportPrivateKey() {
+    if (!wallet) {
+        addLog('No session wallet to export', 'error');
+        return;
+    }
+
+    // Get the private key as a byte array
+    const privateKeyBytes = wallet.secretKey;
+
+    // Convert to base58 string (standard Solana format)
+    let privateKeyBase58;
+    try {
+        // Try to use the web3 library's base58 encoder
+        const { PublicKey } = window.solanaWeb3;
+        // Create a temporary file-like format with the byte array
+        privateKeyBase58 = bs58encode(privateKeyBytes);
+    } catch (err) {
+        console.error('Base58 encoding error:', err);
+        // Fallback: show as JSON array
+        privateKeyBase58 = JSON.stringify(Array.from(privateKeyBytes));
+        addLog('Showing private key as byte array (use solana-keygen for conversion)', 'warning');
+    }
+
+    // Create a modal/dialog to show the private key
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+    `;
+
+    modal.innerHTML = `
+        <div style="
+            background: #1a1a1a;
+            border: 1px solid #3fb68b;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 0 50px rgba(63, 182, 139, 0.3);
+        ">
+            <h2 style="color: #e8e8e8; margin: 0 0 20px 0; font-size: 18px; text-align: center;">
+                🔑 Session Wallet Private Key
+            </h2>
+            <div style="
+                background: #0a0a0a;
+                border: 1px solid #252525;
+                border-radius: 8px;
+                padding: 16px;
+                margin-bottom: 20px;
+                word-break: break-all;
+                font-family: 'SF Mono', Monaco, Consolas, monospace;
+                font-size: 12px;
+                color: #3fb68b;
+                user-select: all;
+                cursor: text;
+            " id="privateKeyDisplay">
+                ${privateKeyBase58}
+            </div>
+            <div style="color: #ff5353; font-size: 12px; margin-bottom: 20px; text-align: center;">
+                ⚠️ NEVER share this key with anyone! It gives full access to your wallet.
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="copyPrivateKey('${privateKeyBase58}')" style="
+                    flex: 1;
+                    background: #3fb68b;
+                    color: #000;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 12px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    cursor: pointer;
+                ">
+                    📋 Copy to Clipboard
+                </button>
+                <button onclick="closeExportModal()" style="
+                    flex: 1;
+                    background: transparent;
+                    color: #888;
+                    border: 1px solid #252525;
+                    border-radius: 6px;
+                    padding: 12px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    cursor: pointer;
+                ">
+                    Close
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    modal.id = 'exportModal';
+
+    addLog('Private key exported. Keep it safe!', 'warning');
+}
+
+function copyPrivateKey(privateKey) {
+    navigator.clipboard.writeText(privateKey).then(() => {
+        addLog('Private key copied to clipboard!', 'success');
+    }).catch(err => {
+        addLog('Failed to copy: ' + err.message, 'error');
+    });
+}
+
+function closeExportModal() {
+    const modal = document.getElementById('exportModal');
+    if (modal) {
+        modal.remove();
+    }
 }
 
 function showNoWallet() {
@@ -352,6 +602,7 @@ async function updateWalletBalance() {
         const balance = await connection.getBalance(wallet.publicKey);
         const solBalance = (balance / solanaWeb3.LAMPORTS_PER_SOL).toFixed(4);
         const solBalanceShort = (balance / solanaWeb3.LAMPORTS_PER_SOL).toFixed(2);
+        const balanceNum = balance / solanaWeb3.LAMPORTS_PER_SOL;
 
         // Update nav bar
         if (document.getElementById('navWalletBal')) {
@@ -362,9 +613,43 @@ async function updateWalletBalance() {
         if (document.getElementById('walletBal')) {
             document.getElementById('walletBal').textContent = solBalance;
         }
+
+        // Security warning for high balances
+        const WARNING_THRESHOLD = 100; // 100 XNT
+        const lastWarningKey = 'btc_market_balance_warning_shown';
+        const lastWarningTime = localStorage.getItem(lastWarningKey);
+        const now = Date.now();
+
+        // Show warning if balance > threshold and no warning shown in last 24h
+        if (balanceNum > WARNING_THRESHOLD) {
+            if (!lastWarningTime || (now - parseInt(lastWarningTime)) > 24 * 60 * 60 * 1000) {
+                showBalanceWarning(balanceNum);
+                localStorage.setItem(lastWarningKey, now.toString());
+            }
+        }
     } catch (err) {
         console.error('Failed to get balance:', err);
     }
+}
+
+function showBalanceWarning(balance) {
+    const warning = `
+⚠️ SECURITY WARNING ⚠️
+
+Your session wallet has ${balance.toFixed(2)} XNT.
+
+Session wallets are stored in your browser and are meant for small amounts only.
+
+Recommendation:
+• Keep < 100 XNT in session wallets
+• Withdraw excess to your Backpack wallet
+• Session wallets are less secure than hardware wallets
+
+This is a temporary wallet for trading only.
+    `.trim();
+
+    console.warn(warning);
+    addLog(`⚠️ High balance warning: ${balance.toFixed(2)} XNT in session wallet`, 'warning');
 }
 
 // ============= BTC PRICE CHART =============
@@ -2298,8 +2583,8 @@ function updateWinnerBanner(status) {
 
     if (!bannerEl || !outcomeEl || !reasonEl) return;
 
-    // Show banner if we have lastResolution data and we're in WAITING state
-    if (status.state === 'WAITING' && status.lastResolution) {
+    // Show banner if we have lastResolution data and we're in WAITING or PREMARKET state
+    if ((status.state === 'WAITING' || status.state === 'PREMARKET') && status.lastResolution) {
         const res = status.lastResolution;
         const startPrice = res.startPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const settlePrice = res.settlePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2356,13 +2641,10 @@ function updateCycleDisplay(status) {
         stateEl.textContent = 'PRE-MARKET';
         stateEl.classList.add('premarket');
 
-        // Show that snapshot hasn't been taken yet
-        if (document.getElementById('snapshotLabel')) {
-            document.getElementById('snapshotLabel').textContent = 'SNAPSHOT PENDING';
-        }
-        if (document.getElementById('oracleSnapshotPrice')) {
-            document.getElementById('oracleSnapshotPrice').textContent = 'Not yet taken';
-            document.getElementById('oracleSnapshotPrice').style.color = '#ff8c00'; // Orange
+        // Hide the snapshot section entirely during premarket
+        const snapshotSection = document.querySelector('.snapshot-section');
+        if (snapshotSection) {
+            snapshotSection.style.display = 'none';
         }
 
         // Show when snapshot will be taken
@@ -2380,6 +2662,12 @@ function updateCycleDisplay(status) {
     } else if (status.state === 'ACTIVE') {
         stateEl.textContent = 'MARKET ACTIVE';
         stateEl.classList.add('active');
+
+        // Show the snapshot section for active markets
+        const snapshotSection = document.querySelector('.snapshot-section');
+        if (snapshotSection) {
+            snapshotSection.style.display = 'block';
+        }
 
         // Show snapshot price with label
         if (document.getElementById('snapshotLabel')) {
@@ -2409,10 +2697,16 @@ function updateCycleDisplay(status) {
             nextMarketTimeEl.textContent = 'Market open';
         }
     } else if (status.state === 'WAITING') {
-        stateEl.textContent = 'STARTING SOON';
-        stateEl.classList.add('waiting');
+        stateEl.textContent = 'PRE-MARKET';
+        stateEl.classList.add('premarket');  // Use premarket styling (orange)
 
-        // Show when next market starts
+        // Hide the snapshot section - previous market is over, new one hasn't started
+        const snapshotSection = document.querySelector('.snapshot-section');
+        if (snapshotSection) {
+            snapshotSection.style.display = 'none';
+        }
+
+        // Show when next snapshot will be taken
         if (status.nextCycleStartTime) {
             const nextStartTime = new Date(status.nextCycleStartTime);
             const nextTimeStr = nextStartTime.toLocaleTimeString('en-US', {
@@ -2420,23 +2714,9 @@ function updateCycleDisplay(status) {
                 minute: '2-digit',
                 hour12: false
             });
-            nextMarketTimeEl.textContent = `Next: ${nextTimeStr}`;
+            nextMarketTimeEl.textContent = `Next snapshot: ${nextTimeStr}`;
         } else {
-            nextMarketTimeEl.textContent = 'Waiting...';
-        }
-
-        // Display last market start price only
-        if (status.lastResolution && document.getElementById('oracleSnapshotPrice')) {
-            const res = status.lastResolution;
-            const startPrice = res.startPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-            // Change label to show it's last market result
-            if (document.getElementById('snapshotLabel')) {
-                document.getElementById('snapshotLabel').textContent = 'LAST START PRICE';
-            }
-
-            document.getElementById('oracleSnapshotPrice').textContent = '$' + startPrice;
-            document.getElementById('oracleSnapshotPrice').style.color = '#00ff00';
+            nextMarketTimeEl.textContent = 'Pre-market betting';
         }
     } else if (status.state === 'ERROR') {
         stateEl.textContent = 'ERROR';

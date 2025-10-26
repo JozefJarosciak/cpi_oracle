@@ -14,6 +14,33 @@ const MAX_TRADES = 100;
 const trades = [];
 const TRADES_FILE = './public/recent_trades.json';
 
+// Chat storage
+const MAX_CHAT_MESSAGES = 100;
+const chatMessages = [];
+const CHAT_FILE = './public/chat_messages.json';
+
+// Rate limiting for chat
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX = 60; // Max 60 messages per minute
+const userMessageTimestamps = new Map(); // user -> [timestamps]
+
+function isRateLimited(user) {
+    const now = Date.now();
+    const userTimestamps = userMessageTimestamps.get(user) || [];
+
+    // Remove timestamps older than the window
+    const recentTimestamps = userTimestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW);
+
+    if (recentTimestamps.length >= RATE_LIMIT_MAX) {
+        return true; // Rate limited
+    }
+
+    // Add current timestamp
+    recentTimestamps.push(now);
+    userMessageTimestamps.set(user, recentTimestamps);
+    return false;
+}
+
 // WebSocket server
 const wss = new WebSocket.Server({ port: WS_PORT });
 const clients = new Set();
@@ -27,6 +54,24 @@ wss.on('connection', (ws) => {
         type: 'history',
         trades: trades.slice(-50) // Last 50 trades
     }));
+
+    // Send recent chat messages on connect
+    ws.send(JSON.stringify({
+        type: 'chat_history',
+        messages: chatMessages.slice(-50) // Last 50 messages
+    }));
+
+    // Handle incoming messages
+    ws.on('message', (data) => {
+        try {
+            const msg = JSON.parse(data);
+            if (msg.type === 'chat') {
+                handleChatMessage(msg, ws);
+            }
+        } catch (err) {
+            console.error('Failed to parse message:', err.message);
+        }
+    });
 
     ws.on('close', () => {
         clients.delete(ws);
@@ -47,11 +92,74 @@ function broadcastTrade(trade) {
     });
 }
 
+function handleChatMessage(msg, ws) {
+    // Basic spam/length protection
+    if (!msg.text || typeof msg.text !== 'string') return;
+    if (msg.text.length > 300) return; // Max 300 chars
+    if (!msg.user || typeof msg.user !== 'string') return;
+
+    const user = msg.user.slice(0, 10); // Max 10 chars for username
+
+    // Check rate limit
+    if (isRateLimited(user)) {
+        // Send error back to sender only
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Rate limit exceeded. Max 60 messages per minute.'
+            }));
+        }
+        console.log(`[RATE LIMIT] ${user} exceeded chat rate limit`);
+        return;
+    }
+
+    const chatMsg = {
+        user,
+        text: msg.text.slice(0, 300),
+        timestamp: Date.now()
+    };
+
+    // Add to storage
+    chatMessages.push(chatMsg);
+    if (chatMessages.length > MAX_CHAT_MESSAGES) {
+        chatMessages.shift();
+    }
+
+    // Broadcast to all clients
+    broadcastChatMessage(chatMsg);
+
+    // Save to disk
+    saveChatMessages();
+
+    console.log(`[CHAT] ${chatMsg.user}: ${chatMsg.text}`);
+}
+
+function broadcastChatMessage(chatMsg) {
+    const message = JSON.stringify({
+        type: 'chat',
+        message: chatMsg
+    });
+
+    clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(message);
+        }
+    });
+}
+
 function saveTrades() {
     try {
         fs.writeFileSync(TRADES_FILE, JSON.stringify(trades.slice(-MAX_TRADES), null, 2));
     } catch (err) {
         console.error('Failed to save trades:', err.message);
+    }
+}
+
+function saveChatMessages() {
+    try {
+        fs.writeFileSync(CHAT_FILE, JSON.stringify(chatMessages.slice(-MAX_CHAT_MESSAGES), null, 2));
+    } catch (err) {
+        console.error('Failed to save chat:', err.message);
     }
 }
 
@@ -64,6 +172,17 @@ try {
     }
 } catch (err) {
     console.error('Failed to load trades:', err.message);
+}
+
+// Load existing chat messages
+try {
+    if (fs.existsSync(CHAT_FILE)) {
+        const data = JSON.parse(fs.readFileSync(CHAT_FILE, 'utf8'));
+        chatMessages.push(...data);
+        console.log(`Loaded ${chatMessages.length} chat messages`);
+    }
+} catch (err) {
+    console.error('Failed to load chat:', err.message);
 }
 
 // Parse TradeSnapshot event from logs
@@ -89,8 +208,8 @@ function parseTradeFromLogs(logs, signature) {
                 return {
                     side: side === 1 ? 'YES' : 'NO',
                     action: action === 1 ? 'BUY' : 'SELL',
-                    amount: (net_e6 / 1_000_000).toFixed(2),
-                    shares: (dq_e6 / 1_000_000).toFixed(2),
+                    amount: (net_e6 / 10_000_000).toFixed(2),  // XNT scale: 10M per XNT
+                    shares: (dq_e6 / 10_000_000).toFixed(2),   // Wrong scale in contract, divide by 10M
                     avgPrice: (avg_price_e6 / 1_000_000).toFixed(4),
                     signature,
                     timestamp: Date.now()
@@ -112,7 +231,7 @@ async function startMonitoring() {
     // Subscribe to program logs
     const subscriptionId = connection.onLogs(
         PROGRAM_ID,
-        (logs, context) => {
+        async (logs, context) => {
             if (logs.err) {
                 console.log('Transaction failed:', logs.signature);
                 return;
@@ -121,7 +240,22 @@ async function startMonitoring() {
             // Parse trade from logs
             const trade = parseTradeFromLogs(logs.logs, logs.signature);
             if (trade) {
-                console.log(`${trade.action} ${trade.side}: ${trade.shares} shares @ ${trade.avgPrice} XNT (${trade.amount} XNT total)`);
+                // Fetch transaction to get the user's public key (fee payer)
+                try {
+                    const tx = await connection.getTransaction(logs.signature, {
+                        maxSupportedTransactionVersion: 0
+                    });
+                    if (tx && tx.transaction && tx.transaction.message) {
+                        const accountKeys = tx.transaction.message.getAccountKeys();
+                        const feePayer = accountKeys.get(0); // First account is always the fee payer
+                        trade.user = feePayer ? feePayer.toString() : 'Unknown';
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch transaction:', err.message);
+                    trade.user = 'Unknown';
+                }
+
+                console.log(`${trade.user?.slice(0,5) || 'Unknown'} ${trade.action} ${trade.side}: ${trade.shares} shares @ ${trade.avgPrice} XNT`);
 
                 // Add to storage
                 trades.push(trade);

@@ -22,10 +22,9 @@ const AMM_SEED = Buffer.from("amm_btc_v3");
 const VAULT_SOL_SEED = Buffer.from("vault_sol");
 
 // === TIMING CONSTANTS ===
-const CYCLE_DURATION_MS = 10 * 60 * 1000;  // 10 minutes total
-const PREMARKET_DURATION_MS = 2 * 60 * 1000; // 2 minutes pre-market betting
-const ACTIVE_DURATION_MS = 3 * 60 * 1000;  // 3 minutes active (after snapshot)
-const WAIT_DURATION_MS = 5 * 60 * 1000;    // 5 minutes waiting
+const CYCLE_DURATION_MS = 10 * 60 * 1000;     // 10 minutes total
+const PREMARKET_DURATION_MS = 5 * 60 * 1000;  // 5 minutes pre-market (no snapshot yet)
+const ACTIVE_DURATION_MS = 5 * 60 * 1000;     // 5 minutes active (after snapshot)
 
 // === STATUS FILE ===
 const STATUS_FILE = "./market_status.json";
@@ -441,21 +440,22 @@ async function runCycle(conn, kp, ammPda, vaultPda) {
   log(`Next cycle starts at: ${formatTime(new Date(nextCycleStartTime))}`);
 
   try {
-    // Step 1: Close existing market if exists
+    // Step 1: Close existing market if exists, then IMMEDIATELY open new one
     const ammInfo = await conn.getAccountInfo(ammPda);
     if (ammInfo) {
       await closeMarket(conn, kp, ammPda);
       await new Promise(r => setTimeout(r, 2000));
     }
 
-    // Step 2: Initialize new market
+    // Step 2: Initialize new market IMMEDIATELY (no waiting period)
     await initMarket(conn, kp, ammPda, vaultPda);
     await new Promise(r => setTimeout(r, 1500));
 
     logSuccess(C.bold("✓ PRE-MARKET BETTING NOW OPEN!"));
-    logInfo(`Users can trade before snapshot for ${formatCountdown(PREMARKET_DURATION_MS)}`);
+    logInfo(`Pre-market phase: ${formatCountdown(PREMARKET_DURATION_MS)} until snapshot`);
 
     // Step 3: Pre-market phase - trading allowed WITHOUT snapshot
+    // This combines old WAITING + PREMARKET states into one continuous pre-market
     writeStatus({
       state: "PREMARKET",
       cycleStartTime,
@@ -544,39 +544,7 @@ async function runCycle(conn, kp, ammPda, vaultPda) {
     await autoRedeemAllPositions(conn, kp, ammPda, vaultPda);
     await new Promise(r => setTimeout(r, 1000));
 
-    // Update status: WAITING with last resolution data
-    const lastResolution = marketData && marketData.startPrice && settlePrice ? {
-      startPrice: marketData.startPrice,
-      settlePrice: settlePrice,
-      winner: marketData.winningSide
-    } : null;
-
-    writeStatus({
-      state: "WAITING",
-      cycleStartTime,
-      marketEndTime,
-      nextCycleStartTime,
-      lastUpdate: Date.now(),
-      lastResolution
-    });
-
-    // Step 6: Wait for next cycle, updating status regularly
-    while (Date.now() < nextCycleStartTime) {
-      const remaining = nextCycleStartTime - Date.now();
-      if (remaining > 0) {
-        logInfo(`Waiting for next cycle - ${formatCountdown(remaining)} until ${formatTime(new Date(nextCycleStartTime))}`);
-        writeStatus({
-          state: "WAITING",
-          cycleStartTime,
-          marketEndTime,
-          nextCycleStartTime,
-          timeRemaining: remaining,
-          lastUpdate: Date.now(),
-          lastResolution
-        });
-        await new Promise(r => setTimeout(r, Math.min(10000, remaining))); // Update every 10s
-      }
-    }
+    logSuccess(C.bold("✓ Cycle complete! Next cycle will start immediately with new pre-market."));
 
   } catch (err) {
     logError("Cycle error:", err.message);

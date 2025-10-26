@@ -844,7 +844,8 @@ pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
 // ============================== Helpers & LMSR math ==============================
 
 #[inline] fn sh(x: i64) -> f64 { (x as f64) / 1_000_000.0 }
-#[inline] fn usd(x: i64) -> f64 { (x as f64) / 1_000_000.0 }
+// XNT amounts use lamports scale: 1 XNT = 10_000_000 e6 (due to LAMPORTS_PER_E6=100)
+#[inline] fn usd(x: i64) -> f64 { (x as f64) / 10_000_000.0 }
 
 #[inline]
 fn lmsr_cost(amm: &Amm, qy: f64, qn: f64) -> f64 {
@@ -878,17 +879,18 @@ fn emit_trade(amm: &Amm, side: u8, action: u8, net_e6: i64, dq_e6: i64, avg_h: f
     });
 }
 fn log_trade_buy(tag: &str, spend_e6: i64, shares_e6: f64, avg_h: f64, p: f64, amm: &Amm) {
-    // spend_e6 is in e6, shares_e6 is ALREADY a float in e6 scale (not yet divided)
-    let spend_xnt = spend_e6 as f64 / 1_000_000.0;
-    let shares = shares_e6 / 1_000_000.0;
+    // spend_e6 uses XNT scale (1 XNT = 10M e6), shares_e6 is already dq_h * 1M (so divide by 100 to get shares)
+    let spend_xnt = spend_e6 as f64 / 10_000_000.0;
+    let shares = shares_e6 / 10_000_000.0;  // dq_e6 is in wrong scale, divide by 10M to fix display
     msg!("{tag}: spend={:.6} XNT -> shares={:.6} @avg={:.6}  pYes={:.6}",
          spend_xnt, shares, avg_h, p);
     msg!("          qY={:.6}sh qN={:.6}sh vault={:.6} XNT fees={:.6} XNT",
          sh(amm.q_yes), sh(amm.q_no), usd(amm.vault_e6), usd(amm.fees));
 }
 fn log_trade_sell(tag: &str, sold_e6: f64, proceeds_e6: i64, avg_h: f64, p: f64, amm: &Amm) {
-    let shares = sold_e6 / 1_000_000.0;
-    let proceeds_xnt = proceeds_e6 as f64 / 1_000_000.0;
+    let shares = sold_e6 / 10_000_000.0;  // sold_e6 is in wrong scale, divide by 10M to fix display
+    // proceeds_e6 uses XNT scale (1 XNT = 10M e6)
+    let proceeds_xnt = proceeds_e6 as f64 / 10_000_000.0;
     msg!("{tag}: shares={:.6} -> proceeds={:.6} XNT @avg={:.6}  pYes={:.6}",
          shares, proceeds_xnt, avg_h, p);
     msg!("          qY={:.6}sh qN={:.6}sh vault={:.6} XNT fees={:.6} XNT",
