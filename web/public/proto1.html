@@ -475,6 +475,72 @@
                 };
             }, 1000); // Wait for app.js to fully load
         });
+
+        // ============= WEBSOCKET TRADE MONITOR =============
+        let tradeSocket = null;
+
+        function connectTradeMonitor() {
+            const wsUrl = `ws://${window.location.hostname}:3435`;
+            console.log('Connecting to trade monitor:', wsUrl);
+
+            tradeSocket = new WebSocket(wsUrl);
+
+            tradeSocket.onopen = () => {
+                console.log('✅ Connected to live trade feed');
+            };
+
+            tradeSocket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'history') {
+                        // Load historical trades
+                        console.log(`Loaded ${data.trades.length} historical trades`);
+                        data.trades.forEach(trade => {
+                            addTradeToHistory({
+                                action: trade.action,
+                                side: trade.side,
+                                shares: trade.shares,
+                                price: trade.avgPrice,
+                                cost: trade.amount,
+                                user: 'Global', // Mark as global trade
+                                timestamp: trade.timestamp
+                            });
+                        });
+                    } else if (data.type === 'trade') {
+                        // New trade from ANY user
+                        const trade = data.trade;
+                        console.log(`📊 New trade: ${trade.action} ${trade.side} - ${trade.shares} shares`);
+
+                        addTradeToHistory({
+                            action: trade.action,
+                            side: trade.side,
+                            shares: trade.shares,
+                            price: trade.avgPrice,
+                            cost: trade.amount,
+                            user: 'User', // Could enhance to show actual user address
+                            timestamp: trade.timestamp
+                        });
+                    }
+                } catch (err) {
+                    console.error('Failed to parse trade message:', err);
+                }
+            };
+
+            tradeSocket.onerror = (error) => {
+                console.error('❌ Trade feed error:', error);
+            };
+
+            tradeSocket.onclose = () => {
+                console.log('Trade feed disconnected. Reconnecting in 5s...');
+                setTimeout(connectTradeMonitor, 5000);
+            };
+        }
+
+        // Start trade monitor on page load
+        window.addEventListener('load', () => {
+            setTimeout(connectTradeMonitor, 2000); // Wait for page to settle
+        });
     </script>
 </body>
 </html>

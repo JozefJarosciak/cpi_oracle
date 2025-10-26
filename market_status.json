@@ -1,13 +1,8 @@
 {
-  "state": "WAITING",
-  "cycleStartTime": 1761445800257,
-  "marketEndTime": 1761446100257,
-  "nextCycleStartTime": 1761446400257,
-  "timeRemaining": 256675,
-  "lastUpdate": 1761446143582,
-  "lastResolution": {
-    "startPrice": 111683,
-    "settlePrice": 111639.995847,
-    "winner": "YES"
-  }
+  "state": "ACTIVE",
+  "cycleStartTime": 1761446400011,
+  "marketEndTime": 1761446700011,
+  "nextCycleStartTime": 1761447000011,
+  "timeRemaining": 115606,
+  "lastUpdate": 1761446584406
 }
