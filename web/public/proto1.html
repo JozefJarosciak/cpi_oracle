@@ -283,7 +283,12 @@
                     <div id="sidebarWalletConnected" class="hidden">
                         <div class="wallet-info">
                             <div class="wallet-label">Trading Wallet</div>
-                            <div class="wallet-address" id="sessionAddr">--</div>
+                            <div class="wallet-address-container">
+                                <div class="wallet-address" id="sessionAddr">--</div>
+                                <button class="copy-icon" onclick="copySessionWallet()" title="Copy session wallet address">
+                                    📋
+                                </button>
+                            </div>
                             <div class="wallet-balance-large">
                                 <span id="walletBal">0.0000</span> XNT
                             </div>

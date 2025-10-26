@@ -1238,12 +1238,50 @@ body {
     letter-spacing: 0.3px;
 }
 
+.wallet-address-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
 .wallet-address {
     font-family: 'SF Mono', Monaco, Consolas, monospace;
     font-size: 11px;
     color: var(--text-secondary);
     word-break: break-all;
-    margin-bottom: 12px;
+    flex: 1;
+}
+
+.copy-icon {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.copy-icon:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-light);
+    transform: scale(1.05);
+}
+
+.copy-icon:active {
+    transform: scale(0.95);
+}
+
+.copy-icon.copied {
+    background: var(--green-bg);
+    border-color: var(--green);
+    color: var(--green);
 }
 
 .wallet-balance-large {

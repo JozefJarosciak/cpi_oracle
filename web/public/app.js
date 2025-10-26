@@ -463,6 +463,38 @@ async function decryptData(encryptedBase64, password) {
     }
 }
 
+function copySessionWallet() {
+    if (!wallet) {
+        addLog('No session wallet to copy', 'error');
+        return;
+    }
+
+    const sessionAddr = wallet.publicKey.toString();
+
+    // Copy to clipboard
+    navigator.clipboard.writeText(sessionAddr).then(() => {
+        addLog('Session wallet copied: ' + sessionAddr, 'success');
+
+        // Visual feedback - change icon temporarily
+        const copyBtn = document.querySelector('.copy-icon');
+        if (copyBtn) {
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = '✓';
+            copyBtn.classList.add('copied');
+
+            setTimeout(() => {
+                copyBtn.textContent = originalText;
+                copyBtn.classList.remove('copied');
+            }, 2000);
+        }
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+        addLog('Failed to copy to clipboard', 'error');
+        // Fallback: show prompt
+        prompt('Copy session wallet address:', sessionAddr);
+    });
+}
+
 function exportPrivateKey() {
     if (!wallet) {
         addLog('No session wallet to export', 'error');
