@@ -211,17 +211,24 @@ body {
 }
 
 .chart-price-header {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     padding: 12px 16px;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
+    align-items: center;
 }
 
 .price-header-item {
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+.price-header-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .price-header-right {
@@ -262,18 +269,9 @@ body {
 }
 
 .price-arrow-indicator {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    z-index: 10;
-    pointer-events: none;
     display: none;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
+    gap: 10px;
     transition: all 0.2s ease;
 }
 
@@ -281,34 +279,8 @@ body {
     display: flex !important;
 }
 
-.price-arrow-indicator.up {
-    border-color: var(--green);
-}
-
-.price-arrow-indicator.down {
-    border-color: var(--red);
-}
-
-.arrow-icon-wrapper {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border-radius: 3px;
-    transition: all 0.2s ease;
-}
-
-.price-arrow-indicator.up .arrow-icon-wrapper {
-    background: var(--green-bg);
-}
-
-.price-arrow-indicator.down .arrow-icon-wrapper {
-    background: var(--red-bg);
-}
-
 .arrow-icon {
-    font-size: 16px;
+    font-size: 20px;
     font-weight: 700;
     line-height: 1;
     transition: all 0.2s ease;
@@ -325,14 +297,15 @@ body {
 .arrow-content {
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: 2px;
+    align-items: center;
 }
 
 .arrow-label-change {
     font-family: 'SF Mono', Monaco, Consolas, monospace;
-    font-size: 12px;
+    font-size: 16px;
     font-weight: 700;
-    line-height: 1.2;
+    line-height: 1;
 }
 
 .price-arrow-indicator.up .arrow-label-change {
@@ -345,9 +318,10 @@ body {
 
 .arrow-label-percent {
     font-family: 'SF Mono', Monaco, Consolas, monospace;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     color: var(--text-dim);
+    letter-spacing: 0.3px;
 }
 
 .market-stats {

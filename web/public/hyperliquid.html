@@ -52,6 +52,15 @@
                         <div class="price-header-label">Price to Beat</div>
                         <div id="chartBeatPrice" class="price-header-value price-beat">--</div>
                     </div>
+                    <div class="price-header-item price-header-center">
+                        <div class="price-arrow-indicator" id="priceArrowIndicator">
+                            <div class="arrow-icon" id="arrowIcon">↑</div>
+                            <div class="arrow-content">
+                                <div class="arrow-label-change" id="arrowLabelChange">+$0</div>
+                                <div class="arrow-label-percent" id="arrowLabelPercent">+0.00%</div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="price-header-item price-header-right">
                         <div class="price-header-label">Current Price</div>
                         <div id="chartCurrentPrice" class="price-header-value price-current">$0.00</div>
@@ -60,15 +69,6 @@
 
                 <!-- Chart -->
                 <div class="chart-container">
-                    <div class="price-arrow-indicator" id="priceArrowIndicator">
-                        <div class="arrow-icon-wrapper">
-                            <div class="arrow-icon" id="arrowIcon">↑</div>
-                        </div>
-                        <div class="arrow-content">
-                            <div class="arrow-label-change" id="arrowLabelChange">+$0</div>
-                            <div class="arrow-label-percent" id="arrowLabelPercent">+0.00%</div>
-                        </div>
-                    </div>
                     <canvas id="btcChart"></canvas>
                 </div>
 
