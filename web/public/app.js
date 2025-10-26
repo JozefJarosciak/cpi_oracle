@@ -135,8 +135,8 @@ window.addEventListener('load', async () => {
     addLog('AMM PDA: ' + ammPda.toString(), 'info');
     addLog('Vault PDA: ' + vaultPda.toString(), 'info');
 
-    // Don't auto-connect - user must click Connect button
-    // await restoreSession();
+    // Try to restore session if Backpack is already connected
+    await restoreSession();
 
     // Load price history from localStorage
     loadPriceHistory();
@@ -155,9 +155,51 @@ window.addEventListener('load', async () => {
 // ============= SESSION MANAGEMENT =============
 
 async function restoreSession() {
-    // REMOVED: No auto-connect on page load
-    // User must explicitly click "Connect" button
-    showNoWallet();
+    try {
+        // Check if Backpack is available and already connected
+        if (!window.backpack) {
+            console.log('Backpack not detected');
+            showNoWallet();
+            return;
+        }
+
+        // Check if Backpack is already connected (user previously connected)
+        if (!window.backpack.isConnected) {
+            console.log('Backpack not connected, user must click Connect');
+            showNoWallet();
+            return;
+        }
+
+        // Backpack is already connected! Silently restore session
+        console.log('[Restore] Backpack already connected, restoring session...');
+        addLog('Restoring session...', 'info');
+
+        backpackWallet = window.backpack;
+        const backpackAddress = backpackWallet.publicKey.toString();
+
+        console.log('[Restore] Backpack address:', backpackAddress);
+
+        // Derive session wallet (will request signature)
+        addLog('Deriving session wallet...', 'info');
+        wallet = await deriveSessionWalletFromBackpack(backpackWallet);
+
+        const sessionAddr = wallet.publicKey.toString();
+        console.log('[Restore] Session wallet restored:', sessionAddr);
+
+        addLog('Session restored: ' + sessionAddr.substring(0, 12) + '...', 'success');
+
+        // Update UI
+        showHasWallet(backpackAddress);
+        updateWalletBalance();
+        fetchPositionData();
+        showStatus('Session restored: ' + sessionAddr);
+
+    } catch (err) {
+        console.error('[Restore] Failed to restore session:', err);
+        // Don't show error to user, just show disconnected state
+        // User can manually click Connect if they want
+        showNoWallet();
+    }
 }
 
 // ============= BACKPACK ACCOUNT SWITCHING =============
