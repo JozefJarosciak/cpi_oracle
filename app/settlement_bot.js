@@ -58,6 +58,38 @@ function logInfo(...args) {
   console.log(C.b(`[INFO]`), ...args);
 }
 
+/* ---------------- Retry Helper for Blockhash Errors ---------------- */
+async function sendTransactionWithRetry(conn, tx, signers, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Get fresh blockhash for each attempt
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+      tx.recentBlockhash = blockhash;
+      tx.lastValidBlockHeight = lastValidBlockHeight;
+
+      return await sendAndConfirmTransaction(conn, tx, signers, {
+        skipPreflight: false,
+        commitment: 'confirmed'
+      });
+    } catch (err) {
+      const isBlockhashError = err.message && (
+        err.message.includes('block height exceeded') ||
+        err.message.includes('Blockhash not found') ||
+        err.message.includes('has expired')
+      );
+
+      if (isBlockhashError && attempt < maxRetries) {
+        logError(`Blockhash expired (attempt ${attempt}/${maxRetries}), retrying with fresh blockhash...`);
+        await new Promise(r => setTimeout(r, 1000)); // Wait 1s before retry
+        continue;
+      }
+
+      // Not a blockhash error or out of retries
+      throw err;
+    }
+  }
+}
+
 /* ---------------- SHA256 discriminator ---------------- */
 function sha256(data) {
   return crypto.createHash("sha256").update(data).digest();
@@ -97,7 +129,7 @@ async function closeMarket(conn, kp, ammPda) {
   });
 
   const tx = new Transaction().add(closeIx);
-  const sig = await sendAndConfirmTransaction(conn, tx, [kp]);
+  const sig = await sendTransactionWithRetry(conn, tx, [kp]);
   logSuccess(`Market closed: ${sig}`);
 }
 
@@ -125,7 +157,7 @@ async function initMarket(conn, kp, ammPda, vaultPda) {
   });
 
   const tx = new Transaction().add(initIx);
-  const sig = await sendAndConfirmTransaction(conn, tx, [kp]);
+  const sig = await sendTransactionWithRetry(conn, tx, [kp]);
   logSuccess(`Market initialized: ${sig}`);
 }
 
@@ -147,7 +179,7 @@ async function snapshotStart(conn, kp, ammPda) {
 
   const budgetIx = ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 });
   const tx = new Transaction().add(budgetIx, snapshotIx);
-  const sig = await sendAndConfirmTransaction(conn, tx, [kp]);
+  const sig = await sendTransactionWithRetry(conn, tx, [kp]);
   logSuccess(`Snapshot taken: ${sig}`);
   return true;
 }
@@ -164,7 +196,7 @@ async function stopMarket(conn, kp, ammPda) {
   });
 
   const tx = new Transaction().add(stopIx);
-  const sig = await sendAndConfirmTransaction(conn, tx, [kp]);
+  const sig = await sendTransactionWithRetry(conn, tx, [kp]);
   logSuccess(`Market stopped: ${sig}`);
 }
 
@@ -190,7 +222,7 @@ async function settleMarket(conn, kp, ammPda) {
 
   const budgetIx = ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 });
   const tx = new Transaction().add(budgetIx, settleIx);
-  const sig = await sendAndConfirmTransaction(conn, tx, [kp]);
+  const sig = await sendTransactionWithRetry(conn, tx, [kp]);
   logSuccess(`Market settled: ${sig}`);
   return true;
 }
@@ -290,7 +322,7 @@ async function autoRedeemAllPositions(conn, kp, ammPda, vaultPda) {
 
       const budgetIx = ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 });
       const tx = new Transaction().add(budgetIx, redeemIx);
-      const sig = await sendAndConfirmTransaction(conn, tx, [kp], { skipPreflight: false });
+      const sig = await sendTransactionWithRetry(conn, tx, [kp]);
 
       logSuccess(`  ✓ Redeemed: ${sig.slice(0, 16)}...`);
       successCount++;
@@ -593,25 +625,88 @@ async function main() {
   log(`AMM PDA: ${C.b(ammPda.toString())}`);
   log(`Vault PDA: ${C.b(vaultPda.toString())}`);
 
-  // Wait for next start time (minute ending in 0)
+  // Initialize market IMMEDIATELY on startup (allow pre-market trading right away)
+  log(C.bold("\n🚀 Initializing market for immediate pre-market trading...\n"));
+
+  const ammInfo = await conn.getAccountInfo(ammPda);
+  if (ammInfo) {
+    log("Closing existing market...");
+    await closeMarket(conn, kp, ammPda);
+    await new Promise(r => setTimeout(r, 2000));
+  }
+
+  await initMarket(conn, kp, ammPda, vaultPda);
+  await new Promise(r => setTimeout(r, 1500));
+
+  logSuccess(C.bold("✓ PRE-MARKET BETTING NOW OPEN!"));
+
+  // Calculate next cycle start time (minute ending in 0)
   const nextStart = getNextStartTime();
   const waitMs = nextStart.getTime() - Date.now();
+  const snapshotTime = nextStart.getTime();
+  const marketEndTime = snapshotTime + ACTIVE_DURATION_MS;
+  const nextCycleStartTime = nextStart.getTime() + CYCLE_DURATION_MS;
 
-  log(C.bold(`\n⏰ Next market starts at: ${formatTime(nextStart)}`));
-  log(`Waiting ${formatCountdown(waitMs)}...\n`);
+  log(C.bold(`\n⏰ Current cycle snapshot at: ${formatTime(nextStart)}`));
+  log(`Pre-market phase: ${formatCountdown(waitMs)} until snapshot\n`);
 
   writeStatus({
-    state: "WAITING",
-    nextCycleStartTime: nextStart.getTime(),
-    timeRemaining: waitMs,
+    state: "PREMARKET",
+    cycleStartTime: Date.now(),
+    snapshotTime: snapshotTime,
+    marketEndTime: marketEndTime,
+    nextCycleStartTime: nextCycleStartTime,
     lastUpdate: Date.now()
   });
 
+  // Wait until snapshot time
   await new Promise(r => setTimeout(r, waitMs));
 
-  // Run continuous cycles
-  log(C.bold("\n🚀 Starting continuous market cycles...\n"));
+  // Take snapshot at the scheduled time
+  log(C.bold("\n📸 TAKING ORACLE SNAPSHOT\n"));
+  const snapshotSuccess = await snapshotStart(conn, kp, ammPda);
+  if (!snapshotSuccess) {
+    throw new Error("Failed to take oracle snapshot");
+  }
 
+  logSuccess(C.bold("✓ ACTIVE MARKET NOW OPEN (snapshot taken)"));
+
+  // Update status to ACTIVE
+  writeStatus({
+    state: "ACTIVE",
+    cycleStartTime: Date.now() - waitMs,
+    snapshotTime: Date.now(),
+    marketEndTime: marketEndTime,
+    nextCycleStartTime: nextCycleStartTime,
+    lastUpdate: Date.now()
+  });
+
+  // Wait for active trading period to end
+  const activeWaitMs = ACTIVE_DURATION_MS;
+  log(`Active trading: ${formatCountdown(activeWaitMs)} until market closes\n`);
+  await new Promise(r => setTimeout(r, activeWaitMs));
+
+  // Stop and settle the first cycle
+  log(C.bold("\n🛑 STOPPING MARKET\n"));
+  await stopMarket(conn, kp, ammPda);
+  await new Promise(r => setTimeout(r, 1500));
+
+  log(C.bold("\n⚖️  SETTLING MARKET\n"));
+  const settleSuccess = await settleMarket(conn, kp, ammPda);
+  if (settleSuccess) {
+    const marketData = await readMarketData(conn, ammPda);
+    if (marketData) {
+      const settlePrice = await readOraclePrice(conn);
+      log(`Resolution: ${C.bold(marketData.winningSide)} won (Start: $${marketData.startPrice?.toFixed(2)}, Settle: $${settlePrice?.toFixed(2)})`);
+    }
+
+    await autoRedeemAllPositions(conn, kp, ammPda, vaultPda);
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
+  logSuccess(C.bold("✓ First cycle complete! Starting continuous cycles...\n"));
+
+  // Run continuous cycles
   while (true) {
     await runCycle(conn, kp, ammPda, vaultPda);
   }

@@ -1,4 +1,5 @@
 /* ===== PROTO1 STYLE - Best of Both Worlds ===== */
+/* VERSION: 2.0 - Mobile Optimized - Last Updated: 2025-10-26 19:56 UTC */
 
 * {
     margin: 0;
@@ -1410,9 +1411,739 @@ body {
         grid-template-columns: 1fr;
     }
 
+    .grid-left,
+    .grid-right {
+        display: block;
+    }
+
     .grid-right {
         border-left: none;
-        border-top: 1px solid var(--border-color);
+        border-top: none;
+    }
+
+    .market-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .stat-card {
+        padding: 12px;
+    }
+
+    .stat-value {
+        font-size: 16px;
+    }
+}
+
+@media (max-width: 768px) {
+    /* Navigation */
+    .top-nav {
+        padding: 0 12px;
+        height: auto;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+    }
+
+    .nav-brand {
+        order: 1;
+        flex: 0 0 auto;
+    }
+
+    .brand-name {
+        font-size: 14px;
+    }
+
+    .nav-right {
+        order: 2;
+        flex: 0 0 auto;
+        margin-left: auto;
+    }
+
+    .nav-center {
+        order: 3;
+        flex: 1 0 100%;
+        margin-top: 8px;
+    }
+
+    .oracle-ticker {
+        width: 100%;
+        justify-content: space-between;
+        padding: 8px 12px;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .ticker-label {
+        font-size: 10px;
+    }
+
+    .ticker-price {
+        font-size: 14px;
+    }
+
+    .market-status-badge {
+        font-size: 9px;
+        padding: 3px 6px;
+    }
+
+    .ws-status {
+        font-size: 9px;
+    }
+
+    /* Wallet in nav */
+    .wallet-dropdown {
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+    }
+
+    .wallet-balance {
+        gap: 3px;
+    }
+
+    .balance-amount {
+        font-size: 14px;
+    }
+
+    .balance-unit {
+        font-size: 10px;
+    }
+
+    .wallet-address-short {
+        font-size: 10px;
+    }
+
+    .btn-connect {
+        padding: 8px 14px;
+        font-size: 12px;
+    }
+
+    /* Main content */
+    .grid-left {
+        padding: 12px;
+    }
+
+    /* On mobile, flatten structure - all elements become siblings */
+    .main-grid {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .grid-left {
+        display: contents;
+    }
+
+    .grid-right {
+        display: contents;
+    }
+
+    /* Market question */
+    .market-question {
+        font-size: 18px;
+        margin-bottom: 10px;
+    }
+
+    .market-cycle-info {
+        padding: 10px 12px;
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+    }
+
+    .cycle-status {
+        font-size: 11px;
+    }
+
+    .cycle-times {
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .cycle-times #currentTime {
+        font-size: 16px;
+    }
+
+    .next-label {
+        font-size: 11px;
+    }
+
+    /* Winner banner */
+    .winner-banner {
+        padding: 10px 14px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+
+    .winner-outcome {
+        font-size: 13px;
+    }
+
+    .winner-reason {
+        font-size: 11px;
+    }
+
+    /* Price header */
+    .price-header {
+        grid-template-columns: 1fr;
+        padding: 12px 14px;
+        gap: 12px;
+    }
+
+    .price-item {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .price-center {
+        order: -1;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 8px;
+    }
+
+    .price-right {
+        align-items: flex-start;
+    }
+
+    .price-label {
+        font-size: 9px;
+    }
+
+    .price-value {
+        font-size: 16px;
+    }
+
+    .arrow-icon {
+        font-size: 18px;
+    }
+
+    .arrow-change {
+        font-size: 14px;
+    }
+
+    .arrow-percent {
+        font-size: 10px;
+    }
+
+    /* Chart */
+    .chart-section {
+        height: 240px;
+        padding: 12px;
+        margin-bottom: 12px;
+    }
+
+    /* Stats grid - 3 columns on mobile (UP | DOWN | LIQUIDITY) */
+    .market-stats {
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+
+    .stat-card {
+        padding: 10px;
+    }
+
+    /* Hide Start Price on mobile */
+    .stat-card:nth-child(4) {
+        display: none;
+    }
+
+    .stat-label {
+        font-size: 9px;
+        margin-bottom: 6px;
+    }
+
+    .stat-value {
+        font-size: 14px;
+        margin-bottom: 3px;
+    }
+
+    .stat-sub {
+        font-size: 10px;
+    }
+
+    /* All elements are now direct children of main-grid via display: contents */
+    .market-card {
+        order: 1;
+        padding: 0 12px;
+    }
+
+    .winner-banner {
+        order: 2;
+        margin: 0 12px 20px 12px;
+    }
+
+    .price-header {
+        order: 3;
+        margin: 0 12px 16px 12px;
+    }
+
+    .chart-section {
+        order: 4;
+        margin: 0 12px 12px 12px;
+    }
+
+    .market-stats {
+        order: 5;
+        margin: 0 12px 16px 12px;
+    }
+
+    /* Trade panel RIGHT AFTER stats */
+    .trade-panel {
+        order: 6;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin: 0 12px 16px 12px;
+        background: var(--bg-secondary);
+    }
+
+    .position-panel {
+        order: 7;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin: 0 12px 16px 12px;
+        background: var(--bg-secondary);
+    }
+
+    .redeem-panel {
+        order: 8;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin: 0 12px 16px 12px;
+        background: var(--bg-secondary);
+    }
+
+    .wallet-panel {
+        order: 9;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin: 0 12px 16px 12px;
+        background: var(--bg-secondary);
+    }
+
+    .activity-panel {
+        order: 10;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin: 0 12px 16px 12px;
+        background: var(--bg-secondary);
+    }
+
+    .trade-history-section {
+        order: 100;
+        margin: 0 12px 16px 12px;
+    }
+
+    .trollbox-section {
+        order: 101;
+        margin: 0 12px 16px 12px;
+    }
+
+    .history-header {
+        padding: 12px 14px;
+    }
+
+    .history-title {
+        font-size: 11px;
+    }
+
+    .history-count {
+        font-size: 10px;
+    }
+
+    .trade-feed {
+        max-height: 300px;
+        padding: 8px;
+    }
+
+    .trade-item {
+        grid-template-columns: auto 1fr auto;
+        gap: 8px;
+        padding: 10px;
+        margin-bottom: 6px;
+    }
+
+    .trade-side {
+        width: 42px;
+        height: 42px;
+        font-size: 10px;
+    }
+
+    .trade-action {
+        font-size: 12px;
+    }
+
+    .trade-user {
+        font-size: 9px;
+    }
+
+    .trade-amount {
+        font-size: 12px;
+    }
+
+    .trade-time {
+        font-size: 9px;
+    }
+
+    /* Trollbox */
+    .trollbox-section {
+        margin-top: 16px;
+    }
+
+    .trollbox-header {
+        padding: 12px 14px;
+    }
+
+    .trollbox-title {
+        font-size: 11px;
+    }
+
+    .trollbox-count {
+        font-size: 10px;
+    }
+
+    .trollbox-messages {
+        max-height: 200px;
+        min-height: 120px;
+        padding: 8px;
+    }
+
+    .trollbox-message {
+        padding: 5px 6px;
+        font-size: 11px;
+        margin-bottom: 3px;
+    }
+
+    .chat-time {
+        font-size: 10px;
+    }
+
+    .trollbox-input-wrapper {
+        padding: 8px;
+        gap: 6px;
+    }
+
+    .trollbox-input {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+
+    .trollbox-send-btn {
+        padding: 6px 12px;
+        font-size: 11px;
+    }
+
+    /* Panels */
+    .panel {
+        padding: 16px;
+    }
+
+    .panel-header {
+        font-size: 10px;
+        margin-bottom: 14px;
+    }
+
+    /* Trade panel */
+    .trade-tabs {
+        gap: 6px;
+        margin-bottom: 14px;
+    }
+
+    .tab-btn {
+        padding: 8px;
+        font-size: 11px;
+    }
+
+    .outcome-selector {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 14px;
+    }
+
+    .outcome-btn {
+        padding: 12px;
+    }
+
+    .outcome-label {
+        font-size: 10px;
+    }
+
+    .outcome-price {
+        font-size: 13px;
+    }
+
+    .trade-amount {
+        margin-bottom: 14px;
+    }
+
+    .input-mode-toggle {
+        gap: 4px;
+        margin-bottom: 14px;
+        padding: 3px;
+    }
+
+    .mode-btn {
+        padding: 7px;
+        font-size: 11px;
+    }
+
+    .input-label {
+        font-size: 10px;
+        margin-bottom: 6px;
+    }
+
+    .amount-input {
+        padding: 10px;
+        font-size: 14px;
+        margin-bottom: 10px;
+    }
+
+    .amount-slider {
+        height: 5px;
+        margin-bottom: 5px;
+    }
+
+    .amount-slider::-webkit-slider-thumb {
+        width: 16px;
+        height: 16px;
+    }
+
+    .amount-slider::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+    }
+
+    .slider-labels {
+        font-size: 9px;
+        margin-bottom: 10px;
+    }
+
+    .quick-amounts {
+        gap: 4px;
+    }
+
+    .quick-btn {
+        padding: 6px;
+        font-size: 10px;
+    }
+
+    .trade-cost {
+        padding: 10px;
+        margin-bottom: 14px;
+        font-size: 11px;
+    }
+
+    .btn-trade {
+        padding: 12px;
+        font-size: 12px;
+    }
+
+    /* Position panel */
+    .position-grid {
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .position-card {
+        padding: 10px;
+    }
+
+    .position-label {
+        font-size: 9px;
+        margin-bottom: 5px;
+    }
+
+    .position-amount {
+        font-size: 14px;
+        margin-bottom: 3px;
+    }
+
+    .position-value {
+        font-size: 10px;
+    }
+
+    .position-summary {
+        padding: 10px;
+        gap: 6px;
+    }
+
+    .summary-row {
+        font-size: 11px;
+    }
+
+    /* Redeem panel */
+    .redeem-amount {
+        font-size: 20px;
+        margin-bottom: 10px;
+    }
+
+    .redeem-breakdown {
+        font-size: 10px;
+        margin-bottom: 14px;
+    }
+
+    .btn-redeem {
+        padding: 10px;
+        font-size: 11px;
+    }
+
+    /* Wallet panel */
+    .wallet-info {
+        margin-bottom: 14px;
+    }
+
+    .wallet-label {
+        font-size: 9px;
+        margin-bottom: 5px;
+    }
+
+    .wallet-address {
+        font-size: 10px;
+        margin-bottom: 10px;
+    }
+
+    .wallet-balance-large {
+        font-size: 16px;
+    }
+
+    .wallet-actions {
+        gap: 6px;
+    }
+
+    .input-compact {
+        padding: 8px;
+        font-size: 11px;
+    }
+
+    .btn-compact {
+        padding: 8px;
+        font-size: 11px;
+    }
+
+    .btn-export {
+        margin-top: 6px;
+    }
+
+    /* Activity log */
+    .activity-log {
+        max-height: 150px;
+    }
+
+    .log-entry {
+        padding: 6px 0;
+        font-size: 10px;
+        gap: 8px;
+    }
+
+    .log-time {
+        font-size: 9px;
+    }
+
+    /* Toast notifications */
+    #toastContainer {
+        top: 60px;
+        right: 10px;
+        left: 10px;
+        gap: 8px;
+    }
+
+    .toast {
+        padding: 12px 14px;
+        min-width: auto;
+        max-width: none;
+    }
+
+    .toast-icon {
+        font-size: 20px;
+    }
+
+    .toast-title {
+        font-size: 13px;
+    }
+
+    .toast-message {
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Extra small screens - single column everything */
+    .market-stats {
+        grid-template-columns: 1fr;
+    }
+
+    /* Show UP, DOWN, and Liquidity on tiny screens (hide Start Price already hidden at 768px) */
+    .stat-card:nth-child(1),
+    .stat-card:nth-child(2),
+    .stat-card:nth-child(3) {
+        display: block;
+    }
+
+    .stat-card {
+        padding: 12px;
+    }
+
+    .stat-value {
+        font-size: 16px;
+    }
+
+    /* Smaller chart on tiny screens */
+    .chart-section {
+        height: 200px;
+        padding: 10px;
+    }
+
+    /* Tighter spacing overall */
+    .grid-left {
+        padding: 8px;
+    }
+
+    .panel {
+        padding: 12px;
+    }
+
+    /* Quick amounts - stack in 3 columns on tiny screens */
+    .quick-amounts {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px;
+    }
+
+    .quick-btn {
+        padding: 6px 4px;
+        font-size: 9px;
+    }
+
+    /* Trade item - simplify layout */
+    .trade-item {
+        grid-template-columns: auto 1fr;
+        gap: 8px;
+    }
+
+    .trade-meta {
+        grid-column: 2;
+        align-items: flex-start;
+        flex-direction: row;
+        justify-content: space-between;
+    }
+
+    /* Outcome buttons - keep horizontal even on tiny screens */
+    .outcome-selector {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+    }
+
+    .outcome-btn {
+        padding: 10px 8px;
+    }
+
+    /* Position grid can stay 2 columns but smaller */
+    .position-card {
+        padding: 8px;
     }
 }
 
