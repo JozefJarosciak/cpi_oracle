@@ -1,0 +1,23 @@
+{
+  "name": "x1-prediction-market-tests",
+  "version": "1.0.0",
+  "description": "Comprehensive test suite for X1 Prediction Market web application",
+  "scripts": {
+    "test": "mocha --timeout 60000 '*.test.js'",
+    "test:market": "mocha --timeout 60000 market.test.js",
+    "test:ui": "mocha ui-state.test.js",
+    "test:coverage": "nyc mocha --timeout 60000 '*.test.js'"
+  },
+  "keywords": ["solana", "prediction-market", "lmsr", "testing"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "mocha": "^10.2.0",
+    "chai": "^4.3.10",
+    "jsdom": "^23.0.0",
+    "nyc": "^15.1.0"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.87.0"
+  }
+}

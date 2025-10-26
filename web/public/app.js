@@ -31,6 +31,9 @@ let chartUpdateTimer = null;
 let lastActualPrice = null;
 let currentTargetPrice = null;
 
+// Market start price (for arrow indicator)
+let marketStartPrice = null;
+
 let connection = null;
 let ammPda = null;
 let vaultPda = null;
@@ -466,15 +469,23 @@ function initBTCChart() {
                     borderWidth: 1,
                     padding: 12,
                     displayColors: false,
-                    yAlign: 'center',
-                    xAlign: 'left',
+                    yAlign: 'bottom',
+                    xAlign: 'center',
                     caretSize: 6,
                     callbacks: {
                         title: () => 'BTC Price',
                         label: (context) => {
+                            // Skip null values (padding at start of chart)
+                            if (context.parsed.y === null || context.parsed.y === undefined) {
+                                return null;
+                            }
                             const price = context.parsed.y;
                             return '$' + price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                         }
+                    },
+                    filter: (tooltipItem) => {
+                        // Don't show tooltip for null data points
+                        return tooltipItem.parsed.y !== null && tooltipItem.parsed.y !== undefined;
                     }
                 }
             },
@@ -557,12 +568,52 @@ function startChartUpdateLoop() {
     }, CHART_UPDATE_INTERVAL_MS);
 }
 
+// Update the price arrow indicator
+function updatePriceArrowIndicator(currentPrice) {
+    const arrowIndicator = document.getElementById('priceArrowIndicator');
+    const arrowIcon = document.getElementById('arrowIcon');
+    const arrowLabelChange = document.getElementById('arrowLabelChange');
+    const arrowLabelPercent = document.getElementById('arrowLabelPercent');
+
+    if (!arrowIndicator || !arrowIcon || !arrowLabelChange || !arrowLabelPercent) return;
+
+    // Only show if we have a start price
+    if (!marketStartPrice || marketStartPrice <= 0) {
+        arrowIndicator.classList.remove('visible');
+        return;
+    }
+
+    const diff = currentPrice - marketStartPrice;
+    const diffPercent = ((diff / marketStartPrice) * 100).toFixed(2);
+
+    // Update arrow direction and styling
+    arrowIndicator.classList.add('visible');
+    arrowIndicator.classList.remove('up', 'down');
+
+    if (diff > 0) {
+        arrowIndicator.classList.add('up');
+        arrowIcon.textContent = '↑';
+        arrowLabelChange.textContent = `+$${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+        arrowLabelPercent.textContent = `+${diffPercent}%`;
+    } else if (diff < 0) {
+        arrowIndicator.classList.add('down');
+        arrowIcon.textContent = '↓';
+        arrowLabelChange.textContent = `-$${Math.abs(diff).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+        arrowLabelPercent.textContent = `${diffPercent}%`;
+    } else {
+        arrowIndicator.classList.remove('visible');
+    }
+}
+
 // Update the price display element
 function updatePriceDisplay(price) {
     const priceEl = document.getElementById('chartCurrentPrice');
     if (!priceEl) return;
 
     priceEl.textContent = '$' + price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // Update arrow indicator
+    updatePriceArrowIndicator(price);
 
     // Color based on trend
     if (priceHistory.length > 1) {
@@ -739,6 +790,28 @@ async function fetchMarketData() {
         const vaultSolBump = readU8(p, o); o += 1;
         const startPriceE6 = readI64LE(p, o); o += 8;
 
+        // Store start price for arrow indicator
+        marketStartPrice = startPriceE6 > 0 ? startPriceE6 / 1_000_000 : null;
+
+        // Update "Price to Beat" display
+        const beatPriceEl = document.getElementById('chartBeatPrice');
+        if (beatPriceEl) {
+            if (marketStartPrice && marketStartPrice > 0) {
+                const formattedPrice = marketStartPrice.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+                beatPriceEl.textContent = `$${formattedPrice}`;
+            } else {
+                beatPriceEl.textContent = '--';
+            }
+        }
+
+        // Store LMSR parameters globally
+        currentB = bScaled;
+        currentQYes = qY;
+        currentQNo = qN;
+
         // Calculate YES/NO probabilities using LMSR
         const b = bScaled;
         const a = Math.exp(qY / b);
@@ -751,8 +824,9 @@ async function fetchMarketData() {
         currentNoPrice = noProb;
 
         // Calculate total shares (q values are in LAMPORTS scale)
-        const yesShares = Math.max(0, -qY / 10_000_000);
-        const noShares = Math.max(0, -qN / 10_000_000);
+        // q values are POSITIVE for shares outstanding
+        const yesShares = Math.max(0, qY / 10_000_000);
+        const noShares = Math.max(0, qN / 10_000_000);
 
         // Update YES/NO prices (in XNT instead of percentages)
         if (document.getElementById('yesPercentage')) {
@@ -791,7 +865,7 @@ async function fetchMarketData() {
 
         // Update market status badge and track globally
         currentMarketStatus = status;
-        const statusText = status === 0 ? 'OPEN' : status === 1 ? 'STOPPED' : 'SETTLED';
+        const statusText = status === 0 ? 'OPEN' : status === 1 ? 'STOPPED' : 'STARTING SOON';
         if (document.getElementById('marketStatusBadge')) {
             document.getElementById('marketStatusBadge').textContent = statusText;
             document.getElementById('marketStatusBadge').className = 'market-status';
@@ -850,9 +924,108 @@ async function fetchMarketData() {
 
 // ============= POSITION DATA =============
 
-// Global variables to store current market prices
+// Global variables to store current market prices and LMSR parameters
 let currentYesPrice = 0.50;
 let currentNoPrice = 0.50;
+let currentB = 0;
+let currentQYes = 0;
+let currentQNo = 0;
+
+// Calculate LMSR cost function
+// Returns the cost value C(q_yes, q_no) where q values are in shares (NOT e6)
+function lmsrCost(qYesShares, qNoShares) {
+    const b = currentB / 10_000_000; // Convert b to share units
+
+    // Use log-sum-exp trick for numerical stability
+    const max = Math.max(qYesShares, qNoShares);
+    const cost = b * (max / b + Math.log(
+        Math.exp((qYesShares - max) / b) +
+        Math.exp((qNoShares - max) / b)
+    ));
+
+    return cost;
+}
+
+// Calculate cost to buy numShares on given side
+// Returns net cost in XNT (before fees)
+function calculateLMSRCost(side, numShares) {
+    if (numShares <= 0) {
+        return 0;
+    }
+
+    // If market not initialized yet, use simple pricing
+    if (currentB === 0) {
+        const simplePrice = (side === 'yes' ? currentYesPrice : currentNoPrice);
+        return numShares * simplePrice;
+    }
+
+    // Convert current q values from e6 to shares
+    // Note: q values are POSITIVE for shares outstanding (sold to users)
+    const currentQYesShares = currentQYes / 10_000_000;
+    const currentQNoShares = currentQNo / 10_000_000;
+
+    // Calculate cost before buying
+    const C_before = lmsrCost(currentQYesShares, currentQNoShares);
+
+    // Calculate cost after buying (more shares outstanding means higher q)
+    let newQYesShares, newQNoShares;
+    if (side === 'yes') {
+        newQYesShares = currentQYesShares + numShares;
+        newQNoShares = currentQNoShares;
+    } else {
+        newQYesShares = currentQYesShares;
+        newQNoShares = currentQNoShares + numShares;
+    }
+
+    const C_after = lmsrCost(newQYesShares, newQNoShares);
+
+    // Net cost (before fees)
+    const netCost = C_after - C_before;
+
+    // Safety check
+    if (!isFinite(netCost) || netCost < 0) {
+        console.error('LMSR calculation failed', {
+            currentQYesShares, currentQNoShares,
+            newQYesShares, newQNoShares,
+            C_before, C_after, netCost
+        });
+        return -1;
+    }
+
+    return netCost;
+}
+
+// Helper function to get current position shares without updating display
+async function getPositionShares() {
+    if (!wallet) return null;
+
+    try {
+        const [posPda] = await solanaWeb3.PublicKey.findProgramAddressSync(
+            [stringToUint8Array('pos'), ammPda.toBytes(), wallet.publicKey.toBytes()],
+            new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID)
+        );
+
+        const accountInfo = await connection.getAccountInfo(posPda);
+        if (!accountInfo) return { yes: 0, no: 0 };
+
+        const d = accountInfo.data;
+        if (d.length >= 8 + 32 + 8 + 8) {
+            let o = 8; // Skip discriminator
+            o += 32; // Skip owner pubkey
+            const sharesY = readI64LE(d, o); o += 8;
+            const sharesN = readI64LE(d, o); o += 8;
+
+            return {
+                yes: sharesY / 10_000_000,
+                no: sharesN / 10_000_000
+            };
+        }
+        return { yes: 0, no: 0 };
+    } catch (err) {
+        console.error('Position fetch failed:', err);
+        return null;
+    }
+}
 
 async function fetchPositionData() {
     if (!wallet) return;
@@ -915,7 +1088,7 @@ function updatePositionDisplay(sharesYes, sharesNo) {
         document.getElementById('totalPosValue').textContent = totalValue.toFixed(2) + ' XNT';
     }
 
-    // Calculate net exposure (YES - NO in XNT terms)
+    // Calculate net exposure (UP - DOWN in XNT terms)
     const netExposure = yesValue - noValue;
     const netExposureEl = document.getElementById('netExposure');
     if (netExposureEl) {
@@ -923,10 +1096,10 @@ function updatePositionDisplay(sharesYes, sharesNo) {
             netExposureEl.textContent = 'Neutral';
             netExposureEl.style.color = '#8b92a8';
         } else if (netExposure > 0) {
-            netExposureEl.textContent = '+' + netExposure.toFixed(2) + ' XNT YES';
+            netExposureEl.textContent = '+' + netExposure.toFixed(2) + ' XNT UP';
             netExposureEl.style.color = '#00c896';
         } else {
-            netExposureEl.textContent = '-' + Math.abs(netExposure).toFixed(2) + ' XNT NO';
+            netExposureEl.textContent = '-' + Math.abs(netExposure).toFixed(2) + ' XNT DOWN';
             netExposureEl.style.color = '#ff4757';
         }
     }
@@ -942,46 +1115,61 @@ let currentSnapshotPrice = null;
 let currentPayoutPerShare = 0; // Actual payout per winning share (in XNT)
 
 function updateRedeemableBalance(sharesYes, sharesNo) {
-    const redeemableSection = document.getElementById('redeemableSection');
-    if (!redeemableSection) return;
+    const redeemableSectionSidebar = document.getElementById('redeemableSectionSidebar');
+    const btnRedeemSidebar = document.getElementById('btnRedeemSidebar');
 
-    // Only show redeemable balance when market is SETTLED (status = 2)
+    // Calculate redeemable value using ACTUAL payout per share from the contract
+    let yesValue, noValue, totalRedeemable;
+    const payoutPerWinningShare = currentPayoutPerShare || 1.0;
+
     if (currentMarketStatus === 2 && currentWinningSide) {
-        redeemableSection.style.display = 'block';
-
-        // Calculate redeemable value using ACTUAL payout per share from the contract
-        // Use currentPayoutPerShare (not always 1.0 - depends on vault balance)
-        let yesValue, noValue, totalRedeemable;
-        const payoutPerWinningShare = currentPayoutPerShare || 1.0; // Fallback to 1.0 if not set
+        // Market is SETTLED - enable redeem section
+        if (redeemableSectionSidebar) {
+            redeemableSectionSidebar.classList.remove('disabled');
+        }
+        if (btnRedeemSidebar) {
+            btnRedeemSidebar.disabled = false;
+        }
 
         if (currentWinningSide === 'yes') {
-            yesValue = sharesYes * payoutPerWinningShare; // Winning shares
-            noValue = sharesNo * 0.0;                     // Losing shares worth 0.00 XNT
+            yesValue = sharesYes * payoutPerWinningShare;
+            noValue = sharesNo * 0.0;
         } else {
-            yesValue = sharesYes * 0.0;                   // Losing shares worth 0.00 XNT
-            noValue = sharesNo * payoutPerWinningShare;   // Winning shares
+            yesValue = sharesYes * 0.0;
+            noValue = sharesNo * payoutPerWinningShare;
         }
 
         totalRedeemable = yesValue + noValue;
-
-        // Update display
-        if (document.getElementById('redeemableAmount')) {
-            document.getElementById('redeemableAmount').textContent = totalRedeemable.toFixed(2) + ' XNT';
-        }
-
-        if (document.getElementById('redeemableBreakdown')) {
-            const yesPayoutStr = currentWinningSide === 'yes' ? payoutPerWinningShare.toFixed(4) : '0.00';
-            const noPayoutStr = currentWinningSide === 'no' ? payoutPerWinningShare.toFixed(4) : '0.00';
-            const yesLine = `YES: ${sharesYes.toFixed(2)} × ${yesPayoutStr} = ${yesValue.toFixed(2)} XNT`;
-            const noLine = `NO: ${sharesNo.toFixed(2)} × ${noPayoutStr} = ${noValue.toFixed(2)} XNT`;
-            document.getElementById('redeemableBreakdown').innerHTML = `
-                <span class="breakdown-item">${yesLine}</span>
-                <span class="breakdown-item">${noLine}</span>
-            `;
-        }
     } else {
-        // Market not settled - hide redeemable balance
-        redeemableSection.style.display = 'none';
+        // Market not settled - disable redeem section
+        if (redeemableSectionSidebar) {
+            redeemableSectionSidebar.classList.add('disabled');
+        }
+        if (btnRedeemSidebar) {
+            btnRedeemSidebar.disabled = true;
+        }
+
+        yesValue = 0;
+        noValue = 0;
+        totalRedeemable = 0;
+    }
+
+    const totalText = totalRedeemable.toFixed(2) + ' XNT';
+
+    // Update sidebar amount
+    if (document.getElementById('redeemableAmountSidebar')) {
+        document.getElementById('redeemableAmountSidebar').textContent = totalText;
+    }
+
+    // Create breakdown text
+    const yesPayoutStr = (currentMarketStatus === 2 && currentWinningSide === 'yes') ? payoutPerWinningShare.toFixed(4) : '0.00';
+    const noPayoutStr = (currentMarketStatus === 2 && currentWinningSide === 'no') ? payoutPerWinningShare.toFixed(4) : '0.00';
+    const yesLine = `UP: ${sharesYes.toFixed(2)} × ${yesPayoutStr} = ${yesValue.toFixed(2)}`;
+    const noLine = `DOWN: ${sharesNo.toFixed(2)} × ${noPayoutStr} = ${noValue.toFixed(2)}`;
+
+    // Update sidebar breakdown
+    if (document.getElementById('redeemableBreakdownSidebar')) {
+        document.getElementById('redeemableBreakdownSidebar').innerHTML = `${yesLine}<br>${noLine}`;
     }
 }
 
@@ -1178,24 +1366,51 @@ async function executeTrade() {
     let estimatedCost;
 
     if (action === 'buy') {
-        // Calculate how much XNT to spend (need to account for fees)
-        // User wants numShares, but contract deducts fee first
-        // So we need to gross up: grossAmount = netAmount / (1 - fee)
-        const netCost = numShares * sharePrice;
+        // Use LMSR formula to calculate exact cost for numShares
+        const netCost = calculateLMSRCost(side, numShares);
+
+        // Check if calculation returned a valid number
+        if (!isFinite(netCost) || netCost <= 0) {
+            addLog(`ERROR: Invalid cost calculation: ${netCost}`, 'error');
+            showError('Cannot calculate trade cost - market parameters may be invalid');
+            return;
+        }
+
+        // Account for fees: grossAmount = netAmount / (1 - fee)
         const feeMultiplier = 1 - (currentFeeBps / 10000);
         estimatedCost = netCost / feeMultiplier; // Gross amount including fees
         // Convert to e6 units: 1 XNT = 10_000_000 e6 (due to LAMPORTS_PER_E6 = 100)
         amount_e6 = Math.floor(estimatedCost * 10_000_000);
+
+        // Validate against contract limits (from CLAUDE.md)
+        const MAX_SPEND_E6 = 50_000_000_000; // $50k max
+        const MIN_BUY_E6 = 100_000; // $0.10 min
+
+        if (amount_e6 > MAX_SPEND_E6) {
+            addLog(`ERROR: Trade amount ${amount_e6} exceeds max ${MAX_SPEND_E6}`, 'error');
+            showError(`Trade too large (max $50k)`);
+            return;
+        }
+        if (amount_e6 < MIN_BUY_E6) {
+            addLog(`ERROR: Trade amount ${amount_e6} below min ${MIN_BUY_E6}`, 'error');
+            showError(`Trade too small (min $0.10)`);
+            return;
+        }
+
+        addLog(`Calculated: ${numShares} shares → ${estimatedCost.toFixed(4)} XNT (${amount_e6} e6)`, 'info');
     } else {
         // For selling, pass number of shares
-        // 1 share = 1_000_000 e6 units (standard e6 scaling)
-        amount_e6 = Math.floor(numShares * 1_000_000);
+        // 1 share = 10_000_000 e6 units (LAMPORTS scale matching contract)
+        amount_e6 = Math.floor(numShares * 10_000_000);
         estimatedCost = numShares * sharePrice;
     }
 
     const tradeDesc = `${action.toUpperCase()} ${numShares} ${side.toUpperCase()} shares (~${estimatedCost.toFixed(2)} XNT)`;
     addLog(`Executing trade: ${tradeDesc}`, 'info');
     showStatus('Executing trade...');
+
+    // Get position before trade for comparison
+    const positionBefore = await getPositionShares();
 
     try {
         const sideNum = side === 'yes' ? 1 : 2;
@@ -1272,10 +1487,29 @@ async function executeTrade() {
         // Update last trade info
         updateLastTradeInfo(action, side, numShares, estimatedCost);
 
-        setTimeout(() => {
+        // Fetch actual shares received after a short delay
+        setTimeout(async () => {
             fetchMarketData();
             fetchPositionData();
             updateWalletBalance();
+
+            // After another short delay, show actual shares received
+            setTimeout(async () => {
+                const positionAfter = await getPositionShares();
+                if (positionBefore && positionAfter) {
+                    const yesChange = positionAfter.yes - positionBefore.yes;
+                    const noChange = positionAfter.no - positionBefore.no;
+                    const actualShares = side === 'yes' ? yesChange : noChange;
+                    if (action === 'buy' && Math.abs(actualShares) > 0.01) {
+                        const percentDiff = ((actualShares - numShares) / numShares * 100).toFixed(1);
+                        if (Math.abs(actualShares - numShares) > 0.5) {
+                            addLog(`Actual shares received: ${actualShares.toFixed(2)} (${percentDiff}% ${percentDiff > 0 ? 'more' : 'less'} due to LMSR slippage)`, 'info');
+                        } else {
+                            addLog(`Actual shares received: ${actualShares.toFixed(2)}`, 'info');
+                        }
+                    }
+                }
+            }, 500);
         }, 1000);
 
     } catch (err) {
@@ -1957,7 +2191,7 @@ async function displaySettledMarketWinner(winner, startPriceE6) {
         const startPriceStr = startPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const settlePriceStr = settlePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-        const winnerText = winner === 1 ? 'YES' : 'NO';
+        const winnerText = winner === 1 ? 'UP' : 'DOWN';
         const direction = settlePrice > startPrice ? 'UP' : settlePrice < startPrice ? 'DOWN' : 'SIDEWAYS';
         const arrow = settlePrice > startPrice ? '↗' : settlePrice < startPrice ? '↘' : '→';
 
@@ -2010,15 +2244,15 @@ function updateWinnerBanner(status) {
         const arrow = res.settlePrice > res.startPrice ? '↑' : res.settlePrice < res.startPrice ? '↓' : '→';
 
         // Calculate correct winner based on price movement
-        // UP or SAME → YES wins, DOWN → NO wins
-        const displayWinner = res.settlePrice >= res.startPrice ? 'YES' : 'NO';
+        // UP or SAME → UP wins, DOWN → DOWN wins
+        const displayWinner = res.settlePrice >= res.startPrice ? 'UP' : 'DOWN';
 
         // Update banner content with prices
         outcomeEl.textContent = `${displayWinner} WON`;
         reasonEl.textContent = `$${startPrice} ${arrow} $${settlePrice}`;
 
         // Add appropriate class
-        if (displayWinner === 'NO') {
+        if (displayWinner === 'DOWN') {
             bannerEl.classList.add('no-winner');
         } else {
             bannerEl.classList.remove('no-winner');
@@ -2225,11 +2459,23 @@ function setShares(shares) {
 
 function updateTradeButton() {
     const shares = parseFloat(document.getElementById('tradeAmountShares').value) || 0;
-    const sharePrice = currentSide === 'yes' ? currentYesPrice : currentNoPrice;
-    const cost = shares * sharePrice;
+
+    let cost;
+    if (currentAction === 'buy') {
+        // Use LMSR formula for accurate cost calculation
+        const netCost = calculateLMSRCost(currentSide, shares);
+        // Account for fees
+        const feeMultiplier = 1 - (currentFeeBps / 10000);
+        cost = netCost / feeMultiplier;
+    } else {
+        // Sell: use current price
+        const sharePrice = currentSide === 'yes' ? currentYesPrice : currentNoPrice;
+        cost = shares * sharePrice;
+    }
 
     const action = currentAction === 'buy' ? 'Buy' : 'Sell';
-    const text = `${action} ${shares} ${currentSide.toUpperCase()} shares (~${cost.toFixed(2)} XNT)`;
+    const sideDisplay = currentSide === 'yes' ? 'UP' : 'DOWN';
+    const text = `${action} ${shares} ${sideDisplay} shares (~${cost.toFixed(2)} XNT)`;
     document.getElementById('tradeBtnText').textContent = text;
 
     // Update cost display
