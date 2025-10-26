@@ -270,11 +270,29 @@ async function deriveSessionWalletFromBackpack(backpackWallet) {
         const signature = await backpackWallet.signMessage(message);
         console.log('[DEBUG derive] Got signature, length:', signature.length);
         console.log('[DEBUG derive] Signature type:', typeof signature);
-        console.log('[DEBUG derive] First 8 bytes:', Array.from(signature.slice(0, 8)));
+        console.log('[DEBUG derive] Signature constructor:', signature.constructor.name);
+        console.log('[DEBUG derive] Signature object:', signature);
+
+        // Convert signature to Uint8Array if it's not already
+        let signatureBytes;
+        if (signature instanceof Uint8Array) {
+            signatureBytes = signature;
+        } else if (signature.signature) {
+            // Backpack returns {signature: Uint8Array, publicKey: PublicKey}
+            signatureBytes = signature.signature;
+        } else if (ArrayBuffer.isView(signature)) {
+            signatureBytes = new Uint8Array(signature.buffer);
+        } else {
+            console.error('[DEBUG derive] Unexpected signature format:', signature);
+            throw new Error('Unexpected signature format from Backpack');
+        }
+
+        console.log('[DEBUG derive] Signature bytes length:', signatureBytes.length);
+        console.log('[DEBUG derive] First 8 bytes:', Array.from(signatureBytes.slice(0, 8)));
 
         // Use first 32 bytes of signature as Ed25519 seed
         // Ed25519 seeds are exactly 32 bytes (256 bits)
-        const seed = signature.slice(0, 32);
+        const seed = signatureBytes.slice(0, 32);
         console.log('[DEBUG derive] Seed created, length:', seed.length);
 
         // Create keypair from deterministic seed
@@ -983,7 +1001,7 @@ async function fetchOracleData() {
         updateBTCChart(btcPrice);
 
         // Update winning indicator
-        updateWinningIndicator(btcPrice);
+        // TODO: updateWinningIndicator(btcPrice); // Function not implemented yet
 
         // Display age
         const ageText = age < 60 ? `${age}s ago` : `${Math.floor(age / 60)}m ago`;
