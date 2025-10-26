@@ -152,17 +152,21 @@
                 </div>
 
                 <!-- Position Display -->
-                <div class="position-panel" id="positionStatusConnected" style="display: none;">
-                    <div class="panel-header">POSITION</div>
+                <div class="position-panel" id="positionStatusConnected">
+                    <div class="panel-header">HOLDINGS</div>
                     <div class="position-rows">
                         <div class="pos-row pos-yes">
-                            <div class="pos-label">LONG</div>
-                            <div class="pos-amount" id="posYesDisplay">0.00</div>
+                            <div>
+                                <div class="pos-label">UP</div>
+                                <div class="pos-amount" id="posYesDisplay">0.00</div>
+                            </div>
                             <div class="pos-value" id="posYesValue">$0.00</div>
                         </div>
                         <div class="pos-row pos-no">
-                            <div class="pos-label">SHORT</div>
-                            <div class="pos-amount" id="posNoDisplay">0.00</div>
+                            <div>
+                                <div class="pos-label">DOWN</div>
+                                <div class="pos-amount" id="posNoDisplay">0.00</div>
+                            </div>
                             <div class="pos-value" id="posNoValue">$0.00</div>
                         </div>
                     </div>
