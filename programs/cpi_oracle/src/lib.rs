@@ -381,7 +381,13 @@ pub mod cpi_oracle {
         amm.q_yes = 0;
         amm.q_no  = 0;
         amm.fees = 0;
-        amm.vault_e6 = 0;
+
+        // CHANGED: Keep vault funds from previous market cycle
+        // Read existing vault balance and sync vault_e6 accounting
+        let vault_ai = ctx.accounts.vault_sol.to_account_info();
+        let vault_lamports = vault_ai.lamports();
+        amm.vault_e6 = lamports_to_e6(vault_lamports);
+
         amm.status = MarketStatus::Open as u8;
         amm.winner = 0;
         amm.w_total_e6 = 0;
@@ -395,31 +401,8 @@ pub mod cpi_oracle {
         amm.settle_price_e6 = 0;
         amm.settle_ts = 0;
 
-        // If vault already has lamports from a prior run, sweep to fee_dest; otherwise leave it.
-        let vault_ai = ctx.accounts.vault_sol.to_account_info();
-        let fee_dest_ai = ctx.accounts.fee_dest.to_account_info();
-        if vault_ai.lamports() > 0 {
-            let bal = vault_ai.lamports();
-            let amm_key = amm.key();
-            let seeds: &[&[u8]] = &[
-                Amm::VAULT_SOL_SEED,
-                amm_key.as_ref(),
-                core::slice::from_ref(&amm.vault_sol_bump),
-            ];
-            let ix = system_instruction::transfer(&vault_ai.key(), &fee_dest_ai.key(), bal);
-            invoke_signed(
-                &ix,
-                &[
-                    vault_ai.clone(),
-                    fee_dest_ai.clone(),
-                    ctx.accounts.system_program.to_account_info(),
-                ],
-                &[seeds],
-            )?;
-        }
-
-        msg!("✅ INIT: b={} (1e-6), fee_bps={}, status=Open, fee_dest={}, vault_sol ready",
-             b, fee_bps, amm.fee_dest);
+        msg!("✅ INIT: b={} (1e-6), fee_bps={}, status=Open, fee_dest={}, vault_e6={} ({} lamports carried over)",
+             b, fee_bps, amm.fee_dest, amm.vault_e6, vault_lamports);
         Ok(())
     }
 
