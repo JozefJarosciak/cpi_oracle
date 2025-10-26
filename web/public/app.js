@@ -135,8 +135,8 @@ window.addEventListener('load', async () => {
     addLog('AMM PDA: ' + ammPda.toString(), 'info');
     addLog('Vault PDA: ' + vaultPda.toString(), 'info');
 
-    // Try to restore session
-    await restoreSession();
+    // Don't auto-connect - user must click Connect button
+    // await restoreSession();
 
     // Load price history from localStorage
     loadPriceHistory();
@@ -152,44 +152,9 @@ window.addEventListener('load', async () => {
 // ============= SESSION MANAGEMENT =============
 
 async function restoreSession() {
-    try {
-        // Try to auto-connect Backpack if available
-        if (window.backpack) {
-            try {
-                // Check if already connected
-                if (!window.backpack.isConnected) {
-                    // Auto-connect silently
-                    await window.backpack.connect();
-                }
-
-                backpackWallet = window.backpack;
-                const currentAddress = backpackWallet.publicKey.toString();
-
-                // Derive deterministic session wallet from Backpack signature
-                // No localStorage needed - wallet is always reproducible!
-                wallet = await deriveSessionWalletFromBackpack(backpackWallet);
-
-                showHasWallet(currentAddress);
-                updateWalletBalance();
-                fetchPositionData();
-                addLog('Session restored: ' + currentAddress.substring(0, 12) + '...', 'success');
-                addLog('Session wallet: ' + wallet.publicKey.toString().substring(0, 12) + '...', 'info');
-                return;
-            } catch (err) {
-                console.error('Auto-connect failed:', err);
-                showNoWallet();
-            }
-        } else {
-            // Backpack not available
-            addLog('Backpack wallet not detected. Install from backpack.app', 'info');
-            showNoWallet();
-        }
-
-    } catch (err) {
-        console.error('Failed to restore session:', err);
-        addLog('Session restore failed: ' + err.message, 'error');
-        showNoWallet();
-    }
+    // REMOVED: No auto-connect on page load
+    // User must explicitly click "Connect" button
+    showNoWallet();
 }
 
 async function connectBackpack() {
@@ -216,13 +181,15 @@ async function connectBackpack() {
         // No localStorage needed - completely reproducible from signature alone
         wallet = await deriveSessionWalletFromBackpack(backpackWallet);
 
+        const sessionAddr = wallet.publicKey.toString();
+        addLog('Session wallet: ' + sessionAddr.substring(0, 12) + '...', 'success');
+        addLog('This wallet is deterministically derived from your Backpack signature', 'info');
+        addLog('Same Backpack = Same session wallet, on any device!', 'info');
+
         showHasWallet(backpackAddress);
         updateWalletBalance();
         fetchPositionData();
-        addLog('Session wallet: ' + wallet.publicKey.toString().substring(0, 12) + '...', 'success');
-        addLog('This wallet is deterministically derived from your Backpack signature', 'info');
-        addLog('Same Backpack = Same session wallet, on any device!', 'info');
-        showStatus('Connected! Session wallet: ' + wallet.publicKey.toString());
+        showStatus('Connected! Session wallet: ' + sessionAddr);
 
     } catch (err) {
         addLog('Connection failed: ' + err.message, 'error');
@@ -535,6 +502,11 @@ function showNoWallet() {
 }
 
 function showHasWallet(backpackAddr) {
+    if (!wallet) {
+        console.error('showHasWallet called but wallet is null');
+        return;
+    }
+
     const sessionAddr = wallet.publicKey.toString();
     const shortAddr = sessionAddr.substring(0, 8) + '...' + sessionAddr.substring(sessionAddr.length - 4);
 
