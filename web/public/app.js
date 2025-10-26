@@ -153,14 +153,6 @@ window.addEventListener('load', async () => {
 
 async function restoreSession() {
     try {
-        const sessionData = localStorage.getItem('btc_market_session');
-        if (!sessionData) {
-            showNoWallet();
-            return;
-        }
-
-        const { backpackAddress, sessionKeypair } = JSON.parse(sessionData);
-
         // Try to auto-connect Backpack if available
         if (window.backpack) {
             try {
@@ -171,21 +163,35 @@ async function restoreSession() {
                 }
 
                 const currentAddress = window.backpack.publicKey.toString();
+                const sessionKey = `btc_market_session_${currentAddress}`;
+                const sessionData = localStorage.getItem(sessionKey);
 
-                if (currentAddress === backpackAddress) {
+                if (sessionData) {
+                    const { sessionKeypair } = JSON.parse(sessionData);
+
+                    // Get encryption key from Backpack signature
                     backpackWallet = window.backpack;
-                    // Restore session wallet from stored keypair
-                    const secretKey = Uint8Array.from(sessionKeypair);
+                    addLog('Requesting signature for wallet decryption...', 'info');
+                    const encryptionKey = await getEncryptionKeyFromBackpack(backpackWallet);
+
+                    // Decrypt the session keypair
+                    const decryptedKeypair = await decryptData(sessionKeypair, encryptionKey);
+                    if (!decryptedKeypair) {
+                        throw new Error('Failed to decrypt session wallet');
+                    }
+
+                    // Restore session wallet from decrypted keypair
+                    const secretKey = Uint8Array.from(decryptedKeypair);
                     wallet = solanaWeb3.Keypair.fromSecretKey(secretKey);
-                    showHasWallet(backpackAddress);
+                    showHasWallet(currentAddress);
                     updateWalletBalance();
                     fetchPositionData();
-                    addLog('Session restored: ' + backpackAddress.substring(0, 12) + '...', 'success');
+                    addLog('Session restored: ' + currentAddress.substring(0, 12) + '...', 'success');
                     addLog('Trading wallet: ' + wallet.publicKey.toString().substring(0, 12) + '...', 'info');
                     return;
                 } else {
-                    // Different Backpack wallet connected
-                    addLog('Different Backpack detected. Previous session for: ' + backpackAddress.substring(0, 12) + '...', 'warning');
+                    // No session for this Backpack address
+                    addLog('No saved session for this Backpack. Click "Connect Wallet" to create one.', 'info');
                     showNoWallet();
                 }
             } catch (err) {
@@ -194,8 +200,8 @@ async function restoreSession() {
                 showNoWallet();
             }
         } else {
-            // Backpack not available, but keep session data
-            addLog('Backpack wallet not detected. Session saved for: ' + backpackAddress.substring(0, 12) + '...', 'info');
+            // Backpack not available
+            addLog('Backpack wallet not detected. Install from backpack.app', 'info');
             showNoWallet();
         }
 
@@ -226,34 +232,31 @@ async function connectBackpack() {
         addLog('Backpack connected: ' + backpackAddress.substring(0, 12) + '...', 'success');
 
         // ALWAYS check localStorage first for existing session wallet for THIS Backpack address
-        const existingSession = localStorage.getItem('btc_market_session');
+        // Use a unique key per Backpack address to support multiple wallets
+        const sessionKey = `btc_market_session_${backpackAddress}`;
+        const existingSession = localStorage.getItem(sessionKey);
         if (existingSession) {
             try {
-                const { backpackAddress: savedAddress, sessionKeypair } = JSON.parse(existingSession);
-                if (savedAddress === backpackAddress) {
-                    // ALWAYS use the saved session wallet for this Backpack
-                    // Get encryption key from Backpack signature
-                    addLog('Requesting signature for wallet decryption...', 'info');
-                    const encryptionKey = await getEncryptionKeyFromBackpack(backpackWallet);
+                const { sessionKeypair } = JSON.parse(existingSession);
+                // ALWAYS use the saved session wallet for this Backpack
+                // Get encryption key from Backpack signature
+                addLog('Requesting signature for wallet decryption...', 'info');
+                const encryptionKey = await getEncryptionKeyFromBackpack(backpackWallet);
 
-                    // Decrypt the session keypair using signature as password
-                    const decryptedKeypair = await decryptData(sessionKeypair, encryptionKey);
-                    if (!decryptedKeypair) {
-                        throw new Error('Failed to decrypt session wallet');
-                    }
-                    const secretKey = Uint8Array.from(decryptedKeypair);
-                    wallet = solanaWeb3.Keypair.fromSecretKey(secretKey);
-                    showHasWallet(backpackAddress);
-                    updateWalletBalance();
-                    fetchPositionData();
-                    addLog('Session wallet restored: ' + wallet.publicKey.toString().substring(0, 12) + '...', 'success');
-                    addLog('This session wallet is permanently linked to your Backpack', 'info');
-                    showStatus('Session restored! Session wallet: ' + wallet.publicKey.toString());
-                    return;
-                } else {
-                    // Different Backpack - this is a new user/wallet
-                    addLog('New Backpack detected. Creating new session wallet...', 'info');
+                // Decrypt the session keypair using signature as password
+                const decryptedKeypair = await decryptData(sessionKeypair, encryptionKey);
+                if (!decryptedKeypair) {
+                    throw new Error('Failed to decrypt session wallet');
                 }
+                const secretKey = Uint8Array.from(decryptedKeypair);
+                wallet = solanaWeb3.Keypair.fromSecretKey(secretKey);
+                showHasWallet(backpackAddress);
+                updateWalletBalance();
+                fetchPositionData();
+                addLog('Session wallet restored: ' + wallet.publicKey.toString().substring(0, 12) + '...', 'success');
+                addLog('This session wallet is permanently linked to your Backpack', 'info');
+                showStatus('Session restored! Session wallet: ' + wallet.publicKey.toString());
+                return;
             } catch (err) {
                 console.error('Failed to restore existing session:', err);
                 addLog('Failed to restore session: ' + err.message, 'warning');
@@ -273,12 +276,13 @@ async function connectBackpack() {
 
         // Save session to localStorage - PERMANENT link to this Backpack
         // Encrypt the private key using signature as password (SECRET!)
+        // Use a unique key per Backpack address to support multiple wallets
         const encryptedKeypair = await encryptData(Array.from(wallet.secretKey), encryptionKey);
         const sessionData = {
-            backpackAddress,
             sessionKeypair: encryptedKeypair
         };
-        localStorage.setItem('btc_market_session', JSON.stringify(sessionData));
+        const sessionKey = `btc_market_session_${backpackAddress}`;
+        localStorage.setItem(sessionKey, JSON.stringify(sessionData));
 
         showHasWallet(backpackAddress);
         updateWalletBalance();
