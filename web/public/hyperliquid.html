@@ -576,7 +576,16 @@
                 const avgPrice = (trade.avgPrice !== undefined && trade.avgPrice !== null) ? trade.avgPrice :
                                  (trade.price !== undefined && trade.price !== null) ? trade.price : '0.0000';
                 const shares = (trade.shares !== undefined && trade.shares !== null) ? trade.shares : '0.00';
-                const amount = (trade.amount !== undefined && trade.amount !== null) ? trade.amount : '0.00';
+
+                // Calculate amount from shares × avgPrice for accurate display
+                let amount;
+                if (avgPrice && shares && avgPrice !== '0.0000' && shares !== '0.00') {
+                    const calculatedAmount = parseFloat(shares) * parseFloat(avgPrice);
+                    amount = calculatedAmount.toFixed(4);
+                } else {
+                    // Fallback to provided amount if calculation not possible
+                    amount = (trade.amount !== undefined && trade.amount !== null) ? trade.amount : '0.00';
+                }
 
                 tradeItem.innerHTML = `
                     <div class="trade-side ${tradeClass}">

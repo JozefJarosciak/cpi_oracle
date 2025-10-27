@@ -158,8 +158,8 @@ window.addEventListener('load', async () => {
     // Try to restore session if Backpack is already connected
     await restoreSession();
 
-    // Load price history from localStorage
-    loadPriceHistory();
+    // Load price history from server (default to 1 hour to avoid loading 3.6MB)
+    loadPriceHistory(3600);
 
     // Initialize BTC chart
     initBTCChart();
