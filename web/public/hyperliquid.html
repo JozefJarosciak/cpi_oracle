@@ -8,6 +8,9 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
+    <!-- Toast Notifications Container -->
+    <div id="toastContainer"></div>
+
     <div class="trading-terminal">
         <!-- Top Bar -->
         <header class="top-bar">
@@ -19,7 +22,7 @@
                 </div>
             </div>
             <div class="top-right">
-                <div id="walletNavDisconnected">
+                <div id="walletNavDisconnected" class="hidden">
                     <button class="btn-wallet" onclick="connectBackpack()">Connect Wallet</button>
                 </div>
                 <div id="walletNavConnected" class="hidden">
@@ -67,6 +70,23 @@
                     </div>
                 </div>
 
+                <!-- Time Range Dropdown -->
+                <div class="chart-timerange-dropdown">
+                    <div class="timerange-dropdown-trigger" onclick="toggleTimeRangeDropdown()">
+                        <span id="selectedTimeRange">1m</span>
+                        <svg class="dropdown-arrow" width="12" height="8" viewBox="0 0 12 8">
+                            <path d="M1 1L6 6L11 1" stroke="currentColor" stroke-width="2" fill="none"/>
+                        </svg>
+                    </div>
+                    <div class="timerange-dropdown-menu" id="timeRangeMenu">
+                        <div class="timerange-option active" data-seconds="60" onclick="selectTimeRange(60)">1m</div>
+                        <div class="timerange-option" data-seconds="300" onclick="selectTimeRange(300)">5m</div>
+                        <div class="timerange-option" data-seconds="900" onclick="selectTimeRange(900)">15m</div>
+                        <div class="timerange-option" data-seconds="1800" onclick="selectTimeRange(1800)">30m</div>
+                        <div class="timerange-option" data-seconds="3600" onclick="selectTimeRange(3600)">1h</div>
+                    </div>
+                </div>
+
                 <!-- Chart -->
                 <div class="chart-container">
                     <canvas id="btcChart"></canvas>
@@ -95,21 +115,49 @@
                         <div class="stat-value"><span id="vaultTotalDisplay">0.00</span> XNT</div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Center: Order Book Style -->
-            <div class="grid-book">
-                <div class="book-header">MARKET PRICES</div>
-                <div class="book-sides">
-                    <div class="book-side book-yes">
-                        <div class="book-label">UP (LONG)</div>
-                        <div class="book-price" id="yesPercentage">0.50</div>
-                        <div class="book-size" id="yesShares">0 shares</div>
+                <!-- Live Trade Feed -->
+                <div class="trade-feed-section">
+                    <div class="feed-header">
+                        <span class="feed-title">LIVE TRADES</span>
+                        <div class="feed-status">
+                            <div class="ws-status" id="wsStatus" title="Live Trade Feed">
+                                <span class="ws-dot"></span>
+                                <span class="ws-label">FEED</span>
+                            </div>
+                            <span class="feed-count" id="tradeCount">0</span>
+                        </div>
                     </div>
-                    <div class="book-side book-no">
-                        <div class="book-label">DOWN (SHORT)</div>
-                        <div class="book-price" id="noPercentage">0.50</div>
-                        <div class="book-size" id="noShares">0 shares</div>
+                    <div class="trade-feed-list" id="tradeFeed">
+                        <div class="trade-feed-empty">
+                            <span class="empty-icon">📊</span>
+                            <span class="empty-text">Waiting for trades...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trollbox -->
+                <div class="trollbox-section">
+                    <div class="trollbox-header">
+                        <span class="trollbox-title">CHAT</span>
+                        <span class="trollbox-count" id="chatCount">0</span>
+                    </div>
+                    <div class="trollbox-messages" id="trollboxMessages">
+                        <div class="trollbox-empty">
+                            <span class="empty-icon">💬</span>
+                            <span class="empty-text">No messages yet...</span>
+                        </div>
+                    </div>
+                    <div class="trollbox-input-wrapper">
+                        <input
+                            type="text"
+                            id="trollboxInput"
+                            class="trollbox-input"
+                            placeholder="Type message (max 300 chars)"
+                            maxlength="300"
+                            onkeypress="if(event.key==='Enter') sendChatMessage()"
+                        >
+                        <button class="trollbox-send-btn" onclick="sendChatMessage()">SEND</button>
                     </div>
                 </div>
             </div>
@@ -118,6 +166,12 @@
             <div class="grid-trade">
                 <div class="trade-panel">
                     <div class="panel-header">TRADE</div>
+
+                    <!-- Buy/Sell Tabs -->
+                    <div class="trade-tabs">
+                        <button class="tab-btn active" id="buyTab" onclick="switchTab('buy')">BUY</button>
+                        <button class="tab-btn" id="sellTab" onclick="switchTab('sell')">SELL</button>
+                    </div>
 
                     <!-- Direction Toggle -->
                     <div class="direction-toggle">
@@ -129,10 +183,21 @@
                         </button>
                     </div>
 
-                    <!-- Amount Input -->
-                    <div class="trade-input-group">
-                        <label class="input-label">SHARES</label>
-                        <input type="number" id="tradeAmountShares" class="trade-input" value="10" step="1">
+                    <!-- Input Mode Toggle -->
+                    <div class="input-mode-toggle">
+                        <button class="mode-btn active" id="modeShares" onclick="setInputMode('shares')">SHARES</button>
+                        <button class="mode-btn" id="modeXnt" onclick="setInputMode('xnt')">XNT</button>
+                    </div>
+
+                    <!-- Shares Input -->
+                    <div class="input-section" id="sharesInputSection">
+                        <label class="input-label">NUMBER OF SHARES</label>
+                        <input type="number" id="tradeAmountShares" class="trade-input" placeholder="10" step="1" value="10" oninput="updateFromInput()">
+                        <input type="range" id="sharesSlider" class="amount-slider" min="1" max="500" value="10" step="1" oninput="updateFromSlider('shares')">
+                        <div class="slider-labels">
+                            <span>1</span>
+                            <span>500</span>
+                        </div>
                         <div class="quick-amounts">
                             <button onclick="setShares(1)">1</button>
                             <button onclick="setShares(10)">10</button>
@@ -141,9 +206,26 @@
                         </div>
                     </div>
 
+                    <!-- XNT Input -->
+                    <div class="input-section hidden" id="xntInputSection">
+                        <label class="input-label">AMOUNT TO SPEND (XNT)</label>
+                        <input type="number" id="tradeAmountXnt" class="trade-input" placeholder="5.00" step="0.01" value="5.00" oninput="updateFromInput()">
+                        <input type="range" id="xntSlider" class="amount-slider" min="0.1" max="100" value="5" step="0.1" oninput="updateFromSlider('xnt')">
+                        <div class="slider-labels">
+                            <span>0.1</span>
+                            <span>100</span>
+                        </div>
+                        <div class="quick-amounts">
+                            <button onclick="setXnt(1)">1</button>
+                            <button onclick="setXnt(5)">5</button>
+                            <button onclick="setXnt(10)">10</button>
+                            <button onclick="setXnt(25)">25</button>
+                        </div>
+                    </div>
+
                     <!-- Cost Display -->
                     <div class="trade-cost">
-                        <span>EST. COST</span>
+                        <span id="tradeCostLabel">EST. COST</span>
                         <span id="tradeCost">~5.00 XNT</span>
                     </div>
 
@@ -194,20 +276,29 @@
                 <!-- Wallet Info -->
                 <div class="wallet-panel" id="walletPanel">
                     <div class="panel-header">WALLET</div>
-                    <div class="wallet-address-section">
-                        <div class="wallet-label">DEPOSIT ADDRESS</div>
-                        <div class="wallet-address-display" id="walletAddressDisplay">
-                            <span id="walletAddressFull">Connect wallet to view address</span>
-                            <button class="btn-copy" id="btnCopyAddress" onclick="copyWalletAddress()" style="display: none;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                                </svg>
-                            </button>
+                    <div id="sidebarWalletDisconnected">
+                        <p class="empty-text">Connect wallet to start trading</p>
+                    </div>
+                    <div id="sidebarWalletConnected" class="hidden">
+                        <div class="wallet-address-section">
+                            <div class="wallet-label">TRADING WALLET</div>
+                            <div class="wallet-address-display">
+                                <span class="wallet-address" id="sessionAddr">--</span>
+                                <button class="btn-copy" onclick="copySessionWallet()" title="Copy">
+                                    📋
+                                </button>
+                            </div>
+                            <div class="wallet-balance-info">
+                                <span class="wallet-balance-amount"><span id="walletBal">0.0000</span> XNT</span>
+                            </div>
                         </div>
-                        <div class="wallet-balance-info">
-                            <span class="wallet-balance-label">Balance:</span>
-                            <span class="wallet-balance-amount" id="walletBalanceDisplay">0.00 XNT</span>
+                        <div class="wallet-actions">
+                            <input type="number" id="withdrawAmount" class="input-compact" placeholder="Amount" step="0.01">
+                            <button class="btn-compact" onclick="withdrawToBackpack()">WITHDRAW</button>
+                            <button class="btn-compact btn-ghost" onclick="disconnectWallet()">DISCONNECT</button>
+                            <button class="btn-compact btn-export" onclick="exportPrivateKey()" title="Export key">
+                                🔑 EXPORT KEY
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -216,6 +307,10 @@
                 <div id="logContent" style="display: none;"></div>
 
                 <!-- Hidden elements for compatibility -->
+                <div id="yesPercentage" style="display: none;">0.50</div>
+                <div id="noPercentage" style="display: none;">0.50</div>
+                <div id="yesShares" style="display: none;">0 shares</div>
+                <div id="noShares" style="display: none;">0 shares</div>
                 <div id="positionStatusDisconnected" style="display: none;"></div>
                 <div id="sidebarWalletDisconnected" style="display: none;"></div>
                 <div id="sidebarWalletConnected" style="display: none;"></div>
@@ -242,41 +337,382 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <script src="solana-web3.min.js"></script>
     <script src="app.js"></script>
     <script>
-        // Copy wallet address function
-        function copyWalletAddress() {
-            const addressElement = document.getElementById('walletAddressFull');
-            const address = addressElement.textContent;
+        // Input mode management (from proto1)
+        let currentInputMode = 'shares'; // 'shares' or 'xnt'
 
-            if (address && address !== 'Connect wallet to view address') {
-                navigator.clipboard.writeText(address).then(() => {
-                    const btn = document.getElementById('btnCopyAddress');
-                    const originalHTML = btn.innerHTML;
-                    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-                    setTimeout(() => {
-                        btn.innerHTML = originalHTML;
-                    }, 1500);
-                    addLog('Address copied to clipboard', 'success');
-                }).catch(err => {
-                    console.error('Failed to copy:', err);
-                    addLog('Failed to copy address', 'error');
-                });
+        function setInputMode(mode) {
+            currentInputMode = mode;
+
+            // Toggle mode buttons
+            document.getElementById('modeShares').classList.toggle('active', mode === 'shares');
+            document.getElementById('modeXnt').classList.toggle('active', mode === 'xnt');
+
+            // Toggle input sections
+            document.getElementById('sharesInputSection').classList.toggle('hidden', mode !== 'shares');
+            document.getElementById('xntInputSection').classList.toggle('hidden', mode !== 'xnt');
+
+            // Update cost label
+            document.getElementById('tradeCostLabel').textContent = mode === 'shares' ? 'EST. COST' : 'EST. SHARES';
+
+            // Update from current values
+            updateFromInput();
+        }
+
+        function updateFromSlider(mode) {
+            if (mode === 'shares') {
+                const value = document.getElementById('sharesSlider').value;
+                document.getElementById('tradeAmountShares').value = value;
+            } else {
+                const value = document.getElementById('xntSlider').value;
+                document.getElementById('tradeAmountXnt').value = parseFloat(value).toFixed(2);
+            }
+            updateFromInput();
+        }
+
+        function updateFromInput() {
+            // Sync slider with input
+            if (currentInputMode === 'shares') {
+                const sharesInput = document.getElementById('tradeAmountShares');
+                const sharesSlider = document.getElementById('sharesSlider');
+                if (sharesInput.value) {
+                    sharesSlider.value = Math.min(Math.max(sharesInput.value, 1), 500);
+                }
+            } else {
+                const xntInput = document.getElementById('tradeAmountXnt');
+                const xntSlider = document.getElementById('xntSlider');
+                if (xntInput.value) {
+                    xntSlider.value = Math.min(Math.max(xntInput.value, 0.1), 100);
+                }
             }
         }
 
-        // Update wallet address display when wallet connects
-        const originalUpdateUI = window.updateUI || (() => {});
-        window.updateUI = function() {
-            originalUpdateUI();
-            if (wallet && wallet.publicKey) {
-                const address = wallet.publicKey.toString();
-                document.getElementById('walletAddressFull').textContent = address;
-                document.getElementById('btnCopyAddress').style.display = 'flex';
-                document.getElementById('walletBalanceDisplay').textContent = document.getElementById('walletBal').textContent || '0.00 XNT';
+        function setXnt(amount) {
+            document.getElementById('tradeAmountXnt').value = amount.toFixed(2);
+            document.getElementById('xntSlider').value = amount;
+            updateFromInput();
+        }
+
+        // Override existing setShares to also update slider
+        const originalSetShares = window.setShares;
+        window.setShares = function(shares) {
+            if (originalSetShares) {
+                originalSetShares(shares);
             }
+            document.getElementById('tradeAmountShares').value = shares;
+            document.getElementById('sharesSlider').value = shares;
+            updateFromInput();
         };
+
+        // Trade History Management
+        const MAX_TRADES = 20;
+        const TRADE_HISTORY_KEY = 'hyperliquid_trade_history';
+        let tradeHistory = [];
+
+        // Load trade history from localStorage
+        function loadTradeHistory() {
+            try {
+                const saved = localStorage.getItem(TRADE_HISTORY_KEY);
+                if (saved) {
+                    const loaded = JSON.parse(saved);
+                    console.log(`💾 Restored ${loaded.length} trades from localStorage`);
+                    loaded.reverse().forEach(trade => {
+                        addTradeToHistory(trade, false);
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to load trade history:', err);
+            }
+        }
+
+        // Save trade history to localStorage
+        function saveTradeHistory() {
+            try {
+                localStorage.setItem(TRADE_HISTORY_KEY, JSON.stringify(tradeHistory));
+            } catch (err) {
+                console.error('Failed to save trade history:', err);
+            }
+        }
+
+        function addTradeToHistory(trade, shouldSave = true) {
+            // Remove empty state if present
+            const tradeFeed = document.getElementById('tradeFeed');
+            const emptyState = tradeFeed.querySelector('.trade-feed-empty');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            // Add to history array
+            tradeHistory.unshift(trade);
+            if (tradeHistory.length > MAX_TRADES) {
+                tradeHistory.pop();
+            }
+
+            // Save to localStorage
+            if (shouldSave) {
+                saveTradeHistory();
+            }
+
+            // Create trade item
+            const tradeItem = document.createElement('div');
+            tradeItem.className = shouldSave ? 'trade-item new-trade' : 'trade-item';
+
+            const action = trade.action.toLowerCase();
+            const side = trade.side.toLowerCase();
+            const sideDisplay = side === 'yes' ? 'UP' : 'DOWN';
+            const tradeClass = `${action}-${side === 'yes' ? 'up' : 'down'}`;
+
+            const userAddr = trade.user || 'Unknown';
+            const shortAddr = userAddr.length > 5 ? userAddr.slice(0, 5) : userAddr;
+
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-US', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            tradeItem.innerHTML = `
+                <div class="trade-side ${tradeClass}">
+                    ${action.toUpperCase()}<br>${sideDisplay}
+                </div>
+                <div class="trade-info">
+                    <div class="trade-action">${trade.shares} @ ${trade.price}</div>
+                    <div class="trade-user">${shortAddr}</div>
+                </div>
+                <div class="trade-meta">
+                    <div class="trade-amount">${trade.cost} XNT</div>
+                    <div class="trade-time">${timeStr}</div>
+                </div>
+            `;
+
+            tradeFeed.insertBefore(tradeItem, tradeFeed.firstChild);
+
+            // Remove new-trade class after animation completes
+            if (shouldSave) {
+                setTimeout(() => {
+                    tradeItem.classList.remove('new-trade');
+                }, 600);
+            }
+
+            const items = tradeFeed.querySelectorAll('.trade-item');
+            if (items.length > MAX_TRADES) {
+                items[items.length - 1].remove();
+            }
+
+            document.getElementById('tradeCount').textContent = tradeHistory.length;
+        }
+
+        // ============= WEBSOCKET TRADE MONITOR =============
+        let tradeSocket = null;
+
+        function updateWsStatus(status) {
+            const wsStatus = document.getElementById('wsStatus');
+            if (wsStatus) {
+                wsStatus.className = `ws-status ${status}`;
+            }
+        }
+
+        function connectTradeMonitor() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            let wsUrl;
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                wsUrl = `${wsProtocol}//${window.location.hostname}:3435`;
+            } else {
+                wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+            }
+
+            console.log('Connecting to trade monitor:', wsUrl);
+            updateWsStatus('connecting');
+
+            tradeSocket = new WebSocket(wsUrl);
+
+            tradeSocket.onopen = () => {
+                console.log('✅ Connected to live trade feed');
+                updateWsStatus('connected');
+            };
+
+            tradeSocket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'history') {
+                        if (tradeHistory.length === 0) {
+                            console.log(`📜 Loaded ${data.trades.length} historical trades from server`);
+                            data.trades.forEach(trade => {
+                                addTradeToHistory({
+                                    action: trade.action,
+                                    side: trade.side,
+                                    shares: trade.shares,
+                                    price: trade.avgPrice,
+                                    cost: trade.amount,
+                                    user: 'Global',
+                                    timestamp: trade.timestamp
+                                }, true);
+                            });
+                        }
+                    } else if (data.type === 'trade') {
+                        const trade = data.trade;
+                        console.log(`📊 NEW TRADE: ${trade.action} ${trade.side} - ${trade.shares} shares @ ${trade.avgPrice}`);
+
+                        addTradeToHistory({
+                            action: trade.action,
+                            side: trade.side,
+                            shares: trade.shares,
+                            price: trade.avgPrice,
+                            cost: trade.amount,
+                            user: trade.user || 'Unknown',
+                            timestamp: trade.timestamp
+                        }, true);
+                    } else if (data.type === 'chat_history') {
+                        console.log(`💬 Loaded ${data.messages.length} chat messages`);
+                        data.messages.forEach(msg => {
+                            displayChatMessage(msg);
+                        });
+                    } else if (data.type === 'chat') {
+                        console.log(`💬 NEW CHAT: ${data.message.user}: ${data.message.text}`);
+                        displayChatMessage(data.message);
+                    } else if (data.type === 'error') {
+                        console.warn(`⚠️ Server error: ${data.message}`);
+                        displayChatError(data.message);
+                    }
+                } catch (err) {
+                    console.error('Failed to parse trade message:', err);
+                }
+            };
+
+            tradeSocket.onerror = (error) => {
+                console.error('❌ Trade feed error:', error);
+                updateWsStatus('disconnected');
+            };
+
+            tradeSocket.onclose = () => {
+                console.log('Trade feed disconnected. Reconnecting in 5s...');
+                updateWsStatus('disconnected');
+                setTimeout(connectTradeMonitor, 5000);
+            };
+        }
+
+        // Start trade monitor on page load
+        window.addEventListener('load', () => {
+            loadTradeHistory();
+            setTimeout(connectTradeMonitor, 2000);
+        });
+
+        // Trollbox functions
+        let chatMessages = [];
+
+        function displayChatMessage(msg) {
+            const messagesDiv = document.getElementById('trollboxMessages');
+
+            const emptyState = messagesDiv.querySelector('.trollbox-empty');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'trollbox-message';
+
+            const timestamp = new Date(msg.timestamp).toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+
+            msgDiv.innerHTML = `
+                <span class="chat-time">${timestamp}</span>
+                <span class="chat-user">${msg.user}:</span>
+                <span class="chat-text">${escapeHtml(msg.text)}</span>
+            `;
+
+            messagesDiv.appendChild(msgDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            chatMessages.push(msg);
+
+            const chatCount = document.getElementById('chatCount');
+            if (chatCount) {
+                chatCount.textContent = chatMessages.length;
+            }
+
+            const messages = messagesDiv.querySelectorAll('.trollbox-message');
+            if (messages.length > 100) {
+                messages[0].remove();
+            }
+        }
+
+        function displayChatError(message) {
+            const messagesDiv = document.getElementById('trollboxMessages');
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'trollbox-message trollbox-error';
+            msgDiv.style.color = '#ff5353';
+            msgDiv.style.fontStyle = 'italic';
+
+            const timestamp = new Date().toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+
+            msgDiv.innerHTML = `
+                <span class="chat-time">${timestamp}</span>
+                <span class="chat-text">⚠️ ${escapeHtml(message)}</span>
+            `;
+
+            messagesDiv.appendChild(msgDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            setTimeout(() => {
+                if (msgDiv.parentNode) {
+                    msgDiv.remove();
+                }
+            }, 5000);
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('trollboxInput');
+            const text = input.value.trim();
+
+            if (!text) return;
+
+            if (!tradeSocket || tradeSocket.readyState !== WebSocket.OPEN) {
+                alert('Not connected to chat server');
+                return;
+            }
+
+            let username = 'Anon';
+            if (window.backpackConnected && window.publicKey) {
+                username = window.publicKey.toString().slice(0, 5);
+            }
+
+            tradeSocket.send(JSON.stringify({
+                type: 'chat',
+                user: username,
+                text: text
+            }));
+
+            input.value = '';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function copySessionWallet() {
+            const addr = document.getElementById('sessionAddr').textContent;
+            if (addr && addr !== '--') {
+                navigator.clipboard.writeText(addr).then(() => {
+                    console.log('Session wallet address copied');
+                });
+            }
+        }
     </script>
 </body>
 </html>
