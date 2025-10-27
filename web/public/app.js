@@ -16,16 +16,36 @@ let currentFeeBps = 25; // Default fee in basis points (0.25%)
 // BTC Price Chart
 let btcChart = null;
 let priceHistory = []; // Stores actual BTC prices (one per second)
-const MAX_PRICE_SECONDS = 60; // Show last 60 seconds
+let currentTimeRange = 60; // Current time range in seconds (default 1 minute)
 const PRICE_HISTORY_KEY = 'btc_price_history';
 const PRICE_HISTORY_MAX_AGE_MS = 60000; // Keep data for 60 seconds
 
 // High-resolution chart for smooth scrolling
 const CHART_UPDATE_INTERVAL_MS = 55; // Update chart every 55ms (~18 points/sec, 10% reduction)
-const POINTS_PER_SECOND = 1000 / CHART_UPDATE_INTERVAL_MS; // ~18.18 points per second
-const MAX_CHART_POINTS = Math.floor(MAX_PRICE_SECONDS * POINTS_PER_SECOND); // 1090 points total (must be integer)
+const BASE_POINTS_PER_SECOND = 1000 / CHART_UPDATE_INTERVAL_MS; // ~18.18 points per second
+const MAX_CHART_POINTS = 2000; // Maximum points to display to prevent memory issues
 let chartDataPoints = []; // High-resolution data for smooth scrolling
 let chartUpdateTimer = null;
+let currentSamplingRate = 1; // How many data points to skip (1 = no skip, 2 = every other, etc.)
+
+// Calculate optimal sampling rate based on time range to stay under MAX_CHART_POINTS
+function getOptimalSamplingRate(timeRangeSeconds) {
+    if (!timeRangeSeconds) {
+        // For 'ALL', estimate based on current data
+        const estimatedSeconds = Math.max(300, chartDataPoints.length / BASE_POINTS_PER_SECOND);
+        timeRangeSeconds = estimatedSeconds;
+    }
+
+    const totalPoints = timeRangeSeconds * BASE_POINTS_PER_SECOND;
+    const samplingRate = Math.max(1, Math.ceil(totalPoints / MAX_CHART_POINTS));
+    return samplingRate;
+}
+
+// Get effective points per second after sampling
+function getEffectivePointsPerSecond(timeRangeSeconds) {
+    const samplingRate = getOptimalSamplingRate(timeRangeSeconds);
+    return BASE_POINTS_PER_SECOND / samplingRate;
+}
 
 // Price interpolation
 let lastActualPrice = null;
@@ -154,50 +174,147 @@ window.addEventListener('load', async () => {
 
 // ============= SESSION MANAGEMENT =============
 
+const WALLET_CACHE_KEY = 'backpack_wallet_cached';
+const WALLET_CACHE_ADDRESS_KEY = 'backpack_wallet_address';
+
+// Cache wallet connection preference
+function cacheWalletConnection(address) {
+    try {
+        localStorage.setItem(WALLET_CACHE_KEY, 'true');
+        localStorage.setItem(WALLET_CACHE_ADDRESS_KEY, address);
+        console.log('[Cache] Wallet connection cached:', address);
+    } catch (err) {
+        console.warn('[Cache] Failed to cache wallet:', err);
+    }
+}
+
+// Clear wallet cache
+function clearWalletCache() {
+    try {
+        localStorage.removeItem(WALLET_CACHE_KEY);
+        localStorage.removeItem(WALLET_CACHE_ADDRESS_KEY);
+        console.log('[Cache] Wallet cache cleared');
+
+        // Also clear session wallet cache for safety
+        clearSessionWalletCache();
+    } catch (err) {
+        console.warn('[Cache] Failed to clear cache:', err);
+    }
+}
+
+// Get cached wallet address
+function getCachedWalletAddress() {
+    try {
+        const isCached = localStorage.getItem(WALLET_CACHE_KEY);
+        const cachedAddress = localStorage.getItem(WALLET_CACHE_ADDRESS_KEY);
+        if (isCached === 'true' && cachedAddress) {
+            return cachedAddress;
+        }
+    } catch (err) {
+        console.warn('[Cache] Failed to get cached wallet:', err);
+    }
+    return null;
+}
+
 async function restoreSession() {
     try {
-        // Check if Backpack is available and already connected
+        // Check if Backpack is available
         if (!window.backpack) {
             console.log('Backpack not detected');
             showNoWallet();
+            clearWalletCache(); // Clear cache if Backpack not available
             return;
         }
 
-        // Check if Backpack is already connected (user previously connected)
-        if (!window.backpack.isConnected) {
-            console.log('Backpack not connected, user must click Connect');
-            showNoWallet();
+        // Check for cached wallet preference
+        const cachedAddress = getCachedWalletAddress();
+
+        // If Backpack is already connected, restore immediately
+        if (window.backpack.isConnected) {
+            console.log('[Restore] Backpack already connected, restoring session...');
+            addLog('Restoring session...', 'info');
+
+            backpackWallet = window.backpack;
+            const backpackAddress = backpackWallet.publicKey.toString();
+
+            console.log('[Restore] Backpack address:', backpackAddress);
+
+            // Verify cached address matches current Backpack wallet (if cached)
+            if (cachedAddress && cachedAddress !== backpackAddress) {
+                console.log('[Restore] Cached wallet mismatch, updating cache');
+                clearWalletCache();
+            }
+
+            // Cache the connection
+            cacheWalletConnection(backpackAddress);
+
+            // Derive session wallet (will request signature)
+            addLog('Deriving session wallet...', 'info');
+            wallet = await deriveSessionWalletFromBackpack(backpackWallet);
+
+            const sessionAddr = wallet.publicKey.toString();
+            console.log('[Restore] Session wallet restored:', sessionAddr);
+
+            addLog('Session restored: ' + sessionAddr.substring(0, 12) + '...', 'success');
+
+            // Update UI
+            showHasWallet(backpackAddress);
+            updateWalletBalance();
+            fetchPositionData();
+            showStatus('Session restored: ' + sessionAddr);
+
             return;
         }
 
-        // Backpack is already connected! Silently restore session
-        console.log('[Restore] Backpack already connected, restoring session...');
-        addLog('Restoring session...', 'info');
+        // If we have a cached connection preference but not connected, try to reconnect
+        if (cachedAddress) {
+            console.log('[Restore] Found cached wallet, attempting auto-reconnect...');
+            addLog('Auto-reconnecting to Backpack...', 'info');
 
-        backpackWallet = window.backpack;
-        const backpackAddress = backpackWallet.publicKey.toString();
+            try {
+                // Attempt silent reconnection
+                const response = await window.backpack.connect();
+                backpackWallet = window.backpack;
+                const backpackAddress = backpackWallet.publicKey.toString();
 
-        console.log('[Restore] Backpack address:', backpackAddress);
+                // Verify it matches the cached address
+                if (backpackAddress !== cachedAddress) {
+                    console.log('[Restore] Wallet address changed, clearing cache');
+                    clearWalletCache();
+                }
 
-        // Derive session wallet (will request signature)
-        addLog('Deriving session wallet...', 'info');
-        wallet = await deriveSessionWalletFromBackpack(backpackWallet);
+                // Update cache
+                cacheWalletConnection(backpackAddress);
 
-        const sessionAddr = wallet.publicKey.toString();
-        console.log('[Restore] Session wallet restored:', sessionAddr);
+                // Derive session wallet
+                addLog('Deriving session wallet...', 'info');
+                wallet = await deriveSessionWalletFromBackpack(backpackWallet);
 
-        addLog('Session restored: ' + sessionAddr.substring(0, 12) + '...', 'success');
+                const sessionAddr = wallet.publicKey.toString();
+                console.log('[Restore] Session wallet auto-restored:', sessionAddr);
 
-        // Update UI
-        showHasWallet(backpackAddress);
-        updateWalletBalance();
-        fetchPositionData();
-        showStatus('Session restored: ' + sessionAddr);
+                addLog('Wallet auto-reconnected: ' + sessionAddr.substring(0, 12) + '...', 'success');
+
+                // Update UI
+                showHasWallet(backpackAddress);
+                updateWalletBalance();
+                fetchPositionData();
+                showStatus('Auto-reconnected: ' + sessionAddr);
+
+                return;
+            } catch (reconnectErr) {
+                console.log('[Restore] Auto-reconnect failed:', reconnectErr);
+                clearWalletCache(); // Clear cache if auto-reconnect fails
+            }
+        }
+
+        // No cache or auto-reconnect failed
+        console.log('No cached wallet or auto-reconnect failed, user must click Connect');
+        showNoWallet();
 
     } catch (err) {
         console.error('[Restore] Failed to restore session:', err);
-        // Don't show error to user, just show disconnected state
-        // User can manually click Connect if they want
+        clearWalletCache(); // Clear cache on error
         showNoWallet();
     }
 }
@@ -234,6 +351,9 @@ function setupBackpackAccountListener() {
             // Update backpack wallet reference
             backpackWallet = window.backpack;
 
+            // Clear old session wallet cache before deriving new one
+            clearSessionWalletCache();
+
             // Re-derive session wallet for the new Backpack wallet
             addLog('Re-deriving session wallet for new Backpack account...', 'info');
             console.log('[Account Switch] Deriving new session wallet...');
@@ -245,6 +365,9 @@ function setupBackpackAccountListener() {
 
             addLog('Switched to session wallet: ' + sessionAddr.substring(0, 12) + '...', 'success');
             addLog('This is the deterministic session wallet for your new Backpack account', 'info');
+
+            // Update cache with new wallet address
+            cacheWalletConnection(newBackpackAddress);
 
             // Update UI
             showHasWallet(newBackpackAddress);
@@ -304,6 +427,9 @@ async function connectBackpack() {
         addLog('This wallet is deterministically derived from your Backpack signature', 'info');
         addLog('Same Backpack = Same session wallet, on any device!', 'info');
 
+        // Cache the wallet connection for auto-reconnect on page navigation
+        cacheWalletConnection(backpackAddress);
+
         console.log('[DEBUG] About to call showHasWallet...');
         showHasWallet(backpackAddress);
         console.log('[DEBUG] showHasWallet completed');
@@ -316,16 +442,22 @@ async function connectBackpack() {
         addLog('Connection failed: ' + err.message, 'error');
         showError('Failed to connect Backpack: ' + err.message);
         console.error(err);
+        clearWalletCache(); // Clear cache on connection failure
     }
 }
 
 function disconnectWallet() {
     addLog('Disconnecting wallet...', 'info');
 
-    // Clear wallet references but KEEP localStorage session
-    // This way the same session wallet will be restored when reconnecting
+    // Clear wallet references and cache
     wallet = null;
     backpackWallet = null;
+
+    // Clear wallet cache to prevent auto-reconnect
+    clearWalletCache();
+
+    // Clear session wallet cache
+    clearSessionWalletCache();
 
     // Disconnect Backpack if connected
     if (window.backpack && window.backpack.disconnect) {
@@ -333,7 +465,7 @@ function disconnectWallet() {
     }
 
     showNoWallet();
-    addLog('Wallet disconnected. Your session wallet is saved and will be restored when you reconnect.', 'success');
+    addLog('Wallet disconnected.', 'success');
 }
 
 // Simple base58 encoder using the base58 alphabet
@@ -365,13 +497,79 @@ function bs58encode(bytes) {
 
 // ============= DETERMINISTIC SESSION WALLET =============
 
+const SESSION_WALLET_SEED_KEY = 'session_wallet_seed';
+const SESSION_WALLET_ADDRESS_KEY = 'session_wallet_address';
+
+// Cache session wallet seed in sessionStorage (persists during browser session only)
+function cacheSessionWallet(seed, address) {
+    try {
+        // Convert Uint8Array seed to hex string for storage
+        const seedHex = Array.from(seed).map(b => b.toString(16).padStart(2, '0')).join('');
+        sessionStorage.setItem(SESSION_WALLET_SEED_KEY, seedHex);
+        sessionStorage.setItem(SESSION_WALLET_ADDRESS_KEY, address);
+        console.log('[Session Cache] Wallet seed cached for address:', address);
+    } catch (err) {
+        console.warn('[Session Cache] Failed to cache wallet seed:', err);
+    }
+}
+
+// Get cached session wallet from sessionStorage
+function getCachedSessionWallet() {
+    try {
+        const seedHex = sessionStorage.getItem(SESSION_WALLET_SEED_KEY);
+        const address = sessionStorage.getItem(SESSION_WALLET_ADDRESS_KEY);
+
+        if (seedHex && address) {
+            // Convert hex string back to Uint8Array
+            const seed = new Uint8Array(seedHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            console.log('[Session Cache] Found cached wallet seed for address:', address);
+            return { seed, address };
+        }
+    } catch (err) {
+        console.warn('[Session Cache] Failed to get cached wallet:', err);
+    }
+    return null;
+}
+
+// Clear cached session wallet
+function clearSessionWalletCache() {
+    try {
+        sessionStorage.removeItem(SESSION_WALLET_SEED_KEY);
+        sessionStorage.removeItem(SESSION_WALLET_ADDRESS_KEY);
+        console.log('[Session Cache] Wallet seed cache cleared');
+    } catch (err) {
+        console.warn('[Session Cache] Failed to clear wallet cache:', err);
+    }
+}
+
 // Derive a deterministic session wallet from Backpack signature
 // This is SECURE because:
 // 1. Signature is derived from Backpack's private key (only owner can produce it)
 // 2. Same Backpack wallet always produces same signature for same message
 // 3. Signature is 64 bytes = 512 bits of entropy (more than enough for Ed25519 seed)
-// 4. No localStorage needed - wallet is reproducible from signature alone
+// 4. Cached in sessionStorage during browser session to avoid re-prompting
 async function deriveSessionWalletFromBackpack(backpackWallet) {
+    const backpackAddress = backpackWallet.publicKey.toString();
+
+    // Check for cached session wallet first
+    const cached = getCachedSessionWallet();
+    if (cached) {
+        console.log('[Derive] Using cached session wallet, no signature needed');
+        addLog('Restoring cached session wallet...', 'info');
+
+        // Verify the cached address matches (safety check)
+        const keypair = solanaWeb3.Keypair.fromSeed(cached.seed);
+        const derivedAddress = keypair.publicKey.toString();
+
+        if (derivedAddress === cached.address) {
+            console.log('[Derive] Cached wallet verified:', derivedAddress);
+            return keypair;
+        } else {
+            console.warn('[Derive] Cached wallet mismatch, re-deriving');
+            clearSessionWalletCache();
+        }
+    }
+
     const message = new TextEncoder().encode('x1-markets-deterministic-session-wallet-v1');
 
     try {
@@ -413,6 +611,10 @@ async function deriveSessionWalletFromBackpack(backpackWallet) {
         console.log('[DEBUG derive] Keypair publicKey:', keypair.publicKey.toString());
         console.log('[DEBUG derive] Keypair type:', typeof keypair);
         console.log('[DEBUG derive] Keypair is null?', keypair === null);
+
+        // Cache the session wallet seed for this browser session
+        const sessionAddress = keypair.publicKey.toString();
+        cacheSessionWallet(seed, sessionAddress);
 
         addLog('Session wallet derived from signature (deterministic)', 'success');
         addLog('Same Backpack = Same session wallet, always!', 'info');
@@ -791,42 +993,217 @@ This is a temporary wallet for trading only.
 
 // ============= BTC PRICE CHART =============
 
-// Save price history to localStorage
-function savePriceHistory() {
+// Save price to server (no longer using localStorage)
+async function savePriceToServer(price) {
     try {
-        const data = {
-            prices: priceHistory,
-            lastUpdate: Date.now()
-        };
-        localStorage.setItem(PRICE_HISTORY_KEY, JSON.stringify(data));
+        const response = await fetch('/api/price-history', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ price })
+        });
+
+        if (!response.ok) {
+            console.warn('Failed to save price to server:', response.status);
+        }
     } catch (err) {
-        console.warn('Failed to save price history:', err);
+        console.warn('Failed to save price to server:', err);
     }
 }
 
-// Load price history from localStorage
-function loadPriceHistory() {
+// Load price history from server
+async function loadPriceHistory(seconds = null) {
     try {
-        const stored = localStorage.getItem(PRICE_HISTORY_KEY);
-        if (!stored) return;
+        // Build URL with optional time range parameter
+        const url = seconds ? `/api/price-history?seconds=${seconds}` : '/api/price-history';
+        const response = await fetch(url);
+        if (!response.ok) {
+            console.warn('Failed to load price history from server:', response.status);
+            return;
+        }
 
-        const data = JSON.parse(stored);
-        const age = Date.now() - data.lastUpdate;
+        const data = await response.json();
+        if (data.prices && Array.isArray(data.prices)) {
+            // Extract just the price values (server stores {price, timestamp} objects)
+            priceHistory = data.prices.map(item => {
+                return typeof item === 'number' ? item : item.price;
+            });
 
-        // Only load if data is less than 60 seconds old
-        if (age < PRICE_HISTORY_MAX_AGE_MS && data.prices && Array.isArray(data.prices)) {
-            priceHistory.push(...data.prices);
-            console.log('Loaded', priceHistory.length, 'price points from localStorage (age:', Math.round(age/1000), 's)');
+            console.log('Loaded', priceHistory.length, 'price points from server (total available:', data.totalPoints || priceHistory.length, ')');
 
             // Update chart if already initialized
             if (btcChart && priceHistory.length > 0) {
-                const chartData = [...Array(MAX_PRICE_POINTS - priceHistory.length).fill(null), ...priceHistory];
-                btcChart.data.datasets[0].data = chartData;
-                btcChart.update('none');
+                // Rebuild high-resolution chart data from price history
+                rebuildChartFromHistory();
             }
         }
     } catch (err) {
-        console.warn('Failed to load price history:', err);
+        console.warn('Failed to load price history from server:', err);
+    }
+}
+
+// Available time ranges (in order for cycling)
+const TIME_RANGES = [60, 300, 900, 1800, 3600];
+let currentTimeRangeIndex = 0;
+
+// Toggle time range dropdown menu
+function toggleTimeRangeDropdown() {
+    const menu = document.getElementById('timeRangeMenu');
+    const trigger = document.querySelector('.timerange-dropdown-trigger');
+
+    if (menu && trigger) {
+        const isOpen = menu.classList.contains('show');
+
+        if (isOpen) {
+            menu.classList.remove('show');
+            trigger.classList.remove('active');
+        } else {
+            menu.classList.add('show');
+            trigger.classList.add('active');
+        }
+    }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const dropdown = document.querySelector('.chart-timerange-dropdown');
+    const menu = document.getElementById('timeRangeMenu');
+    const trigger = document.querySelector('.timerange-dropdown-trigger');
+
+    if (dropdown && menu && trigger && !dropdown.contains(e.target)) {
+        menu.classList.remove('show');
+        trigger.classList.remove('active');
+    }
+});
+
+// Select a specific time range
+async function selectTimeRange(seconds) {
+    // Update active option in dropdown
+    document.querySelectorAll('.timerange-option').forEach(opt => {
+        opt.classList.remove('active');
+    });
+    const activeOpt = document.querySelector(`.timerange-option[data-seconds="${seconds}"]`);
+    if (activeOpt) {
+        activeOpt.classList.add('active');
+    }
+
+    // Update displayed value in trigger
+    const selectedDisplay = document.getElementById('selectedTimeRange');
+    if (selectedDisplay) {
+        selectedDisplay.textContent = activeOpt ? activeOpt.textContent : seconds;
+    }
+
+    // Close dropdown
+    const menu = document.getElementById('timeRangeMenu');
+    const trigger = document.querySelector('.timerange-dropdown-trigger');
+    if (menu && trigger) {
+        menu.classList.remove('show');
+        trigger.classList.remove('active');
+    }
+
+    // Update current index
+    currentTimeRangeIndex = TIME_RANGES.indexOf(seconds);
+
+    // Load data
+    currentTimeRange = parseInt(seconds);
+    await loadPriceHistory(currentTimeRange);
+
+    // Recalculate sampling rate and restart chart update loop
+    currentSamplingRate = getOptimalSamplingRate(currentTimeRange);
+    const effectivePointsPerSecond = getEffectivePointsPerSecond(currentTimeRange);
+    console.log(`Time range changed to ${seconds}s - Sampling rate: ${currentSamplingRate} (${effectivePointsPerSecond.toFixed(2)} points/sec)`);
+
+    // Restart chart update loop to reset counter
+    if (chartUpdateTimer) {
+        startChartUpdateLoop();
+    }
+}
+
+// Cycle to next time range (for chart click)
+async function cycleTimeRange() {
+    currentTimeRangeIndex = (currentTimeRangeIndex + 1) % TIME_RANGES.length;
+    const nextRange = TIME_RANGES[currentTimeRangeIndex];
+    await selectTimeRange(nextRange);
+}
+
+// Generate time labels for chart X-axis
+function generateTimeLabels(numPoints, timeRangeSeconds) {
+    const labels = [];
+    const now = Date.now();
+    const msPerPoint = timeRangeSeconds ? (timeRangeSeconds * 1000) / numPoints : (60 * 1000) / numPoints;
+
+    for (let i = 0; i < numPoints; i++) {
+        const timestamp = now - (numPoints - i) * msPerPoint;
+        const date = new Date(timestamp);
+        const seconds = date.getSeconds().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const hours = date.getHours().toString().padStart(2, '0');
+
+        // Show different formats based on time range
+        if (!timeRangeSeconds || timeRangeSeconds <= 300) {
+            // For <= 5 minutes, show MM:SS
+            labels.push(`${minutes}:${seconds}`);
+        } else if (timeRangeSeconds <= 3600) {
+            // For <= 1 hour, show HH:MM
+            labels.push(`${hours}:${minutes}`);
+        } else {
+            // For > 1 hour, show HH:MM
+            labels.push(`${hours}:${minutes}`);
+        }
+    }
+
+    return labels;
+}
+
+// Rebuild high-resolution chart data from price history
+function rebuildChartFromHistory() {
+    if (priceHistory.length === 0) return;
+
+    // Calculate optimal sampling rate for current time range
+    currentSamplingRate = getOptimalSamplingRate(currentTimeRange);
+    const effectivePointsPerSecond = getEffectivePointsPerSecond(currentTimeRange);
+
+    console.log(`Rebuilding chart with sampling rate: ${currentSamplingRate} (${effectivePointsPerSecond.toFixed(2)} points/sec)`);
+
+    chartDataPoints = [];
+    let sampleCounter = 0;
+
+    // Interpolate between historical prices to create smooth chart
+    for (let i = 0; i < priceHistory.length; i++) {
+        const currentPrice = priceHistory[i];
+        const nextPrice = i < priceHistory.length - 1 ? priceHistory[i + 1] : currentPrice;
+
+        // Add interpolated points for this second (with sampling)
+        for (let j = 0; j < BASE_POINTS_PER_SECOND; j++) {
+            // Only add point if it passes sampling filter
+            if (sampleCounter % currentSamplingRate === 0) {
+                const t = j / BASE_POINTS_PER_SECOND;
+                const interpolatedPrice = currentPrice + (nextPrice - currentPrice) * t;
+                chartDataPoints.push(interpolatedPrice);
+            }
+            sampleCounter++;
+        }
+    }
+
+    // Calculate max points based on current time range with effective rate
+    const maxPoints = currentTimeRange
+        ? Math.floor(currentTimeRange * effectivePointsPerSecond)
+        : Math.min(chartDataPoints.length, MAX_CHART_POINTS);
+
+    // Keep only last maxPoints
+    if (chartDataPoints.length > maxPoints) {
+        chartDataPoints = chartDataPoints.slice(-maxPoints);
+    }
+
+    // Update chart
+    if (btcChart) {
+        // Resize chart data arrays to match new time range
+        const timeRange = currentTimeRange || (chartDataPoints.length / effectivePointsPerSecond);
+        btcChart.data.labels = generateTimeLabels(maxPoints, timeRange);
+        const chartData = [...Array(maxPoints - chartDataPoints.length).fill(null), ...chartDataPoints];
+        btcChart.data.datasets[0].data = chartData;
+        btcChart.update('none');
     }
 }
 
@@ -846,9 +1223,17 @@ function initBTCChart() {
 
     console.log('Initializing BTC Chart...');
 
-    // Initialize with empty data (high resolution for smooth scrolling)
-    const labels = Array(MAX_CHART_POINTS).fill('');
-    const data = Array(MAX_CHART_POINTS).fill(null);
+    // Calculate optimal sampling for initial chart setup
+    currentSamplingRate = getOptimalSamplingRate(currentTimeRange);
+    const effectivePointsPerSecond = getEffectivePointsPerSecond(currentTimeRange);
+
+    // Initialize with empty data (using effective sampling rate)
+    const initialPoints = currentTimeRange ? Math.floor(currentTimeRange * effectivePointsPerSecond) : Math.floor(60 * effectivePointsPerSecond);
+    const initialTimeRange = currentTimeRange || 60;
+    const labels = generateTimeLabels(initialPoints, initialTimeRange);
+    const data = Array(initialPoints).fill(null);
+
+    console.log(`Chart initialized: ${initialPoints} points, ${effectivePointsPerSecond.toFixed(2)} points/sec, sampling rate: ${currentSamplingRate}`);
 
     btcChart = new Chart(ctx, {
         type: 'line',
@@ -882,7 +1267,7 @@ function initBTCChart() {
                     display: false
                 },
                 tooltip: {
-                    enabled: true,
+                    enabled: window.innerWidth > 768,  // Disable on mobile (≤768px)
                     position: 'nearest',
                     backgroundColor: 'rgba(0, 0, 0, 0.9)',
                     titleColor: '#fff',
@@ -913,9 +1298,24 @@ function initBTCChart() {
             },
             scales: {
                 x: {
-                    display: false,
+                    display: true,
                     grid: {
-                        display: false
+                        color: 'rgba(139, 146, 168, 0.05)',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: '#5a6178',
+                        font: {
+                            family: "'SF Mono', Monaco, monospace",
+                            size: 10
+                        },
+                        maxTicksLimit: 8,
+                        autoSkip: true,
+                        callback: function(value, index) {
+                            // Show time label for this tick
+                            const label = this.getLabelForValue(value);
+                            return label;
+                        }
                     }
                 },
                 y: {
@@ -948,6 +1348,14 @@ function initBTCChart() {
 
     console.log('BTC Chart initialized successfully!');
 
+    // Add click handler to chart canvas for cycling time ranges
+    const canvas = document.getElementById('btcChart');
+    if (canvas) {
+        canvas.addEventListener('click', async () => {
+            await cycleTimeRange();
+        });
+    }
+
     // Start the smooth scrolling update loop
     startChartUpdateLoop();
 }
@@ -957,6 +1365,8 @@ function startChartUpdateLoop() {
     if (chartUpdateTimer) {
         clearInterval(chartUpdateTimer);
     }
+
+    let updateCounter = 0; // Counter for sampling
 
     chartUpdateTimer = setInterval(() => {
         if (!btcChart || !currentTargetPrice) return;
@@ -970,22 +1380,40 @@ function startChartUpdateLoop() {
             lastActualPrice = displayPrice;
         }
 
-        // Add new point to chart data
-        chartDataPoints.push(displayPrice);
+        // Only add point if it passes sampling filter
+        if (updateCounter % currentSamplingRate === 0) {
+            chartDataPoints.push(displayPrice);
 
-        // Keep only the last MAX_CHART_POINTS
-        if (chartDataPoints.length > MAX_CHART_POINTS) {
-            chartDataPoints.shift(); // Remove oldest point - this creates the scrolling effect!
+            // Calculate effective points per second and max points
+            const effectivePointsPerSecond = getEffectivePointsPerSecond(currentTimeRange);
+            const maxPoints = currentTimeRange
+                ? Math.floor(currentTimeRange * effectivePointsPerSecond)
+                : Math.min(chartDataPoints.length, MAX_CHART_POINTS);
+
+            // Keep only the last maxPoints
+            if (chartDataPoints.length > maxPoints) {
+                chartDataPoints.shift(); // Remove oldest point - this creates the scrolling effect!
+            }
+
+            // Pad with nulls if we don't have enough data yet
+            const chartData = [...Array(maxPoints - chartDataPoints.length).fill(null), ...chartDataPoints];
+
+            // Update time labels (regenerate every second to keep them fresh)
+            const now = Date.now();
+            if (!this.lastLabelUpdate || now - this.lastLabelUpdate > 1000) {
+                const timeRange = currentTimeRange || (chartDataPoints.length / effectivePointsPerSecond);
+                btcChart.data.labels = generateTimeLabels(maxPoints, timeRange);
+                this.lastLabelUpdate = now;
+            }
+
+            // Update chart
+            btcChart.data.datasets[0].data = chartData;
+            btcChart.update('none'); // No animation - we handle smoothness manually
         }
 
-        // Pad with nulls if we don't have enough data yet
-        const chartData = [...Array(MAX_CHART_POINTS - chartDataPoints.length).fill(null), ...chartDataPoints];
+        updateCounter++;
 
-        // Update chart
-        btcChart.data.datasets[0].data = chartData;
-        btcChart.update('none'); // No animation - we handle smoothness manually
-
-        // Update price display
+        // Always update price display (even if we skip chart update)
         updatePriceDisplay(displayPrice);
     }, CHART_UPDATE_INTERVAL_MS);
 }
@@ -1066,13 +1494,15 @@ function updateBTCChart(price) {
     // Add actual price to history (for persistence and trend calculation)
     priceHistory.push(price);
 
-    // Keep only last MAX_PRICE_SECONDS
-    if (priceHistory.length > MAX_PRICE_SECONDS) {
+    // Keep only what we need in memory (server stores more)
+    // When time range is set, keep that much + buffer; when ALL, keep reasonable amount
+    const memoryLimit = currentTimeRange ? currentTimeRange + 60 : 3600;
+    if (priceHistory.length > memoryLimit) {
         priceHistory.shift();
     }
 
-    // Save to localStorage for persistence across page refreshes
-    savePriceHistory();
+    // Save to server for persistence across page refreshes
+    savePriceToServer(price);
 
     // Update interpolation targets
     lastActualPrice = currentTargetPrice || price;
@@ -1949,21 +2379,52 @@ async function executeTrade() {
         transaction.sign(wallet);
 
         addLog('Submitting transaction...', 'tx');
-        const signature = await connection.sendRawTransaction(transaction.serialize());
+        const signature = await connection.sendRawTransaction(transaction.serialize(), {
+            skipPreflight: false,
+            maxRetries: 3
+        });
         addLog('TX: ' + signature, 'tx');
 
         addLog('Confirming transaction...', 'info');
-        await connection.confirmTransaction(signature, 'confirmed');
 
-        addLog(`Trade SUCCESS: ${tradeDesc}`, 'success');
-        showStatus('Trade success: ' + signature.substring(0, 16) + '...');
+        // Use a longer timeout (60 seconds) and better error handling
+        let confirmed = false;
+        try {
+            await connection.confirmTransaction({
+                signature,
+                blockhash: transaction.recentBlockhash,
+                lastValidBlockHeight: (await connection.getLatestBlockhash()).lastValidBlockHeight
+            }, 'confirmed');
+            confirmed = true;
+        } catch (confirmErr) {
+            // Confirmation timed out - check if transaction actually succeeded
+            addLog('Confirmation timeout - checking transaction status...', 'info');
+            try {
+                const status = await connection.getSignatureStatus(signature);
+                if (status && status.value && status.value.confirmationStatus) {
+                    confirmed = true;
+                    addLog(`Transaction succeeded (status: ${status.value.confirmationStatus})`, 'success');
+                } else {
+                    // Re-throw if transaction genuinely failed
+                    throw confirmErr;
+                }
+            } catch (statusErr) {
+                // If we can't check status, throw original error
+                throw confirmErr;
+            }
+        }
 
-        // Show toast notification
-        const actionText = action.toUpperCase();
-        const sideText = side === 'yes' ? 'UP' : 'DOWN';
-        const toastTitle = `${actionText} ${sideText} Success`;
-        const toastMessage = `${numShares.toFixed(2)} shares @ $${sharePrice.toFixed(4)}`;
-        showToast('success', toastTitle, toastMessage);
+        if (confirmed) {
+            addLog(`Trade SUCCESS: ${tradeDesc}`, 'success');
+            showStatus('Trade success: ' + signature.substring(0, 16) + '...');
+
+            // Show toast notification
+            const actionText = action.toUpperCase();
+            const sideText = side === 'yes' ? 'UP' : 'DOWN';
+            const toastTitle = `${actionText} ${sideText} Success`;
+            const toastMessage = `${numShares.toFixed(2)} shares @ $${sharePrice.toFixed(4)}`;
+            showToast('success', toastTitle, toastMessage);
+        }
 
         // Update last trade info
         updateLastTradeInfo(action, side, numShares, estimatedCost);
@@ -1994,15 +2455,24 @@ async function executeTrade() {
         }, 1000);
 
     } catch (err) {
-        addLog('Trade FAILED: ' + err.message, 'error');
-        showError('Trade failed: ' + err.message);
+        // Better error messages
+        let errorMsg = err.message;
+        if (errorMsg.includes('TransactionExpiredTimeoutError') || errorMsg.includes('was not confirmed')) {
+            errorMsg = 'Transaction confirmation timed out. Check Explorer to verify if transaction succeeded.';
+            addLog('ERROR: ' + errorMsg, 'error');
+        } else {
+            addLog('Trade FAILED: ' + errorMsg, 'error');
+        }
+
+        showError('Trade error - check logs');
 
         // Show error toast
         const actionText = currentAction ? currentAction.toUpperCase() : 'TRADE';
         const sideText = currentSide === 'yes' ? 'UP' : 'DOWN';
-        showToast('error', `${actionText} ${sideText} Failed`, err.message.substring(0, 60));
+        const shortError = errorMsg.length > 60 ? errorMsg.substring(0, 60) + '...' : errorMsg;
+        showToast('error', `${actionText} ${sideText} Issue`, shortError);
 
-        console.error(err);
+        console.error('ERROR: Trade failed:', err);
     }
 }
 
@@ -2832,6 +3302,28 @@ function updateCycleDisplay(status) {
             nextMarketTimeEl.textContent = `Closes: ${endTimeStr}`;
         } else {
             nextMarketTimeEl.textContent = 'Market open';
+        }
+    } else if (status.state === 'SETTLED') {
+        stateEl.textContent = 'SETTLED';
+        stateEl.classList.add('settled');
+
+        // Hide the snapshot section
+        const snapshotSection = document.querySelector('.snapshot-section');
+        if (snapshotSection) {
+            snapshotSection.style.display = 'none';
+        }
+
+        // Show when next market starts
+        if (status.nextCycleStartTime) {
+            const nextStartTime = new Date(status.nextCycleStartTime);
+            const nextTimeStr = nextStartTime.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+            nextMarketTimeEl.textContent = `Next: ${nextTimeStr}`;
+        } else {
+            nextMarketTimeEl.textContent = 'Market settled';
         }
     } else if (status.state === 'WAITING') {
         stateEl.textContent = 'PRE-MARKET';
