@@ -514,6 +514,11 @@
         }
 
         function addTradeToHistory(trade, shouldSave = true) {
+            // Debug log
+            if (!trade.amount || trade.amount === '0.00' || trade.amount === 0) {
+                console.warn('Trade with zero/missing amount:', trade);
+            }
+
             // Remove empty state if present
             const tradeFeed = document.getElementById('tradeFeed');
             const emptyState = tradeFeed.querySelector('.trade-feed-empty');
@@ -553,7 +558,7 @@
 
             // Special handling for REDEEM actions
             if (action === 'redeem') {
-                const amount = trade.amount || '0.00';
+                const amount = (trade.amount !== undefined && trade.amount !== null) ? trade.amount : '0.00';
                 tradeItem.innerHTML = `
                     <div class="trade-side redeem-${side === 'yes' ? 'up' : 'down'}">
                         REDEEM<br>${sideDisplay}
@@ -568,9 +573,10 @@
                     </div>
                 `;
             } else {
-                const avgPrice = trade.avgPrice || trade.price || '0.0000';
-                const shares = trade.shares || '0.00';
-                const amount = trade.amount || '0.00';
+                const avgPrice = (trade.avgPrice !== undefined && trade.avgPrice !== null) ? trade.avgPrice :
+                                 (trade.price !== undefined && trade.price !== null) ? trade.price : '0.0000';
+                const shares = (trade.shares !== undefined && trade.shares !== null) ? trade.shares : '0.00';
+                const amount = (trade.amount !== undefined && trade.amount !== null) ? trade.amount : '0.00';
 
                 tradeItem.innerHTML = `
                     <div class="trade-side ${tradeClass}">
@@ -650,9 +656,9 @@
                                     shares: trade.shares,
                                     avgPrice: trade.avgPrice,
                                     amount: trade.amount,
-                                    user: 'Global',
+                                    user: trade.user || 'Global',
                                     timestamp: trade.timestamp
-                                }, true);
+                                }, false); // Don't save to localStorage - this IS the source
                             });
                         }
                     } else if (data.type === 'trade') {
