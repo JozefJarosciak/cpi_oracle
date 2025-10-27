@@ -22,7 +22,7 @@
                 </div>
             </div>
             <div class="nav-right">
-                <div id="walletNavDisconnected">
+                <div id="walletNavDisconnected" class="hidden">
                     <button class="btn-connect" onclick="connectBackpack()">Connect Wallet</button>
                 </div>
                 <div id="walletNavConnected" class="hidden">
@@ -83,6 +83,24 @@
                             <div class="chart-current-price" id="chartCurrentPrice">$0.00</div>
                         </div>
                     </div>
+
+                    <!-- Time Range Selector - TradingView Style -->
+                    <div class="chart-timerange-dropdown">
+                        <div class="timerange-dropdown-trigger" onclick="toggleTimeRangeDropdown()">
+                            <span id="selectedTimeRange">1m</span>
+                            <svg class="dropdown-arrow" width="12" height="8" viewBox="0 0 12 8">
+                                <path d="M1 1L6 6L11 1" stroke="currentColor" stroke-width="2" fill="none"/>
+                            </svg>
+                        </div>
+                        <div class="timerange-dropdown-menu" id="timeRangeMenu">
+                            <div class="timerange-option active" data-seconds="60" onclick="selectTimeRange(60)">1m</div>
+                            <div class="timerange-option" data-seconds="300" onclick="selectTimeRange(300)">5m</div>
+                            <div class="timerange-option" data-seconds="900" onclick="selectTimeRange(900)">15m</div>
+                            <div class="timerange-option" data-seconds="1800" onclick="selectTimeRange(1800)">30m</div>
+                            <div class="timerange-option" data-seconds="3600" onclick="selectTimeRange(3600)">1h</div>
+                        </div>
+                    </div>
+
                     <div class="chart-wrapper">
                         <div class="price-arrow-indicator" id="priceArrowIndicator">
                             <div class="arrow-icon-wrapper">
@@ -93,7 +111,7 @@
                                 <div class="arrow-label-percent" id="arrowLabelPercent">+0.00%</div>
                             </div>
                         </div>
-                        <canvas id="btcChart"></canvas>
+                        <canvas id="btcChart" style="cursor: pointer;"></canvas>
                     </div>
                 </div>
 
@@ -129,12 +147,12 @@
                     </div>
                     <div id="positionStatusConnected" class="overview-row position-row hidden">
                         <div class="position-card position-long">
-                            <div class="position-side-label">LONG (UP)</div>
+                            <div class="position-side-label">UP</div>
                             <div class="position-shares" id="posYesDisplay">0.00</div>
                             <div class="position-value" id="posYesValue">$0.00</div>
                         </div>
                         <div class="position-card position-short">
-                            <div class="position-side-label">SHORT (DOWN)</div>
+                            <div class="position-side-label">DOWN</div>
                             <div class="position-shares" id="posNoDisplay">0.00</div>
                             <div class="position-value" id="posNoValue">$0.00</div>
                         </div>
