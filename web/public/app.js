@@ -16,7 +16,7 @@ let currentFeeBps = 25; // Default fee in basis points (0.25%)
 // BTC Price Chart
 let btcChart = null;
 let priceHistory = []; // Stores actual BTC prices (one per second)
-let currentTimeRange = 3600; // Current time range in seconds (default 1 hour)
+let currentTimeRange = 60; // Current time range in seconds (default 1 minute for display)
 const PRICE_HISTORY_KEY = 'btc_price_history';
 const PRICE_HISTORY_MAX_AGE_MS = 60000; // Keep data for 60 seconds
 
@@ -158,9 +158,12 @@ window.addEventListener('load', async () => {
     // Try to restore session if Backpack is already connected
     await restoreSession();
 
-    // Load price history from server (default to 1 hour to avoid loading 3.6MB)
-    currentTimeRange = 3600; // Set current time range before loading
+    // Load 1 hour of data to support all time ranges (1m to 1h)
+    // This preloads enough data for switching between time ranges
     await loadPriceHistory(3600);
+
+    // Set display time range to 1 minute (but we have 1h of data loaded)
+    currentTimeRange = 60;
 
     // Initialize BTC chart
     initBTCChart();
@@ -1046,7 +1049,7 @@ async function loadPriceHistory(seconds = null) {
 
 // Available time ranges (in order for cycling)
 const TIME_RANGES = [60, 300, 900, 1800, 3600];
-let currentTimeRangeIndex = 4; // Start at 1h (3600 seconds)
+let currentTimeRangeIndex = 0; // Start at 1m (60 seconds)
 
 // Toggle time range dropdown menu
 function toggleTimeRangeDropdown() {
