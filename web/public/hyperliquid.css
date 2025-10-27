@@ -2151,7 +2151,8 @@ body {
         grid-template-columns: 1fr;
     }
 
-    .stat-item:nth-child(3) {
+    /* Hide TIME instead of NEXT - users can see time on their device, but countdown is critical */
+    .stat-item:nth-child(2) {
         display: none;
     }
 
