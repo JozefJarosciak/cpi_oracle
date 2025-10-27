@@ -998,6 +998,11 @@ function showNoWallet() {
 
     // Disable all action buttons when no wallet connected
     disableActionButtons();
+
+    // Reset position shares
+    userYesShares = 0;
+    userNoShares = 0;
+    validateSellButtons();
 }
 
 function showHasWallet(backpackAddr) {
@@ -2042,6 +2047,10 @@ async function fetchPositionData() {
 }
 
 function updatePositionDisplay(sharesYes, sharesNo) {
+    // Store shares globally for validation
+    userYesShares = sharesYes;
+    userNoShares = sharesNo;
+
     // Update new position status display
     if (document.getElementById('posYesDisplay')) {
         document.getElementById('posYesDisplay').textContent = sharesYes.toFixed(2);
@@ -2049,6 +2058,9 @@ function updatePositionDisplay(sharesYes, sharesNo) {
     if (document.getElementById('posNoDisplay')) {
         document.getElementById('posNoDisplay').textContent = sharesNo.toFixed(2);
     }
+
+    // Validate sell buttons after updating position
+    validateSellButtons();
 
     // Calculate position values using current market prices
     const yesValue = sharesYes * currentYesPrice;
@@ -3547,12 +3559,60 @@ function showError(message) {
 
 let currentAction = 'buy';
 let currentSide = 'yes';
+let userYesShares = 0;
+let userNoShares = 0;
+
+// Validate if user can sell based on their position
+function validateSellButtons() {
+    const yesBtn = document.getElementById('yesBtn');
+    const noBtn = document.getElementById('noBtn');
+
+    if (!yesBtn || !noBtn) return;
+
+    // Only validate when selling
+    if (currentAction !== 'sell') {
+        // Enable both buttons for BUY
+        yesBtn.disabled = false;
+        yesBtn.classList.remove('disabled');
+        noBtn.disabled = false;
+        noBtn.classList.remove('disabled');
+        return;
+    }
+
+    // For SELL, check if user has shares
+    const requestedShares = parseFloat(document.getElementById('tradeAmountShares')?.value) || 0;
+
+    // Disable YES button if no YES shares or insufficient shares
+    if (userYesShares <= 0 || (requestedShares > 0 && requestedShares > userYesShares)) {
+        yesBtn.disabled = true;
+        yesBtn.classList.add('disabled');
+    } else {
+        yesBtn.disabled = false;
+        yesBtn.classList.remove('disabled');
+    }
+
+    // Disable NO button if no NO shares or insufficient shares
+    if (userNoShares <= 0 || (requestedShares > 0 && requestedShares > userNoShares)) {
+        noBtn.disabled = true;
+        noBtn.classList.add('disabled');
+    } else {
+        noBtn.disabled = false;
+        noBtn.classList.remove('disabled');
+    }
+
+    // If current side is disabled, switch to the enabled side (if any)
+    if (currentSide === 'yes' && yesBtn.disabled && !noBtn.disabled) {
+        selectOutcome('no');
+    } else if (currentSide === 'no' && noBtn.disabled && !yesBtn.disabled) {
+        selectOutcome('yes');
+    }
+}
 
 function switchTab(action) {
     currentAction = action;
     const buyTab = document.getElementById('buyTab');
     const sellTab = document.getElementById('sellTab');
-    
+
     if (action === 'buy') {
         buyTab.classList.add('active');
         sellTab.classList.remove('active');
@@ -3562,6 +3622,7 @@ function switchTab(action) {
         buyTab.classList.remove('active');
         document.getElementById('tradeBtn').style.background = '#ff4757';
     }
+    validateSellButtons();
     updateTradeButton();
 }
 
@@ -3569,7 +3630,7 @@ function selectOutcome(side) {
     currentSide = side;
     const yesBtn = document.getElementById('yesBtn');
     const noBtn = document.getElementById('noBtn');
-    
+
     if (side === 'yes') {
         yesBtn.classList.add('active');
         noBtn.classList.remove('active');
@@ -3577,11 +3638,13 @@ function selectOutcome(side) {
         noBtn.classList.add('active');
         yesBtn.classList.remove('active');
     }
+    validateSellButtons();
     updateTradeButton();
 }
 
 function setShares(shares) {
     document.getElementById('tradeAmountShares').value = shares;
+    validateSellButtons();
     updateTradeButton();
 }
 
@@ -3620,10 +3683,22 @@ function clearLog() {
 // ============= INITIALIZATION =============
 
 window.addEventListener('DOMContentLoaded', () => {
-    // Add input listener for trade amount
+    // Add input listener for trade amount (shares)
     const tradeAmountInput = document.getElementById('tradeAmountShares');
     if (tradeAmountInput) {
-        tradeAmountInput.addEventListener('input', updateTradeButton);
+        tradeAmountInput.addEventListener('input', () => {
+            validateSellButtons();
+            updateTradeButton();
+        });
+    }
+
+    // Add input listener for XNT amount
+    const tradeAmountXnt = document.getElementById('tradeAmountXnt');
+    if (tradeAmountXnt) {
+        tradeAmountXnt.addEventListener('input', () => {
+            validateSellButtons();
+            updateTradeButton();
+        });
     }
 });
 
