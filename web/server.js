@@ -1,16 +1,29 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const Database = require('better-sqlite3');
 
 const PORT = 3434;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const STATUS_FILE = path.join(__dirname, '..', 'market_status.json');
-const PRICE_HISTORY_FILE = path.join(__dirname, 'price_history.json');
+const DB_FILE = path.join(__dirname, 'price_history.db');
 const VOLUME_FILE = path.join(__dirname, 'cumulative_volume.json');
 
-// In-memory price history storage
-let priceHistory = [];
-const MAX_PRICE_HISTORY = 86400; // Keep up to 24 hours of price data (1 per second)
+// SQLite database for price history
+const db = new Database(DB_FILE);
+db.pragma('journal_mode = WAL'); // Better concurrency
+
+// Ensure schema exists
+db.exec(`
+    CREATE TABLE IF NOT EXISTS price_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        price REAL NOT NULL,
+        timestamp INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_timestamp ON price_history(timestamp);
+`);
+
+const MAX_PRICE_HISTORY_HOURS = 24; // Keep up to 24 hours of price data
 
 // Cumulative volume storage (never decreases)
 let cumulativeVolume = {
@@ -20,41 +33,61 @@ let cumulativeVolume = {
     lastUpdate: 0    // Timestamp of last update
 };
 
-// Load price history from disk on startup
-function loadPriceHistory() {
+// Get price history count
+function getPriceHistoryCount() {
     try {
-        if (fs.existsSync(PRICE_HISTORY_FILE)) {
-            const data = fs.readFileSync(PRICE_HISTORY_FILE, 'utf8');
-            const parsed = JSON.parse(data);
-            if (parsed.prices && Array.isArray(parsed.prices)) {
-                priceHistory = parsed.prices;
-                console.log(`Loaded ${priceHistory.length} price points from disk`);
-            }
-        }
+        const result = db.prepare('SELECT COUNT(*) as count FROM price_history').get();
+        return result.count;
     } catch (err) {
-        console.warn('Failed to load price history:', err.message);
-        priceHistory = [];
+        console.error('Failed to get price count:', err.message);
+        return 0;
     }
 }
 
-// Save price history to disk (throttled)
-let savePending = false;
-function savePriceHistory() {
-    if (savePending) return;
-    savePending = true;
-
-    setTimeout(() => {
-        try {
-            const data = {
-                prices: priceHistory,
-                lastUpdate: Date.now()
-            };
-            fs.writeFileSync(PRICE_HISTORY_FILE, JSON.stringify(data));
-        } catch (err) {
-            console.warn('Failed to save price history:', err.message);
+// Get price history for a time range
+function getPriceHistory(seconds = null) {
+    try {
+        let stmt;
+        if (seconds) {
+            const cutoffTime = Date.now() - (seconds * 1000);
+            stmt = db.prepare('SELECT price, timestamp FROM price_history WHERE timestamp >= ? ORDER BY timestamp ASC');
+            return stmt.all(cutoffTime);
+        } else {
+            stmt = db.prepare('SELECT price, timestamp FROM price_history ORDER BY timestamp ASC');
+            return stmt.all();
         }
-        savePending = false;
-    }, 1000); // Batch writes every 1 second
+    } catch (err) {
+        console.error('Failed to query price history:', err.message);
+        return [];
+    }
+}
+
+// Add price to history
+function addPriceToHistory(price, timestamp = Date.now()) {
+    try {
+        const stmt = db.prepare('INSERT INTO price_history (price, timestamp) VALUES (?, ?)');
+        stmt.run(price, timestamp);
+        return true;
+    } catch (err) {
+        console.error('Failed to add price:', err.message);
+        return false;
+    }
+}
+
+// Cleanup old price data (older than MAX_PRICE_HISTORY_HOURS)
+function cleanupOldPrices() {
+    try {
+        const cutoffTime = Date.now() - (MAX_PRICE_HISTORY_HOURS * 60 * 60 * 1000);
+        const stmt = db.prepare('DELETE FROM price_history WHERE timestamp < ?');
+        const result = stmt.run(cutoffTime);
+        if (result.changes > 0) {
+            console.log(`Cleaned up ${result.changes} old price records`);
+        }
+        return result.changes;
+    } catch (err) {
+        console.error('Failed to cleanup old prices:', err.message);
+        return 0;
+    }
 }
 
 // Load cumulative volume from disk on startup
@@ -95,9 +128,20 @@ function saveCumulativeVolume() {
     }, 1000); // Batch writes every 1 second
 }
 
-// Initialize price history and volume
-loadPriceHistory();
+// Initialize volume and show DB stats
 loadCumulativeVolume();
+
+// Log database statistics
+const priceCount = getPriceHistoryCount();
+console.log(`SQLite database loaded with ${priceCount} price records`);
+
+// Run cleanup on startup
+cleanupOldPrices();
+
+// Schedule periodic cleanup (every hour)
+setInterval(() => {
+    cleanupOldPrices();
+}, 60 * 60 * 1000);
 
 // Security headers
 const SECURITY_HEADERS = {
@@ -188,12 +232,11 @@ const server = http.createServer((req, res) => {
     if (req.url.startsWith('/api/price-history') && req.method === 'GET') {
         // Parse query parameters for time range
         const urlObj = new URL(req.url, `http://${req.headers.host}`);
-        const seconds = parseInt(urlObj.searchParams.get('seconds')) || priceHistory.length;
+        const seconds = parseInt(urlObj.searchParams.get('seconds')) || null;
 
-        // Return only the requested number of recent data points
-        const requestedData = seconds >= priceHistory.length
-            ? priceHistory
-            : priceHistory.slice(-seconds);
+        // Query from SQLite
+        const prices = getPriceHistory(seconds);
+        const totalCount = getPriceHistoryCount();
 
         res.writeHead(200, {
             'Content-Type': 'application/json',
@@ -201,8 +244,8 @@ const server = http.createServer((req, res) => {
             ...SECURITY_HEADERS
         });
         res.end(JSON.stringify({
-            prices: requestedData,
-            totalPoints: priceHistory.length,
+            prices: prices,
+            totalPoints: totalCount,
             lastUpdate: Date.now()
         }));
         return;
@@ -222,25 +265,23 @@ const server = http.createServer((req, res) => {
             try {
                 const data = JSON.parse(body);
                 if (typeof data.price === 'number' && data.price > 0) {
-                    // Add price with timestamp
-                    priceHistory.push({
-                        price: data.price,
-                        timestamp: Date.now()
-                    });
+                    // Add to SQLite database
+                    const success = addPriceToHistory(data.price);
 
-                    // Keep only last MAX_PRICE_HISTORY points
-                    if (priceHistory.length > MAX_PRICE_HISTORY) {
-                        priceHistory = priceHistory.slice(-MAX_PRICE_HISTORY);
+                    if (success) {
+                        const count = getPriceHistoryCount();
+                        res.writeHead(200, {
+                            'Content-Type': 'application/json',
+                            ...SECURITY_HEADERS
+                        });
+                        res.end(JSON.stringify({ success: true, count: count }));
+                    } else {
+                        res.writeHead(500, {
+                            'Content-Type': 'application/json',
+                            ...SECURITY_HEADERS
+                        });
+                        res.end(JSON.stringify({ error: 'Failed to save price' }));
                     }
-
-                    // Save to disk
-                    savePriceHistory();
-
-                    res.writeHead(200, {
-                        'Content-Type': 'application/json',
-                        ...SECURITY_HEADERS
-                    });
-                    res.end(JSON.stringify({ success: true, count: priceHistory.length }));
                 } else {
                     res.writeHead(400, {
                         'Content-Type': 'application/json',
