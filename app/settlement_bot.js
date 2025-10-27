@@ -613,6 +613,16 @@ async function runCycle(conn, kp, ammPda, vaultPda) {
     await autoRedeemAllPositions(conn, kp, ammPda, vaultPda);
     await new Promise(r => setTimeout(r, 1000));
 
+    // Update status to SETTLED
+    writeStatus({
+      state: "SETTLED",
+      cycleStartTime,
+      snapshotTime,
+      marketEndTime,
+      nextCycleStartTime,
+      lastUpdate: Date.now()
+    });
+
     logSuccess(C.bold("✓ Cycle complete! Next cycle will start immediately with new pre-market."));
 
   } catch (err) {
@@ -762,6 +772,16 @@ async function main() {
     await autoRedeemAllPositions(conn, kp, ammPda, vaultPda);
     await new Promise(r => setTimeout(r, 1000));
   }
+
+  // Update status to SETTLED
+  writeStatus({
+    state: "SETTLED",
+    cycleStartTime: Date.now() - waitMs,
+    snapshotTime: snapshotTime,
+    marketEndTime: marketEndTime,
+    nextCycleStartTime: nextCycleStartTime,
+    lastUpdate: Date.now()
+  });
 
   logSuccess(C.bold("✓ First cycle complete! Starting continuous cycles...\n"));
 
