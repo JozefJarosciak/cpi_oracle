@@ -474,19 +474,36 @@
                 minute: '2-digit'
             });
 
-            tradeItem.innerHTML = `
-                <div class="trade-side ${tradeClass}">
-                    ${action.toUpperCase()}<br>${sideDisplay}
-                </div>
-                <div class="trade-info">
-                    <div class="trade-action">${trade.shares} @ ${trade.price}</div>
-                    <div class="trade-user">${shortAddr}</div>
-                </div>
-                <div class="trade-meta">
-                    <div class="trade-amount">${trade.cost} XNT</div>
-                    <div class="trade-time">${timeStr}</div>
-                </div>
-            `;
+            // Special handling for REDEEM actions
+            if (action === 'redeem') {
+                tradeItem.innerHTML = `
+                    <div class="trade-side redeem-${side === 'yes' ? 'up' : 'down'}">
+                        REDEEM<br>${sideDisplay}
+                    </div>
+                    <div class="trade-info">
+                        <div class="trade-action">Vault paid you</div>
+                        <div class="trade-user">${shortAddr}</div>
+                    </div>
+                    <div class="trade-meta">
+                        <div class="trade-amount">${trade.amount} XNT</div>
+                        <div class="trade-time">${timeStr}</div>
+                    </div>
+                `;
+            } else {
+                tradeItem.innerHTML = `
+                    <div class="trade-side ${tradeClass}">
+                        ${action.toUpperCase()}<br>${sideDisplay}
+                    </div>
+                    <div class="trade-info">
+                        <div class="trade-action">${trade.shares} @ ${trade.avgPrice}</div>
+                        <div class="trade-user">${shortAddr}</div>
+                    </div>
+                    <div class="trade-meta">
+                        <div class="trade-amount">${trade.amount} XNT</div>
+                        <div class="trade-time">${timeStr}</div>
+                    </div>
+                `;
+            }
 
             tradeFeed.insertBefore(tradeItem, tradeFeed.firstChild);
 

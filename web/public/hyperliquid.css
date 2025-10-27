@@ -1051,6 +1051,26 @@ body {
     opacity: 0.7;
 }
 
+.trade-side.redeem-up {
+    background: linear-gradient(135deg, rgba(0, 200, 150, 0.2), rgba(0, 200, 150, 0.1));
+    color: var(--green);
+    border: 1px solid rgba(0, 200, 150, 0.3);
+}
+
+.trade-side.redeem-down {
+    background: linear-gradient(135deg, rgba(255, 83, 83, 0.2), rgba(255, 83, 83, 0.1));
+    color: var(--red);
+    border: 1px solid rgba(255, 83, 83, 0.3);
+}
+
+.trade-item.new-trade .trade-side.redeem-up {
+    box-shadow: 0 0 12px rgba(0, 200, 150, 0.5);
+}
+
+.trade-item.new-trade .trade-side.redeem-down {
+    box-shadow: 0 0 12px rgba(255, 83, 83, 0.5);
+}
+
 .trade-info {
     display: flex;
     flex-direction: column;

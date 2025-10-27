@@ -58,6 +58,46 @@ function logInfo(...args) {
   console.log(C.b(`[INFO]`), ...args);
 }
 
+/* ---------------- Broadcast Redemption to Trade Feed ---------------- */
+function broadcastRedemption(userAddress, amountXnt, winningSide) {
+  try {
+    const TRADES_FILE = "./web/public/recent_trades.json";
+
+    // Create redemption event
+    const redemption = {
+      side: winningSide,
+      action: 'REDEEM',
+      amount: amountXnt.toFixed(2),
+      shares: '0.00',
+      avgPrice: '0.0000',
+      signature: 'auto-redeem',
+      timestamp: Date.now(),
+      user: userAddress
+    };
+
+    // Read existing trades
+    let trades = [];
+    if (fs.existsSync(TRADES_FILE)) {
+      const data = fs.readFileSync(TRADES_FILE, 'utf8');
+      trades = JSON.parse(data);
+    }
+
+    // Add redemption event
+    trades.push(redemption);
+
+    // Keep only last 100
+    if (trades.length > 100) {
+      trades = trades.slice(-100);
+    }
+
+    // Write back
+    fs.writeFileSync(TRADES_FILE, JSON.stringify(trades, null, 2));
+
+  } catch (err) {
+    logError("Failed to broadcast redemption:", err.message);
+  }
+}
+
 /* ---------------- Retry Helper for Blockhash Errors ---------------- */
 async function sendTransactionWithRetry(conn, tx, signers, maxRetries = 3) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -295,6 +335,11 @@ async function autoRedeemAllPositions(conn, kp, ammPda, vaultPda) {
     return;
   }
 
+  // Read market data to get payout info
+  const marketData = await readMarketData(conn, ammPda);
+  const payoutPerShare = marketData ? marketData.payoutPerShare : 0;
+  const winningSide = marketData ? marketData.winningSide : null;
+
   let successCount = 0;
   let failCount = 0;
 
@@ -303,7 +348,18 @@ async function autoRedeemAllPositions(conn, kp, ammPda, vaultPda) {
       const yesSharesDisplay = (pos.yesShares / 1_000_000).toFixed(2);
       const noSharesDisplay = (pos.noShares / 1_000_000).toFixed(2);
 
+      // Calculate payout amount
+      let payoutAmount = 0;
+      if (winningSide === 'YES' && pos.yesShares > 0) {
+        payoutAmount = (pos.yesShares / 1_000_000) * payoutPerShare;
+      } else if (winningSide === 'NO' && pos.noShares > 0) {
+        payoutAmount = (pos.noShares / 1_000_000) * payoutPerShare;
+      }
+
       log(`Redeeming for ${pos.owner.toString().slice(0, 8)}... (UP: ${yesSharesDisplay}, DOWN: ${noSharesDisplay})`);
+
+      // Get user's balance before redeem
+      const balanceBefore = await conn.getBalance(pos.owner);
 
       // Use admin_redeem instruction
       const redeemIx = new TransactionInstruction({
@@ -324,7 +380,15 @@ async function autoRedeemAllPositions(conn, kp, ammPda, vaultPda) {
       const tx = new Transaction().add(budgetIx, redeemIx);
       const sig = await sendTransactionWithRetry(conn, tx, [kp]);
 
-      logSuccess(`  ✓ Redeemed: ${sig.slice(0, 16)}...`);
+      // Get user's balance after redeem
+      const balanceAfter = await conn.getBalance(pos.owner);
+      const actualPayout = (balanceAfter - balanceBefore) / 10_000_000; // Convert lamports to XNT
+
+      logSuccess(`  ✓ Redeemed: ${sig.slice(0, 16)}... → ${actualPayout.toFixed(2)} XNT paid to user`);
+
+      // Broadcast redemption event
+      broadcastRedemption(pos.owner.toString(), actualPayout, winningSide);
+
       successCount++;
 
       // Small delay to avoid rate limits
@@ -397,7 +461,7 @@ async function readMarketData(conn, ammPda) {
     const status = d.readUInt8(8 + o); o += 1;
     const winner = d.readUInt8(8 + o); o += 1;
     o += 8; // wager_total
-    o += 8; // payout_per_share
+    const payoutPerShareE6 = Number(d.readBigInt64LE(8 + o)); o += 8;
     o += 32; // fee_dest
     o += 1; // vault_sol_bump
     const startPriceE6 = Number(d.readBigInt64LE(8 + o));
@@ -410,6 +474,7 @@ async function readMarketData(conn, ammPda) {
 
     const winningSide = yesProb > 0.5 ? 'YES' : 'NO';
     const startPrice = startPriceE6 > 0 ? startPriceE6 / 1_000_000 : null;
+    const payoutPerShare = payoutPerShareE6 / 1_000_000;
 
     return {
       status,
@@ -417,7 +482,8 @@ async function readMarketData(conn, ammPda) {
       winningSide,
       startPrice,
       yesProb,
-      noProb: 1 - yesProb
+      noProb: 1 - yesProb,
+      payoutPerShare
     };
   } catch (err) {
     logError("Failed to read market data:", err.message);
