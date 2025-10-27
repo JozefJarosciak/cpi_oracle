@@ -452,25 +452,35 @@
             }
         }
 
-        // Calculate and update volume statistics from market state
-        // This function will be called from app.js after fetching market data
+        // Fetch and update cumulative volume from server
+        async function updateCumulativeVolume() {
+            try {
+                const response = await fetch('/api/volume');
+                if (!response.ok) {
+                    console.error('Failed to fetch volume:', response.status);
+                    return;
+                }
+
+                const data = await response.json();
+
+                // Update UI with cumulative volume (always increasing, never decreasing)
+                document.getElementById('volumeUp').textContent = data.upVolume.toFixed(2) + ' XNT';
+                document.getElementById('volumeDown').textContent = data.downVolume.toFixed(2) + ' XNT';
+                document.getElementById('volumeTotal').textContent = data.totalVolume.toFixed(2) + ' XNT';
+            } catch (err) {
+                console.error('Error fetching cumulative volume:', err);
+            }
+        }
+
+        // Update volume on page load and periodically
+        updateCumulativeVolume();
+        setInterval(updateCumulativeVolume, 5000); // Update every 5 seconds
+
+        // DEPRECATED: Old function that used market state (qY/qN)
+        // Keeping for backward compatibility but no longer used
         window.updateVolumeStatsFromMarket = function(qYes, qNo) {
-            // qY and qN are in e6 units (1 share = 10_000_000 e6)
-            // Convert to shares then multiply by average price to get volume
-
-            // For a rough estimate of volume, we can use the quantum values
-            // which represent total activity on each side
-            const yesShares = Math.abs(qYes) / 10_000_000;
-            const noShares = Math.abs(qNo) / 10_000_000;
-
-            // Since we don't have exact volume, use shares as a proxy
-            // In LMSR, higher |q| means more volume on that side
-            const totalShares = yesShares + noShares;
-
-            // Update UI with share counts as volume proxy
-            document.getElementById('volumeUp').textContent = yesShares.toFixed(2) + ' shares';
-            document.getElementById('volumeDown').textContent = noShares.toFixed(2) + ' shares';
-            document.getElementById('volumeTotal').textContent = totalShares.toFixed(2) + ' shares';
+            // Now we use server-side cumulative volume instead
+            // This function is deprecated but kept to avoid breaking app.js
         };
 
         // Fallback: Calculate from trade history (for when market data not available)

@@ -14,6 +14,9 @@ const MAX_TRADES = 100;
 const trades = [];
 const TRADES_FILE = './public/recent_trades.json';
 
+// Server URL for cumulative volume updates
+const SERVER_URL = 'http://localhost:3434';
+
 // Chat storage
 const MAX_CHAT_MESSAGES = 100;
 const chatMessages = [];
@@ -155,6 +158,46 @@ function saveTrades() {
     }
 }
 
+// Update cumulative volume on server
+async function updateCumulativeVolume(side, amount) {
+    try {
+        const http = require('http');
+        const data = JSON.stringify({ side, amount });
+
+        const options = {
+            hostname: 'localhost',
+            port: 3434,
+            path: '/api/volume',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': data.length
+            }
+        };
+
+        const req = http.request(options, (res) => {
+            let body = '';
+            res.on('data', (chunk) => body += chunk);
+            res.on('end', () => {
+                if (res.statusCode === 200) {
+                    console.log(`Cumulative volume updated: ${side} +${amount} XNT`);
+                } else {
+                    console.error('Failed to update volume:', body);
+                }
+            });
+        });
+
+        req.on('error', (err) => {
+            console.error('Error updating cumulative volume:', err.message);
+        });
+
+        req.write(data);
+        req.end();
+    } catch (err) {
+        console.error('Failed to update cumulative volume:', err.message);
+    }
+}
+
 function saveChatMessages() {
     try {
         fs.writeFileSync(CHAT_FILE, JSON.stringify(chatMessages.slice(-MAX_CHAT_MESSAGES), null, 2));
@@ -261,6 +304,14 @@ async function startMonitoring() {
                 trades.push(trade);
                 if (trades.length > MAX_TRADES) {
                     trades.shift(); // Remove oldest
+                }
+
+                // Update cumulative volume (only for BUY actions)
+                if (trade.action === 'BUY') {
+                    const amount = parseFloat(trade.amount);
+                    if (!isNaN(amount) && amount > 0) {
+                        updateCumulativeVolume(trade.side, amount);
+                    }
                 }
 
                 // Broadcast to clients

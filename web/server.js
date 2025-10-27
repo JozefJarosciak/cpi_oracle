@@ -6,10 +6,19 @@ const PORT = 3434;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const STATUS_FILE = path.join(__dirname, '..', 'market_status.json');
 const PRICE_HISTORY_FILE = path.join(__dirname, 'price_history.json');
+const VOLUME_FILE = path.join(__dirname, 'cumulative_volume.json');
 
 // In-memory price history storage
 let priceHistory = [];
 const MAX_PRICE_HISTORY = 86400; // Keep up to 24 hours of price data (1 per second)
+
+// Cumulative volume storage (never decreases)
+let cumulativeVolume = {
+    upVolume: 0,     // Total XNT spent on UP/YES trades
+    downVolume: 0,   // Total XNT spent on DOWN/NO trades
+    totalVolume: 0,  // Sum of both
+    lastUpdate: 0    // Timestamp of last update
+};
 
 // Load price history from disk on startup
 function loadPriceHistory() {
@@ -48,8 +57,47 @@ function savePriceHistory() {
     }, 1000); // Batch writes every 1 second
 }
 
-// Initialize price history
+// Load cumulative volume from disk on startup
+function loadCumulativeVolume() {
+    try {
+        if (fs.existsSync(VOLUME_FILE)) {
+            const data = fs.readFileSync(VOLUME_FILE, 'utf8');
+            const parsed = JSON.parse(data);
+            if (parsed && typeof parsed.upVolume === 'number') {
+                cumulativeVolume = parsed;
+                console.log(`Loaded cumulative volume: UP=${cumulativeVolume.upVolume.toFixed(2)}, DOWN=${cumulativeVolume.downVolume.toFixed(2)}, TOTAL=${cumulativeVolume.totalVolume.toFixed(2)}`);
+            }
+        }
+    } catch (err) {
+        console.warn('Failed to load cumulative volume:', err.message);
+        cumulativeVolume = {
+            upVolume: 0,
+            downVolume: 0,
+            totalVolume: 0,
+            lastUpdate: 0
+        };
+    }
+}
+
+// Save cumulative volume to disk (throttled)
+let volumeSavePending = false;
+function saveCumulativeVolume() {
+    if (volumeSavePending) return;
+    volumeSavePending = true;
+
+    setTimeout(() => {
+        try {
+            fs.writeFileSync(VOLUME_FILE, JSON.stringify(cumulativeVolume, null, 2));
+        } catch (err) {
+            console.warn('Failed to save cumulative volume:', err.message);
+        }
+        volumeSavePending = false;
+    }, 1000); // Batch writes every 1 second
+}
+
+// Initialize price history and volume
 loadPriceHistory();
+loadCumulativeVolume();
 
 // Security headers
 const SECURITY_HEADERS = {
@@ -72,6 +120,70 @@ const MIME_TYPES = {
 };
 
 const server = http.createServer((req, res) => {
+    // API: Get cumulative volume
+    if (req.url === '/api/volume' && req.method === 'GET') {
+        res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            ...SECURITY_HEADERS
+        });
+        res.end(JSON.stringify(cumulativeVolume));
+        return;
+    }
+
+    // API: Add to cumulative volume (only increases, never decreases)
+    if (req.url === '/api/volume' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => {
+            body += chunk.toString();
+            if (body.length > 1000) {
+                req.connection.destroy();
+            }
+        });
+        req.on('end', () => {
+            try {
+                const data = JSON.parse(body);
+                const side = data.side; // 'YES' or 'NO'
+                const amount = parseFloat(data.amount); // XNT amount
+
+                if ((side === 'YES' || side === 'NO') && amount > 0) {
+                    // Add to cumulative volume (never subtract)
+                    if (side === 'YES') {
+                        cumulativeVolume.upVolume += amount;
+                    } else {
+                        cumulativeVolume.downVolume += amount;
+                    }
+                    cumulativeVolume.totalVolume = cumulativeVolume.upVolume + cumulativeVolume.downVolume;
+                    cumulativeVolume.lastUpdate = Date.now();
+
+                    // Save to disk
+                    saveCumulativeVolume();
+
+                    console.log(`Volume updated: ${side} +${amount.toFixed(2)} XNT (Total: ${cumulativeVolume.totalVolume.toFixed(2)})`);
+
+                    res.writeHead(200, {
+                        'Content-Type': 'application/json',
+                        ...SECURITY_HEADERS
+                    });
+                    res.end(JSON.stringify({ success: true, volume: cumulativeVolume }));
+                } else {
+                    res.writeHead(400, {
+                        'Content-Type': 'application/json',
+                        ...SECURITY_HEADERS
+                    });
+                    res.end(JSON.stringify({ error: 'Invalid side or amount' }));
+                }
+            } catch (err) {
+                res.writeHead(400, {
+                    'Content-Type': 'application/json',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify({ error: 'Invalid JSON' }));
+            }
+        });
+        return;
+    }
+
     // API: Get price history
     if (req.url.startsWith('/api/price-history') && req.method === 'GET') {
         // Parse query parameters for time range
