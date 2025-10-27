@@ -89,17 +89,17 @@
                 <!-- Time Range Dropdown -->
                 <div class="chart-timerange-dropdown">
                     <div class="timerange-dropdown-trigger" onclick="toggleTimeRangeDropdown()">
-                        <span id="selectedTimeRange">1m</span>
+                        <span id="selectedTimeRange">1h</span>
                         <svg class="dropdown-arrow" width="12" height="8" viewBox="0 0 12 8">
                             <path d="M1 1L6 6L11 1" stroke="currentColor" stroke-width="2" fill="none"/>
                         </svg>
                     </div>
                     <div class="timerange-dropdown-menu" id="timeRangeMenu">
-                        <div class="timerange-option active" data-seconds="60" onclick="selectTimeRange(60)">1m</div>
+                        <div class="timerange-option" data-seconds="60" onclick="selectTimeRange(60)">1m</div>
                         <div class="timerange-option" data-seconds="300" onclick="selectTimeRange(300)">5m</div>
                         <div class="timerange-option" data-seconds="900" onclick="selectTimeRange(900)">15m</div>
                         <div class="timerange-option" data-seconds="1800" onclick="selectTimeRange(1800)">30m</div>
-                        <div class="timerange-option" data-seconds="3600" onclick="selectTimeRange(3600)">1h</div>
+                        <div class="timerange-option active" data-seconds="3600" onclick="selectTimeRange(3600)">1h</div>
                     </div>
                 </div>
 
