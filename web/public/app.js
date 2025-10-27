@@ -3566,6 +3566,7 @@ let userNoShares = 0;
 function validateSellButtons() {
     const yesBtn = document.getElementById('yesBtn');
     const noBtn = document.getElementById('noBtn');
+    const tradeBtn = document.getElementById('tradeBtn');
 
     if (!yesBtn || !noBtn) return;
 
@@ -3576,14 +3577,20 @@ function validateSellButtons() {
         yesBtn.classList.remove('disabled');
         noBtn.disabled = false;
         noBtn.classList.remove('disabled');
+        if (tradeBtn && tradeBtn.disabled) {
+            tradeBtn.disabled = false;
+            tradeBtn.classList.remove('disabled');
+        }
         return;
     }
 
     // For SELL, check if user has shares
     const requestedShares = parseFloat(document.getElementById('tradeAmountShares')?.value) || 0;
 
-    // Disable YES button if no YES shares or insufficient shares
-    if (userYesShares <= 0 || (requestedShares > 0 && requestedShares > userYesShares)) {
+    console.log('[VALIDATION] SELL mode - User has YES:', userYesShares, 'NO:', userNoShares, 'Requested:', requestedShares, 'Current side:', currentSide);
+
+    // Disable YES button if no YES shares
+    if (userYesShares <= 0) {
         yesBtn.disabled = true;
         yesBtn.classList.add('disabled');
     } else {
@@ -3591,13 +3598,26 @@ function validateSellButtons() {
         yesBtn.classList.remove('disabled');
     }
 
-    // Disable NO button if no NO shares or insufficient shares
-    if (userNoShares <= 0 || (requestedShares > 0 && requestedShares > userNoShares)) {
+    // Disable NO button if no NO shares
+    if (userNoShares <= 0) {
         noBtn.disabled = true;
         noBtn.classList.add('disabled');
     } else {
         noBtn.disabled = false;
         noBtn.classList.remove('disabled');
+    }
+
+    // Disable execute button if trying to sell more than available
+    if (tradeBtn && requestedShares > 0) {
+        const availableShares = currentSide === 'yes' ? userYesShares : userNoShares;
+        if (requestedShares > availableShares) {
+            tradeBtn.disabled = true;
+            tradeBtn.classList.add('disabled');
+            console.log('[VALIDATION] Execute button disabled - trying to sell', requestedShares, 'but only have', availableShares);
+        } else {
+            tradeBtn.disabled = false;
+            tradeBtn.classList.remove('disabled');
+        }
     }
 
     // If current side is disabled, switch to the enabled side (if any)
