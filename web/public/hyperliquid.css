@@ -574,6 +574,31 @@ body {
     background: var(--red-hover);
 }
 
+/* Disabled button states */
+button:disabled,
+button.disabled {
+    opacity: 0.4;
+    cursor: not-allowed !important;
+    pointer-events: none;
+    filter: grayscale(1);
+}
+
+.btn-execute:disabled,
+.btn-execute.disabled {
+    background: var(--text-dim) !important;
+}
+
+.tab-btn:disabled,
+.tab-btn.disabled,
+.dir-btn:disabled,
+.dir-btn.disabled,
+.mode-btn:disabled,
+.mode-btn.disabled {
+    opacity: 0.4;
+    cursor: not-allowed !important;
+    pointer-events: none;
+}
+
 /* ===== POSITION PANEL ===== */
 
 .position-panel {

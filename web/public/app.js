@@ -926,6 +926,57 @@ function closeExportModal() {
     }
 }
 
+// Enable/disable action buttons based on wallet connection
+function disableActionButtons() {
+    // Trading buttons
+    const buttons = [
+        'buyTab', 'sellTab',           // Buy/Sell tabs
+        'yesBtn', 'noBtn',              // YES/NO outcome buttons
+        'modeShares', 'modeXnt',        // Shares/XNT mode toggle
+        'tradeBtn'                       // Execute trade button
+    ];
+
+    buttons.forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.disabled = true;
+            btn.classList.add('disabled');
+        }
+    });
+
+    // Quick amount buttons (shares and XNT)
+    const quickButtons = document.querySelectorAll('.quick-amounts button');
+    quickButtons.forEach(btn => {
+        btn.disabled = true;
+        btn.classList.add('disabled');
+    });
+}
+
+function enableActionButtons() {
+    // Trading buttons
+    const buttons = [
+        'buyTab', 'sellTab',
+        'yesBtn', 'noBtn',
+        'modeShares', 'modeXnt',
+        'tradeBtn'
+    ];
+
+    buttons.forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.disabled = false;
+            btn.classList.remove('disabled');
+        }
+    });
+
+    // Quick amount buttons
+    const quickButtons = document.querySelectorAll('.quick-amounts button');
+    quickButtons.forEach(btn => {
+        btn.disabled = false;
+        btn.classList.remove('disabled');
+    });
+}
+
 function showNoWallet() {
     // Nav bar
     if (document.getElementById('walletNavDisconnected')) {
@@ -944,6 +995,9 @@ function showNoWallet() {
         document.getElementById('positionStatusDisconnected').classList.remove('hidden');
         document.getElementById('positionStatusConnected').classList.add('hidden');
     }
+
+    // Disable all action buttons when no wallet connected
+    disableActionButtons();
 }
 
 function showHasWallet(backpackAddr) {
@@ -987,6 +1041,9 @@ function showHasWallet(backpackAddr) {
         document.getElementById('positionStatusConnected').classList.remove('hidden');
         console.log('[DEBUG showHasWallet] Position status updated');
     }
+
+    // Enable all action buttons when wallet connected
+    enableActionButtons();
 
     console.log('[DEBUG showHasWallet] Function completed');
 }
