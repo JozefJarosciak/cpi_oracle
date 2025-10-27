@@ -27,6 +27,11 @@ const CYCLE_DURATION_MS = 10 * 60 * 1000;     // 10 minutes total
 const PREMARKET_DURATION_MS = 5 * 60 * 1000;  // 5 minutes pre-market (no snapshot yet)
 const ACTIVE_DURATION_MS = 5 * 60 * 1000;     // 5 minutes active (after snapshot)
 
+// === LAMPORTS CONVERSION ===
+const LAMPORTS_PER_E6 = 100;                   // Must match Rust program constant
+const E6_PER_XNT = 10_000_000;                 // 1 XNT = 10M e6 units
+const LAMPORTS_PER_XNT = E6_PER_XNT * LAMPORTS_PER_E6; // 1 XNT = 1 billion lamports
+
 // === STATUS FILE ===
 const STATUS_FILE = "./market_status.json";
 
@@ -428,7 +433,8 @@ async function autoRedeemAllPositions(conn, kp, ammPda, vaultPda) {
 
       // Get user's balance after redeem
       const balanceAfter = await conn.getBalance(pos.owner);
-      const actualPayout = (balanceAfter - balanceBefore) / 10_000_000; // Convert lamports to XNT
+      // Convert lamports to XNT using LAMPORTS_PER_XNT constant
+      const actualPayout = (balanceAfter - balanceBefore) / LAMPORTS_PER_XNT;
 
       logSuccess(`  ✓ Redeemed: ${sig.slice(0, 16)}... → ${actualPayout.toFixed(2)} XNT paid to user`);
 
