@@ -3610,7 +3610,9 @@ function validateSellButtons() {
     // Disable execute button if trying to sell more than available
     if (tradeBtn && requestedShares > 0) {
         const availableShares = currentSide === 'yes' ? userYesShares : userNoShares;
-        if (requestedShares > availableShares) {
+        // Use epsilon for floating point comparison (allow selling up to 0.01 more than available due to rounding)
+        const EPSILON = 0.01;
+        if (requestedShares > availableShares + EPSILON) {
             tradeBtn.disabled = true;
             tradeBtn.classList.add('disabled');
             console.log('[VALIDATION] Execute button disabled - trying to sell', requestedShares, 'but only have', availableShares);
