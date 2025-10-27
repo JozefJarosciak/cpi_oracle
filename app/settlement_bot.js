@@ -67,7 +67,7 @@ function broadcastRedemption(userAddress, amountXnt, winningSide) {
     const redemption = {
       side: winningSide,
       action: 'REDEEM',
-      amount: amountXnt.toFixed(2),
+      amount: amountXnt.toFixed(4),
       shares: '0.00',
       avgPrice: '0.0000',
       signature: 'auto-redeem',

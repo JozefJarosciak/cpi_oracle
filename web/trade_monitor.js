@@ -251,7 +251,7 @@ function parseTradeFromLogs(logs, signature) {
                 return {
                     side: side === 1 ? 'YES' : 'NO',
                     action: action === 1 ? 'BUY' : 'SELL',
-                    amount: (net_e6 / 10_000_000).toFixed(2),  // XNT scale: 10M per XNT
+                    amount: (net_e6 / 10_000_000).toFixed(4),  // XNT scale: 10M per XNT, use 4 decimals
                     shares: (dq_e6 / 10_000_000).toFixed(2),   // Wrong scale in contract, divide by 10M
                     avgPrice: (avg_price_e6 / 1_000_000).toFixed(4),
                     signature,

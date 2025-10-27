@@ -1727,6 +1727,11 @@ body {
         margin: 0 12px 16px 12px;
     }
 
+    .activity-panel {
+        order: 102;
+        margin: 0 12px 16px 12px;
+    }
+
     /* Top bar */
     .top-bar {
         height: auto;
