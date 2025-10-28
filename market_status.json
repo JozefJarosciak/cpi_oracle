@@ -1,8 +1,9 @@
 {
-  "state": "SETTLED",
-  "cycleStartTime": 1761626400000,
-  "snapshotTime": 1761626700000,
-  "marketEndTime": 1761627000000,
-  "nextCycleStartTime": 1761627000000,
-  "lastUpdate": 1761627004166
+  "state": "PREMARKET",
+  "cycleStartTime": 1761627600000,
+  "snapshotTime": 1761627900000,
+  "marketEndTime": 1761628200000,
+  "nextCycleStartTime": 1761628200000,
+  "timeRemaining": 266026,
+  "lastUpdate": 1761627633974
 }
