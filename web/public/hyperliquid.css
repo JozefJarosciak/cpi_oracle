@@ -2116,8 +2116,7 @@ button.disabled {
     }
 
     .winning-badge {
-        font-size: 10px;
-        padding: 4px 8px;
+        display: none;
     }
 
     .trade-banner {
