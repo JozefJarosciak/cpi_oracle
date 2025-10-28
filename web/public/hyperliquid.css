@@ -815,9 +815,25 @@ button.disabled {
 }
 
 .volume-stat {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 12px;
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+.volume-stat.volume-up {
+    border-left: 3px solid var(--green);
+}
+
+.volume-stat.volume-down {
+    border-left: 3px solid var(--red);
+}
+
+.volume-stat.volume-total {
+    border-left: 3px solid #888;
 }
 
 .volume-label {
@@ -2150,6 +2166,10 @@ button.disabled {
         grid-template-columns: repeat(3, 1fr);
         gap: 8px;
         padding: 0;
+    }
+
+    .volume-stat {
+        padding: 8px 10px;
     }
 
     .volume-label {
