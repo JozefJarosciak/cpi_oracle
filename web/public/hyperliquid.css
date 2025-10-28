@@ -2144,6 +2144,8 @@ button.disabled {
         padding: 12px 0;
         border-bottom: 1px solid var(--border-color);
         margin-bottom: 8px;
+        flex-direction: column;
+        justify-content: center;
     }
 
     .price-header-label {
