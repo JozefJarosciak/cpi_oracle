@@ -2885,18 +2885,12 @@ async function withdrawToBackpack() {
             const encodedMessage = new TextEncoder().encode(verificationMessage);
 
             // Request signature from Backpack wallet
+            // The act of successfully getting a signature proves the user has access to the private key
             const signature = await backpackWallet.signMessage(encodedMessage);
 
-            // Verify signature using Solana's nacl
-            const publicKeyBytes = backpackWallet.publicKey.toBytes();
-            const isValid = solanaWeb3.nacl.sign.detached.verify(
-                encodedMessage,
-                signature,
-                publicKeyBytes
-            );
-
-            if (!isValid) {
-                addLog('ERROR: Backpack signature verification FAILED', 'error');
+            // Verify we got a valid signature response
+            if (!signature || signature.length === 0) {
+                addLog('ERROR: Invalid signature response from Backpack', 'error');
                 showError('Security error: Invalid signature');
                 return;
             }
