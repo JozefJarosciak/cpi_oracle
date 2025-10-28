@@ -1919,26 +1919,6 @@ button.disabled {
 
 /* Only go vertical on very narrow screens */
 @media (max-width: 700px) {
-    /* Force lock color scheme with !important */
-    :root {
-        --bg-primary: #0a0a0a !important;
-        --bg-secondary: #141414 !important;
-        --bg-tertiary: #1a1a1a !important;
-        --bg-hover: #202020 !important;
-        --border-color: #252525 !important;
-        --border-light: #2a2a2a !important;
-        --text-primary: #e8e8e8 !important;
-        --text-secondary: #888888 !important;
-        --text-dim: #555555 !important;
-        --green: #3fb68b !important;
-        --green-bg: rgba(63, 182, 139, 0.1) !important;
-        --green-hover: #4bc89f !important;
-        --red: #ff5353 !important;
-        --red-bg: rgba(255, 83, 83, 0.1) !important;
-        --red-hover: #ff6b6b !important;
-        --blue: #5b9eff !important;
-    }
-
     .terminal-grid {
         grid-template-columns: 1fr;
         display: flex;
@@ -1961,26 +1941,6 @@ button.disabled {
 
 /* Mobile and small tablets */
 @media (max-width: 768px) {
-    /* Force lock color scheme with !important - never change colors on mobile */
-    :root {
-        --bg-primary: #0a0a0a !important;
-        --bg-secondary: #141414 !important;
-        --bg-tertiary: #1a1a1a !important;
-        --bg-hover: #202020 !important;
-        --border-color: #252525 !important;
-        --border-light: #2a2a2a !important;
-        --text-primary: #e8e8e8 !important;
-        --text-secondary: #888888 !important;
-        --text-dim: #555555 !important;
-        --green: #3fb68b !important;
-        --green-bg: rgba(63, 182, 139, 0.1) !important;
-        --green-hover: #4bc89f !important;
-        --red: #ff5353 !important;
-        --red-bg: rgba(255, 83, 83, 0.1) !important;
-        --red-hover: #ff6b6b !important;
-        --blue: #5b9eff !important;
-    }
-
     /* On mobile, flatten structure using display: contents */
     .terminal-grid {
         display: flex;
@@ -2493,26 +2453,6 @@ button.disabled {
 
 /* Extra small mobile phones */
 @media (max-width: 480px) {
-    /* Force lock color scheme with !important */
-    :root {
-        --bg-primary: #0a0a0a !important;
-        --bg-secondary: #141414 !important;
-        --bg-tertiary: #1a1a1a !important;
-        --bg-hover: #202020 !important;
-        --border-color: #252525 !important;
-        --border-light: #2a2a2a !important;
-        --text-primary: #e8e8e8 !important;
-        --text-secondary: #888888 !important;
-        --text-dim: #555555 !important;
-        --green: #3fb68b !important;
-        --green-bg: rgba(63, 182, 139, 0.1) !important;
-        --green-hover: #4bc89f !important;
-        --red: #ff5353 !important;
-        --red-bg: rgba(255, 83, 83, 0.1) !important;
-        --red-hover: #ff6b6b !important;
-        --blue: #5b9eff !important;
-    }
-
     /* Compress everything further */
     .market-stats {
         grid-template-columns: 1fr;
