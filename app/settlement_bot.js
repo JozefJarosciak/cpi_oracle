@@ -68,13 +68,13 @@ function logInfo(...args) {
 }
 
 /* ---------------- Broadcast Redemption to Trade Feed ---------------- */
-function broadcastRedemption(userAddress, amountXnt, winningSide) {
+function broadcastRedemption(userAddress, amountXnt, userSide) {
   try {
     const TRADES_FILE = "./web/public/recent_trades.json";
 
     // Create redemption event
     const redemption = {
-      side: winningSide,
+      side: userSide, // The side the user held (YES/NO)
       action: 'REDEEM',
       amount: amountXnt.toFixed(4),
       shares: '0.00',
@@ -103,7 +103,7 @@ function broadcastRedemption(userAddress, amountXnt, winningSide) {
     fs.writeFileSync(TRADES_FILE, JSON.stringify(trades, null, 2));
 
     // Also post to settlement history API
-    postSettlementHistory(userAddress, amountXnt, winningSide);
+    postSettlementHistory(userAddress, amountXnt, userSide);
 
   } catch (err) {
     logError("Failed to broadcast redemption:", err.message);
@@ -111,7 +111,7 @@ function broadcastRedemption(userAddress, amountXnt, winningSide) {
 }
 
 /* ---------------- Post Settlement to History API ---------------- */
-function postSettlementHistory(userAddress, amountXnt, winningSide) {
+function postSettlementHistory(userAddress, amountXnt, userSide) {
   try {
     const userPrefix = userAddress.substring(0, 6);
     const result = amountXnt > 0 ? 'WIN' : 'LOSE';
@@ -120,7 +120,7 @@ function postSettlementHistory(userAddress, amountXnt, winningSide) {
       userPrefix: userPrefix,
       result: result,
       amount: amountXnt,
-      side: winningSide
+      side: userSide // The side the user held (YES/NO)
     });
 
     const options = {
@@ -482,8 +482,22 @@ async function autoRedeemAllPositions(conn, kp, ammPda, vaultPda) {
 
       logSuccess(`  ✓ Redeemed: ${sig.slice(0, 16)}... → ${actualPayout.toFixed(2)} XNT paid to user`);
 
-      // Broadcast redemption event
-      broadcastRedemption(pos.owner.toString(), actualPayout, winningSide);
+      // Determine user's actual side based on their position
+      let userSide;
+      if (pos.yesShares > 0 && pos.noShares === 0) {
+        userSide = 'YES';
+      } else if (pos.noShares > 0 && pos.yesShares === 0) {
+        userSide = 'NO';
+      } else if (pos.yesShares > 0 && pos.noShares > 0) {
+        // User has both sides - use whichever is larger
+        userSide = pos.yesShares >= pos.noShares ? 'YES' : 'NO';
+      } else {
+        // No shares - shouldn't happen but default to YES
+        userSide = 'YES';
+      }
+
+      // Broadcast redemption event with user's actual side
+      broadcastRedemption(pos.owner.toString(), actualPayout, userSide);
 
       successCount++;
 
