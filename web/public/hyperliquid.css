@@ -264,7 +264,7 @@ body {
 
 .chart-container {
     padding: 16px;
-    height: 280px;
+    height: 295px;
     position: relative;
 }
 
@@ -2182,7 +2182,7 @@ button.disabled {
 
     /* Chart - margin already set in order section above */
     .chart-container {
-        height: 240px;
+        height: 255px;
         padding: 12px;
     }
 
@@ -2464,7 +2464,7 @@ button.disabled {
     }
 
     .chart-container {
-        height: 200px;
+        height: 215px;
         padding: 8px;
     }
 
