@@ -602,6 +602,12 @@ function clearSessionWalletCache() {
     }
 }
 
+// Force regeneration of session wallet (for migration to new Position format)
+function forceNewSessionWallet() {
+    clearSessionWalletCache();
+    addLog('Session wallet cache cleared - will generate new wallet on next connection', 'info');
+}
+
 // Derive a deterministic session wallet from Backpack signature
 // This is SECURE because:
 // 1. Signature is derived from Backpack's private key (only owner can produce it)
@@ -2898,8 +2904,16 @@ async function withdrawToBackpack() {
             const expectedSize = 8 + 32 + 8 + 8 + 32; // 88 bytes
             if (positionData.length < expectedSize) {
                 addLog(`ERROR: Position account is old format (${positionData.length} bytes, expected ${expectedSize})`, 'error');
-                addLog('Please disconnect and reconnect wallet to create new position', 'error');
-                showError('Old position format detected. Please reconnect wallet.');
+                addLog('MIGRATION REQUIRED: Your position needs to be upgraded', 'error');
+                addLog('', 'info');
+                addLog('To migrate to the new secure format:', 'info');
+                addLog('1. Open browser DevTools (F12)', 'info');
+                addLog('2. Go to Console tab', 'info');
+                addLog('3. Run: sessionStorage.clear(); location.reload();', 'info');
+                addLog('4. Click Connect Wallet again', 'info');
+                addLog('', 'info');
+                addLog('This will create a new session wallet with the updated security features.', 'info');
+                showError('Position format outdated. See Activity log for migration steps.');
                 return;
             }
 
