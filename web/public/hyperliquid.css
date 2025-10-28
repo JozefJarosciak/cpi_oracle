@@ -1941,6 +1941,14 @@ button.disabled {
 
 /* Mobile and small tablets */
 @media (max-width: 768px) {
+    /* Lighter color scheme for better mobile visibility */
+    :root {
+        --border-color: #3a3a3a;
+        --border-light: #454545;
+        --text-secondary: #a8a8a8;
+        --text-dim: #707070;
+    }
+
     /* On mobile, flatten structure using display: contents */
     .terminal-grid {
         display: flex;
