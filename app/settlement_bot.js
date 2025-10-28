@@ -15,7 +15,10 @@ const {
 /* ---------------- CONFIG ---------------- */
 const RPC = process.env.ANCHOR_PROVIDER_URL || "http://127.0.0.1:8899";
 const WALLET = process.env.ANCHOR_WALLET || "./operator.json"; // Default to operator.json (fee_dest)
-const ORACLE_STATE = process.env.ORACLE_STATE ? new PublicKey(process.env.ORACLE_STATE) : null;
+const DEFAULT_ORACLE_STATE = "4KYeNyv1B9YjjQkfJk2C6Uqo71vKzFZriRe5NXg6GyCq"; // Default BTC oracle
+const ORACLE_STATE = process.env.ORACLE_STATE
+  ? new PublicKey(process.env.ORACLE_STATE)
+  : new PublicKey(DEFAULT_ORACLE_STATE);
 
 // === PROGRAM IDs / SEEDS ===
 const PID = new PublicKey("EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF");
@@ -149,6 +152,41 @@ function postSettlementHistory(userAddress, amountXnt, winningSide) {
   }
 }
 
+/* ---------------- Reset Volume for New Market Cycle ---------------- */
+async function resetVolume() {
+  try {
+    const options = {
+      hostname: 'localhost',
+      port: 3434,
+      path: '/api/volume/reset',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': '0'
+      }
+    };
+
+    return new Promise((resolve) => {
+      const req = http.request(options, (res) => {
+        if (res.statusCode === 200) {
+          logInfo('📊 Volume reset for new market cycle');
+          resolve(true);
+        } else {
+          resolve(false);
+        }
+      });
+
+      req.on('error', () => {
+        resolve(false); // Silently fail if web server is not running
+      });
+
+      req.end();
+    });
+  } catch (err) {
+    return false;
+  }
+}
+
 /* ---------------- Retry Helper for Blockhash Errors ---------------- */
 async function sendTransactionWithRetry(conn, tx, signers, maxRetries = 3) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -193,6 +231,12 @@ function discriminator(ixName) {
 
 /* ---------------- Status Management ---------------- */
 function writeStatus(status) {
+  // Log detailed status update with next cycle time if available
+  if (status.nextCycleStartTime) {
+    const nextCycleDate = new Date(status.nextCycleStartTime);
+    const timeUntilNext = status.nextCycleStartTime - Date.now();
+    logInfo(C.m(`📝 Status Update: ${status.state} | Next cycle: ${formatTime(nextCycleDate)} (${formatCountdown(timeUntilNext)} away)`));
+  }
   fs.writeFileSync(STATUS_FILE, JSON.stringify(status, null, 2));
 }
 
@@ -518,13 +562,20 @@ async function readMarketData(conn, ammPda) {
     o += 1; // vault_sol_bump
     const startPriceE6 = Number(d.readBigInt64LE(8 + o));
 
-    // Calculate winner based on probabilities
+    // Calculate probabilities for display
     const b = bScaled;
     const a = Math.exp(qY / b);
     const c = Math.exp(qN / b);
     const yesProb = a / (a + c);
 
-    const winningSide = yesProb > 0.5 ? 'YES' : 'NO';
+    // Determine winning side from the actual winner field (0=unknown, 1=YES, 2=NO)
+    let winningSide = 'UNKNOWN';
+    if (winner === 1) {
+      winningSide = 'YES';
+    } else if (winner === 2) {
+      winningSide = 'NO';
+    }
+
     const startPrice = startPriceE6 > 0 ? startPriceE6 / 1_000_000 : null;
     const payoutPerShare = payoutPerShareE6 / 1_000_000;
 
@@ -548,19 +599,35 @@ function getNextStartTime() {
   const now = new Date();
   const minutes = now.getMinutes();
   const seconds = now.getSeconds();
-  const ms = now.getMilliseconds();
 
-  // Find next minute ending in 0 (e.g., 19:30, 19:40, 19:50, 20:00)
-  let nextMinute = Math.ceil(minutes / 10) * 10;
-  if (nextMinute === 60) nextMinute = 0;
+  // Calculate total seconds since start of hour
+  const totalSeconds = minutes * 60 + seconds;
+
+  logInfo(C.bold("📅 Calculating next cycle start time:"));
+  logInfo(`  Current time: ${formatTime(now)} (${minutes}m ${seconds}s)`);
+  logInfo(`  Total seconds since hour start: ${totalSeconds}s`);
+
+  // Find next 10-minute boundary (600 seconds = 10 minutes)
+  const nextBoundarySeconds = Math.ceil(totalSeconds / 600) * 600;
+  logInfo(`  Next 10-minute boundary: ${nextBoundarySeconds}s (${Math.floor(nextBoundarySeconds / 60)}m)`);
 
   const nextStart = new Date(now);
-  if (nextMinute === 0) {
+
+  if (nextBoundarySeconds >= 3600) {
+    // Roll over to next hour (3600 seconds = 60 minutes)
+    logInfo(`  Boundary >= 3600s, rolling to next hour`);
     nextStart.setHours(nextStart.getHours() + 1);
+    nextStart.setMinutes(0);
+  } else {
+    logInfo(`  Setting minutes to: ${Math.floor(nextBoundarySeconds / 60)}`);
+    nextStart.setMinutes(Math.floor(nextBoundarySeconds / 60));
   }
-  nextStart.setMinutes(nextMinute);
+
   nextStart.setSeconds(0);
   nextStart.setMilliseconds(0);
+
+  logInfo(C.g(`  ✓ Next cycle will start at: ${formatTime(nextStart)}`));
+  logInfo(C.g(`  ✓ Time until next cycle: ${formatCountdown(nextStart.getTime() - now.getTime())}`));
 
   return nextStart;
 }
@@ -595,10 +662,13 @@ async function runCycle(conn, kp, ammPda, vaultPda) {
   const nextCycleStartTime = cycleStartTime + CYCLE_DURATION_MS;
 
   log(C.bold("\n=== STARTING NEW MARKET CYCLE ==="));
-  log(`Cycle start: ${formatTime(new Date(cycleStartTime))}`);
-  log(`Pre-market ends (snapshot): ${formatTime(new Date(snapshotTime))}`);
-  log(`Market will close at: ${formatTime(new Date(marketEndTime))}`);
-  log(`Next cycle starts at: ${formatTime(new Date(nextCycleStartTime))}`);
+  logInfo(C.bold("⏱️  Cycle Timing Breakdown:"));
+  logInfo(`  Cycle start time: ${formatTime(new Date(cycleStartTime))} (${cycleStartTime}ms)`);
+  logInfo(`  + ${PREMARKET_DURATION_MS / 1000}s pre-market = Snapshot at: ${formatTime(new Date(snapshotTime))}`);
+  logInfo(`  + ${ACTIVE_DURATION_MS / 1000}s active trading = Market close at: ${formatTime(new Date(marketEndTime))}`);
+  logInfo(C.y(`  + ${CYCLE_DURATION_MS / 1000}s total cycle = Next cycle at: ${formatTime(new Date(nextCycleStartTime))}`));
+  log(C.bold(`\n📊 Current Cycle: ${formatTime(new Date(cycleStartTime))} → ${formatTime(new Date(marketEndTime))}`));
+  log(C.bold(C.y(`🔄 Next Cycle Scheduled: ${formatTime(new Date(nextCycleStartTime))} (in ${formatCountdown(nextCycleStartTime - Date.now())})`)));
 
   try {
     // Step 1: Close existing market if exists, then IMMEDIATELY open new one
@@ -611,6 +681,9 @@ async function runCycle(conn, kp, ammPda, vaultPda) {
     // Step 2: Initialize new market IMMEDIATELY (no waiting period)
     await initMarket(conn, kp, ammPda, vaultPda);
     await new Promise(r => setTimeout(r, 1500));
+
+    // Reset volume for new market cycle
+    await resetVolume();
 
     logSuccess(C.bold("✓ PRE-MARKET BETTING NOW OPEN!"));
     logInfo(`Pre-market phase: ${formatCountdown(PREMARKET_DURATION_MS)} until snapshot`);
@@ -764,11 +837,8 @@ async function main() {
   console.log(C.bold("║     AUTOMATED SETTLEMENT BOT - 10 MIN CYCLES  ║"));
   console.log(C.bold("╚═══════════════════════════════════════════════╝\n"));
 
-  if (!ORACLE_STATE) {
-    logError("ORACLE_STATE environment variable not set!");
-    logError("Set it like: ORACLE_STATE=4KYeNyv1B9YjjQkfJk2C6Uqo71vKzFZriRe5NXg6GyCq");
-    process.exit(1);
-  }
+  logInfo(`Oracle: ${ORACLE_STATE.toString()}`);
+  logInfo(`Using wallet: ${WALLET}`);
 
   // Load wallet
   if (!fs.existsSync(WALLET)) {
@@ -802,6 +872,9 @@ async function main() {
 
   await initMarket(conn, kp, ammPda, vaultPda);
   await new Promise(r => setTimeout(r, 1500));
+
+  // Reset volume for new market cycle
+  await resetVolume();
 
   logSuccess(C.bold("✓ PRE-MARKET BETTING NOW OPEN!"));
 

@@ -27,12 +27,38 @@
                 </div>
                 <div id="walletNavConnected" class="hidden">
                     <div class="wallet-info">
+                        <button class="btn-deposit" onclick="openDepositModal()">Deposit</button>
                         <span class="balance" id="navWalletBal">0.00</span>
                         <span class="balance-unit">XNT</span>
                     </div>
                 </div>
             </div>
         </header>
+
+        <!-- Deposit Modal -->
+        <div id="depositModal" class="modal hidden">
+            <div class="modal-overlay" onclick="closeDepositModal()"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">Deposit to Session Wallet</h3>
+                    <button class="modal-close" onclick="closeDepositModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <p class="deposit-instructions">Send TESTNET XNT tokens only to this address:</p>
+                    <div class="deposit-address-container">
+                        <div class="deposit-address" id="depositAddress">Loading...</div>
+                        <button class="btn-copy" onclick="copyDepositAddress()" title="Copy to clipboard">
+                            <svg id="copyIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="deposit-note deposit-warning">⚠️ <strong>TESTNET ONLY:</strong> Make sure your wallet is set to <code>https://rpc.testnet.x1.xyz</code>. Sending any other tokens on any other network will cause you to lose them.</p>
+                    <p class="deposit-note">This is a temporary session wallet. Funds will be available for trading immediately after deposit confirmation.</p>
+                </div>
+            </div>
+        </div>
 
         <!-- Main Grid -->
         <div class="terminal-grid">
@@ -137,7 +163,8 @@
                     <div class="feed-header">
                         <div class="feed-tabs">
                             <button class="feed-tab active" id="liveFeedTab" onclick="switchFeedTab('live')">LIVE</button>
-                            <button class="feed-tab" id="historyFeedTab" onclick="switchFeedTab('history')">HISTORY</button>
+                            <button class="feed-tab" id="settlementFeedTab" onclick="switchFeedTab('settlement')">SETTLEMENT</button>
+                            <button class="feed-tab" id="tradingFeedTab" onclick="switchFeedTab('trading')">TRADING</button>
                         </div>
                         <div class="feed-status">
                             <div class="ws-status" id="wsStatus" title="Live Trade Feed">
@@ -153,10 +180,16 @@
                             <span class="empty-text">Waiting for trades...</span>
                         </div>
                     </div>
-                    <div class="trade-feed-list hidden" id="historyFeed">
+                    <div class="trade-feed-list hidden" id="settlementFeed">
                         <div class="trade-feed-empty">
                             <span class="empty-icon">📜</span>
                             <span class="empty-text">No settlement history</span>
+                        </div>
+                    </div>
+                    <div class="trade-feed-list hidden" id="tradingFeed">
+                        <div class="trade-feed-empty">
+                            <span class="empty-icon">📈</span>
+                            <span class="empty-text">Connect wallet to view your trading history</span>
                         </div>
                     </div>
                 </div>
@@ -528,12 +561,7 @@
                 console.warn('Trade with zero/missing amount:', trade);
             }
 
-            // Remove empty state if present
             const tradeFeed = document.getElementById('tradeFeed');
-            const emptyState = tradeFeed.querySelector('.trade-feed-empty');
-            if (emptyState) {
-                emptyState.remove();
-            }
 
             // Add to history array
             tradeHistory.unshift(trade);
@@ -546,14 +574,35 @@
                 saveTradeHistory();
             }
 
-            // Create trade item
-            const tradeItem = document.createElement('div');
-            tradeItem.className = shouldSave ? 'trade-item new-trade' : 'trade-item';
+            // Find or create table structure
+            let tableBody = tradeFeed.querySelector('.live-table-body');
+            if (!tableBody) {
+                // Remove empty state
+                tradeFeed.innerHTML = '';
+
+                const table = document.createElement('div');
+                table.className = 'live-table';
+                table.innerHTML = `
+                    <div class="live-table-header">
+                        <div class="col-time">TIME</div>
+                        <div class="col-user">USER</div>
+                        <div class="col-type">TYPE</div>
+                        <div class="col-direction">DIRECTION</div>
+                        <div class="col-price">PRICE</div>
+                        <div class="col-size">SIZE</div>
+                        <div class="col-value">VALUE</div>
+                        <div class="col-fees">FEES</div>
+                    </div>
+                `;
+                tableBody = document.createElement('div');
+                tableBody.className = 'live-table-body';
+                table.appendChild(tableBody);
+                tradeFeed.appendChild(table);
+            }
 
             const action = trade.action.toLowerCase();
             const side = trade.side.toLowerCase();
             const sideDisplay = side === 'yes' ? 'UP' : 'DOWN';
-            const tradeClass = `${action}-${side === 'yes' ? 'up' : 'down'}`;
 
             const userAddr = trade.user || 'Unknown';
             const shortAddr = userAddr.length > 5 ? userAddr.slice(0, 5) : userAddr;
@@ -565,64 +614,46 @@
                 minute: '2-digit'
             });
 
-            // Special handling for REDEEM actions
-            if (action === 'redeem') {
-                const amount = (trade.amount !== undefined && trade.amount !== null) ? trade.amount : '0.00';
-                tradeItem.innerHTML = `
-                    <div class="trade-side redeem-${side === 'yes' ? 'up' : 'down'}">
-                        REDEEM<br>${sideDisplay}
-                    </div>
-                    <div class="trade-info">
-                        <div class="trade-action">Vault paid you</div>
-                        <div class="trade-user">${shortAddr}</div>
-                    </div>
-                    <div class="trade-meta">
-                        <div class="trade-amount">${amount} XNT</div>
-                        <div class="trade-time">${timeStr}</div>
-                    </div>
-                `;
+            const avgPrice = (trade.avgPrice !== undefined && trade.avgPrice !== null) ? trade.avgPrice :
+                             (trade.price !== undefined && trade.price !== null) ? trade.price : '0.0000';
+            const shares = (trade.shares !== undefined && trade.shares !== null) ? trade.shares : '0.00';
+
+            // Calculate amount from shares × avgPrice
+            let amount;
+            if (avgPrice && shares && avgPrice !== '0.0000' && shares !== '0.00') {
+                const calculatedAmount = parseFloat(shares) * parseFloat(avgPrice);
+                amount = calculatedAmount.toFixed(4);
             } else {
-                const avgPrice = (trade.avgPrice !== undefined && trade.avgPrice !== null) ? trade.avgPrice :
-                                 (trade.price !== undefined && trade.price !== null) ? trade.price : '0.0000';
-                const shares = (trade.shares !== undefined && trade.shares !== null) ? trade.shares : '0.00';
-
-                // Calculate amount from shares × avgPrice for accurate display
-                let amount;
-                if (avgPrice && shares && avgPrice !== '0.0000' && shares !== '0.00') {
-                    const calculatedAmount = parseFloat(shares) * parseFloat(avgPrice);
-                    amount = calculatedAmount.toFixed(4);
-                } else {
-                    // Fallback to provided amount if calculation not possible
-                    amount = (trade.amount !== undefined && trade.amount !== null) ? trade.amount : '0.00';
-                }
-
-                tradeItem.innerHTML = `
-                    <div class="trade-side ${tradeClass}">
-                        ${action.toUpperCase()}<br>${sideDisplay}
-                    </div>
-                    <div class="trade-info">
-                        <div class="trade-action">${shares} @ ${avgPrice}</div>
-                        <div class="trade-user">${shortAddr}</div>
-                    </div>
-                    <div class="trade-meta">
-                        <div class="trade-amount">${amount} XNT</div>
-                        <div class="trade-time">${timeStr}</div>
-                    </div>
-                `;
+                amount = (trade.amount !== undefined && trade.amount !== null) ? trade.amount : '0.00';
             }
 
-            tradeFeed.insertBefore(tradeItem, tradeFeed.firstChild);
+            // Calculate fees (25 bps = 0.25%)
+            const feeRate = 0.0025;
+            const fees = (parseFloat(amount) * feeRate).toFixed(4);
 
-            // Remove new-trade class after animation completes
-            if (shouldSave) {
-                setTimeout(() => {
-                    tradeItem.classList.remove('new-trade');
-                }, 600);
-            }
+            const typeClass = sideDisplay === 'UP' ? 'type-up' : 'type-down';
+            const directionClass = action === 'buy' ? 'direction-open' : action === 'sell' ? 'direction-close' : 'direction-redeem';
+            const directionText = action === 'buy' ? 'OPENED' : action === 'sell' ? 'CLOSED' : 'REDEEM';
 
-            const items = tradeFeed.querySelectorAll('.trade-item');
-            if (items.length > MAX_TRADES) {
-                items[items.length - 1].remove();
+            const row = document.createElement('div');
+            row.className = shouldSave ? 'live-table-row fade-in' : 'live-table-row';
+            row.innerHTML = `
+                <div class="col-time">${timeStr}</div>
+                <div class="col-user">${shortAddr}</div>
+                <div class="col-type ${typeClass}">${sideDisplay}</div>
+                <div class="col-direction ${directionClass}">${directionText}</div>
+                <div class="col-price">${avgPrice}</div>
+                <div class="col-size">${shares}</div>
+                <div class="col-value">${amount}</div>
+                <div class="col-fees">-${fees}</div>
+            `;
+
+            tableBody.insertBefore(row, tableBody.firstChild);
+
+            // Remove oldest items if we have too many
+            const rows = tableBody.querySelectorAll('.live-table-row');
+            if (rows.length > MAX_TRADES) {
+                rows[rows.length - 1].remove();
             }
 
             document.getElementById('tradeCount').textContent = tradeHistory.length;
@@ -692,11 +723,43 @@
                             user: trade.user || 'Unknown',
                             timestamp: trade.timestamp
                         }, true);
+
+                        // Auto-update trading history if this is the user's trade and trading tab is active
+                        if (wallet && wallet.publicKey && trade.user) {
+                            const userWallet = wallet.publicKey.toString();
+                            if (trade.user === userWallet && currentFeedTab === 'trading') {
+                                console.log('📈 User trade detected, fetching latest trade');
+
+                                // Wait a moment for the trade to be saved to DB, then fetch it
+                                setTimeout(async () => {
+                                    try {
+                                        const userPrefix = userWallet.slice(0, 6);
+                                        const response = await fetch(`/api/trading-history/${userPrefix}`);
+                                        if (response.ok) {
+                                            const data = await response.json();
+                                            if (data.history && data.history.length > 0) {
+                                                // Get the most recent trade (first item)
+                                                const latestTrade = data.history[0];
+                                                addSingleTradeToHistory({
+                                                    action: latestTrade.action,
+                                                    side: latestTrade.side,
+                                                    shares: latestTrade.shares,
+                                                    costUsd: latestTrade.cost_usd,
+                                                    avgPrice: latestTrade.avg_price,
+                                                    pnl: latestTrade.pnl,
+                                                    timestamp: latestTrade.timestamp
+                                                });
+                                            }
+                                        }
+                                    } catch (err) {
+                                        console.error('Failed to fetch latest trade:', err);
+                                    }
+                                }, 300); // 300ms delay to ensure DB write completes
+                            }
+                        }
                     } else if (data.type === 'chat_history') {
                         console.log(`💬 Loaded ${data.messages.length} chat messages`);
-                        data.messages.forEach(msg => {
-                            displayChatMessage(msg);
-                        });
+                        loadChatHistory(data.messages);
                     } else if (data.type === 'chat') {
                         console.log(`💬 NEW CHAT: ${data.message.user}: ${data.message.text}`);
                         displayChatMessage(data.message);
@@ -725,12 +788,110 @@
         window.addEventListener('load', () => {
             loadTradeHistory();
             setTimeout(connectTradeMonitor, 2000);
+            setupTrollboxAutoScroll(); // Initialize trollbox auto-scroll
         });
 
         // Trollbox functions
         let chatMessages = [];
+        let trollboxAutoScroll = true; // Auto-scroll to newest messages
 
-        function displayChatMessage(msg) {
+        // Keep trollbox scrolled to show newest messages
+        function ensureTrollboxScrolledTop() {
+            const messagesDiv = document.getElementById('trollboxMessages');
+            if (messagesDiv && trollboxAutoScroll) {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+        }
+
+        // Set up auto-scroll observer for trollbox
+        function setupTrollboxAutoScroll() {
+            const messagesDiv = document.getElementById('trollboxMessages');
+            if (!messagesDiv) return;
+
+            // Watch for new messages being added
+            const observer = new MutationObserver(() => {
+                ensureTrollboxScrolledTop();
+            });
+
+            observer.observe(messagesDiv, {
+                childList: true, // Watch for added/removed messages
+                subtree: false
+            });
+
+            // Detect manual scrolling - if user scrolls up to read old messages, pause auto-scroll
+            let scrollTimeout;
+            messagesDiv.addEventListener('scroll', () => {
+                // Check if user is at the bottom (within 10px tolerance)
+                const isAtBottom = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight < 10;
+
+                if (!isAtBottom) {
+                    // User scrolled up away from bottom
+                    trollboxAutoScroll = false;
+                    clearTimeout(scrollTimeout);
+                    // Re-enable auto-scroll after 5 seconds of no scrolling
+                    scrollTimeout = setTimeout(() => {
+                        trollboxAutoScroll = true;
+                        ensureTrollboxScrolledTop();
+                    }, 5000);
+                } else {
+                    // User is at bottom
+                    trollboxAutoScroll = true;
+                }
+            });
+
+            console.log('Trollbox auto-scroll initialized');
+        }
+
+        // Load chat history - completely rebuild chat UI from sorted messages
+        function loadChatHistory(messages) {
+            const messagesDiv = document.getElementById('trollboxMessages');
+            if (!messagesDiv) return;
+
+            // Store messages in memory
+            chatMessages = messages.slice(-50); // Keep last 50 messages
+
+            // Sort messages by timestamp (oldest to newest) - column-reverse CSS will show newest at top
+            chatMessages.sort((a, b) => a.timestamp - b.timestamp);
+
+            // Clear the chat container completely
+            messagesDiv.innerHTML = '';
+
+            // Build the entire chat HTML in one string
+            let chatHTML = '';
+            chatMessages.forEach(msg => {
+                const timestamp = new Date(msg.timestamp).toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+
+                chatHTML += `
+                    <div class="trollbox-message">
+                        <span class="chat-time">${timestamp}</span>
+                        <span class="chat-user">${msg.user}:</span>
+                        <span class="chat-text">${escapeHtml(msg.text)}</span>
+                    </div>
+                `;
+            });
+
+            // Set all messages at once
+            messagesDiv.innerHTML = chatHTML;
+
+            // Update chat count
+            const chatCount = document.getElementById('chatCount');
+            if (chatCount) {
+                chatCount.textContent = chatMessages.length;
+            }
+
+            // Force scroll to bottom
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            trollboxAutoScroll = true;
+
+            console.log(`💬 Chat loaded: ${chatMessages.length} messages, scroll position: ${messagesDiv.scrollTop}, height: ${messagesDiv.scrollHeight}`);
+        }
+
+        function displayChatMessage(msg, shouldScroll = true) {
             const messagesDiv = document.getElementById('trollboxMessages');
 
             const emptyState = messagesDiv.querySelector('.trollbox-empty');
@@ -755,7 +916,7 @@
             `;
 
             messagesDiv.appendChild(msgDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            // MutationObserver will auto-scroll if trollboxAutoScroll is true
 
             chatMessages.push(msg);
 
@@ -791,7 +952,7 @@
             `;
 
             messagesDiv.appendChild(msgDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            // MutationObserver will auto-scroll
 
             setTimeout(() => {
                 if (msgDiv.parentNode) {
@@ -812,8 +973,8 @@
             }
 
             let username = 'Anon';
-            if (window.backpackConnected && window.publicKey) {
-                username = window.publicKey.toString().slice(0, 5);
+            if (wallet && wallet.publicKey) {
+                username = wallet.publicKey.toString().slice(0, 5);
             }
 
             tradeSocket.send(JSON.stringify({
@@ -839,6 +1000,51 @@
                 });
             }
         }
+
+        // Deposit Modal Functions
+        function openDepositModal() {
+            const modal = document.getElementById('depositModal');
+            const depositAddress = document.getElementById('depositAddress');
+
+            if (wallet && wallet.publicKey) {
+                depositAddress.textContent = wallet.publicKey.toString();
+                modal.classList.remove('hidden');
+            }
+        }
+
+        function closeDepositModal() {
+            const modal = document.getElementById('depositModal');
+            modal.classList.add('hidden');
+        }
+
+        function copyDepositAddress() {
+            const address = document.getElementById('depositAddress').textContent;
+            const copyIcon = document.getElementById('copyIcon');
+            const copyBtn = copyIcon.closest('.btn-copy');
+
+            if (address && address !== 'Loading...') {
+                navigator.clipboard.writeText(address).then(() => {
+                    // Change to checkmark icon
+                    copyIcon.innerHTML = '<path d="M20 6L9 17l-5-5"></path>';
+                    copyBtn.style.color = '#00ff88';
+
+                    setTimeout(() => {
+                        // Restore copy icon
+                        copyIcon.innerHTML = '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>';
+                        copyBtn.style.color = '';
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                });
+            }
+        }
+
+        // Close modal on ESC key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeDepositModal();
+            }
+        });
     </script>
 </body>
 </html>

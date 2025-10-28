@@ -3456,7 +3456,16 @@ function updateCycleDisplay(status) {
 
         // Show when next market starts
         if (status.nextCycleStartTime) {
-            const nextStartTime = new Date(status.nextCycleStartTime);
+            let nextStartTime = new Date(status.nextCycleStartTime);
+            const now = new Date();
+
+            // If the next cycle start time is in the past, calculate the next future occurrence
+            // Market cycles are 10 minutes (600000ms)
+            const CYCLE_DURATION = 10 * 60 * 1000; // 10 minutes in milliseconds
+            while (nextStartTime <= now) {
+                nextStartTime = new Date(nextStartTime.getTime() + CYCLE_DURATION);
+            }
+
             const nextTimeStr = nextStartTime.toLocaleTimeString('en-US', {
                 hour: '2-digit',
                 minute: '2-digit',
@@ -3478,7 +3487,16 @@ function updateCycleDisplay(status) {
 
         // Show when next snapshot will be taken
         if (status.nextCycleStartTime) {
-            const nextStartTime = new Date(status.nextCycleStartTime);
+            let nextStartTime = new Date(status.nextCycleStartTime);
+            const now = new Date();
+
+            // If the next cycle start time is in the past, calculate the next future occurrence
+            // Market cycles are 10 minutes (600000ms)
+            const CYCLE_DURATION = 10 * 60 * 1000; // 10 minutes in milliseconds
+            while (nextStartTime <= now) {
+                nextStartTime = new Date(nextStartTime.getTime() + CYCLE_DURATION);
+            }
+
             const nextTimeStr = nextStartTime.toLocaleTimeString('en-US', {
                 hour: '2-digit',
                 minute: '2-digit',
@@ -3722,78 +3740,278 @@ async function loadSettlementHistory() {
 }
 
 function displaySettlementHistory(history) {
-    const historyFeed = document.getElementById('historyFeed');
-    if (!historyFeed) return;
+    const settlementFeed = document.getElementById('settlementFeed');
+    if (!settlementFeed) return;
 
-    // Remove empty state
-    const emptyState = historyFeed.querySelector('.trade-feed-empty');
-    if (emptyState && history.length > 0) {
-        emptyState.remove();
-    }
-
-    // Clear existing items
-    historyFeed.innerHTML = '';
+    settlementFeed.innerHTML = '';
 
     if (history.length === 0) {
-        historyFeed.innerHTML = '<div class="trade-feed-empty"><span class="empty-icon">📜</span><span class="empty-text">No settlement history</span></div>';
+        settlementFeed.innerHTML = '<div class="trade-feed-empty"><span class="empty-icon">📜</span><span class="empty-text">No settlement history</span></div>';
         return;
     }
 
-    // Display history items
-    history.forEach(item => {
-        const historyItem = document.createElement('div');
-        historyItem.className = 'trade-item';
+    // Create table structure
+    const table = document.createElement('div');
+    table.className = 'settlement-table';
 
+    // Add header
+    table.innerHTML = `
+        <div class="settlement-table-header">
+            <div class="col-time">TIME</div>
+            <div class="col-user">USER</div>
+            <div class="col-side">SIDE</div>
+            <div class="col-result">RESULT</div>
+            <div class="col-payout">PAYOUT</div>
+        </div>
+    `;
+
+    // Add rows
+    const tbody = document.createElement('div');
+    tbody.className = 'settlement-table-body';
+
+    history.forEach(item => {
         const isWin = item.result === 'WIN';
-        const resultClass = isWin ? 'buy yes' : 'sell no';
-        const resultText = isWin ? 'WIN' : 'LOSE';
         const sideDisplay = item.side === 'YES' ? 'UP' : 'DOWN';
         const amount = parseFloat(item.amount).toFixed(4);
 
         const time = new Date(item.timestamp);
+        const dateStr = time.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
         const timeStr = time.toLocaleTimeString('en-US', {
             hour: '2-digit',
             minute: '2-digit',
             hour12: false
         });
 
-        historyItem.innerHTML = `
-            <div class="trade-side ${resultClass}">
-                ${resultText}<br>${sideDisplay}
-            </div>
-            <div class="trade-info">
-                <div class="trade-action">${item.user_prefix}...</div>
-                <div class="trade-user">Settlement</div>
-            </div>
-            <div class="trade-meta">
-                <div class="trade-amount">${amount} XNT</div>
-                <div class="trade-time">${timeStr}</div>
-            </div>
+        const sideClass = sideDisplay === 'UP' ? 'side-up' : 'side-down';
+        const resultClass = isWin ? 'result-win' : 'result-lose';
+        const resultText = isWin ? 'WIN' : 'LOSE';
+
+        const row = document.createElement('div');
+        row.className = 'settlement-table-row';
+        row.innerHTML = `
+            <div class="col-time">${dateStr} ${timeStr}</div>
+            <div class="col-user">${item.user_prefix}</div>
+            <div class="col-side ${sideClass}">${sideDisplay}</div>
+            <div class="col-result ${resultClass}">${resultText}</div>
+            <div class="col-payout">${amount}</div>
         `;
 
-        historyFeed.appendChild(historyItem);
+        tbody.appendChild(row);
     });
+
+    table.appendChild(tbody);
+    settlementFeed.appendChild(table);
+}
+
+// ============= TRADING HISTORY =============
+
+let currentFeedTab = 'live'; // Track active feed tab
+
+async function loadTradingHistory() {
+    const tradingFeed = document.getElementById('tradingFeed');
+    if (!tradingFeed) return;
+
+    // Check if wallet is connected
+    if (!wallet || !wallet.publicKey) {
+        tradingFeed.innerHTML = '<div class="trade-feed-empty"><span class="empty-icon">📈</span><span class="empty-text">Connect wallet to view your trading history</span></div>';
+        return;
+    }
+
+    const userPrefix = wallet.publicKey.toString().slice(0, 6);
+
+    try {
+        const response = await fetch(`/api/trading-history/${userPrefix}`);
+        if (!response.ok) {
+            console.warn('Failed to load trading history:', response.status);
+            return;
+        }
+
+        const data = await response.json();
+        if (data.history && Array.isArray(data.history)) {
+            displayTradingHistory(data.history);
+        }
+    } catch (err) {
+        console.warn('Failed to load trading history:', err);
+    }
+}
+
+function displayTradingHistory(history) {
+    const tradingFeed = document.getElementById('tradingFeed');
+    if (!tradingFeed) return;
+
+    // Clear existing items
+    tradingFeed.innerHTML = '';
+
+    if (history.length === 0) {
+        tradingFeed.innerHTML = '<div class="trade-feed-empty"><span class="empty-icon">📈</span><span class="empty-text">No trading history yet</span></div>';
+        return;
+    }
+
+    // Create table structure
+    const table = document.createElement('div');
+    table.className = 'trading-table';
+
+    // Add header
+    table.innerHTML = `
+        <div class="trading-table-header">
+            <div class="col-time">TIME</div>
+            <div class="col-type">TYPE</div>
+            <div class="col-direction">DIRECTION</div>
+            <div class="col-price">PRICE</div>
+            <div class="col-size">SIZE</div>
+            <div class="col-value">VALUE</div>
+            <div class="col-fees">FEES</div>
+        </div>
+    `;
+
+    // Add rows
+    const tbody = document.createElement('div');
+    tbody.className = 'trading-table-body';
+
+    history.forEach(item => {
+        const isBuy = item.action === 'BUY';
+        const time = new Date(item.timestamp);
+        const dateStr = time.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+        const timeStr = time.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+
+        const shares = parseFloat(item.shares);
+        const costUsd = parseFloat(item.cost_usd);
+        const avgPrice = parseFloat(item.avg_price);
+
+        // Calculate approximate fees (25 bps = 0.25%)
+        const feeRate = 0.0025;
+        const fees = isBuy ? (costUsd * feeRate) : (costUsd * feeRate);
+
+        const typeClass = item.side === 'UP' ? 'type-up' : 'type-down';
+        const directionClass = isBuy ? 'direction-open' : 'direction-close';
+
+        const row = document.createElement('div');
+        row.className = 'trading-table-row';
+        row.innerHTML = `
+            <div class="col-time">${dateStr} ${timeStr}</div>
+            <div class="col-type ${typeClass}">${item.side}</div>
+            <div class="col-direction ${directionClass}">${isBuy ? 'OPENED' : 'CLOSED'}</div>
+            <div class="col-price">${avgPrice.toFixed(4)}</div>
+            <div class="col-size">${shares.toFixed(2)}</div>
+            <div class="col-value">${costUsd.toFixed(4)}</div>
+            <div class="col-fees">-${fees.toFixed(4)}</div>
+        `;
+
+        tbody.appendChild(row);
+    });
+
+    table.appendChild(tbody);
+    tradingFeed.appendChild(table);
+}
+
+function addSingleTradeToHistory(tradeData) {
+    const tradingFeed = document.getElementById('tradingFeed');
+    if (!tradingFeed) return;
+
+    // Remove empty state if present
+    const emptyState = tradingFeed.querySelector('.trade-feed-empty');
+    if (emptyState) {
+        emptyState.remove();
+    }
+
+    // Find the table body, or create the table structure if it doesn't exist
+    let tableBody = tradingFeed.querySelector('.trading-table-body');
+    if (!tableBody) {
+        const table = document.createElement('div');
+        table.className = 'trading-table';
+        table.innerHTML = `
+            <div class="trading-table-header">
+                <div class="col-time">TIME</div>
+                <div class="col-type">TYPE</div>
+                <div class="col-direction">DIRECTION</div>
+                <div class="col-price">PRICE</div>
+                <div class="col-size">SIZE</div>
+                <div class="col-value">VALUE</div>
+                <div class="col-fees">FEES</div>
+            </div>
+        `;
+        tableBody = document.createElement('div');
+        tableBody.className = 'trading-table-body';
+        table.appendChild(tableBody);
+        tradingFeed.appendChild(table);
+    }
+
+    const isBuy = tradeData.action === 'BUY';
+    const time = new Date(tradeData.timestamp);
+    const dateStr = time.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+    const timeStr = time.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+
+    const shares = parseFloat(tradeData.shares);
+    const costUsd = parseFloat(tradeData.cost_usd || tradeData.costUsd);
+    const avgPrice = parseFloat(tradeData.avg_price || tradeData.avgPrice);
+
+    // Calculate fees (25 bps = 0.25%)
+    const feeRate = 0.0025;
+    const fees = costUsd * feeRate;
+
+    const typeClass = tradeData.side === 'UP' ? 'type-up' : 'type-down';
+    const directionClass = isBuy ? 'direction-open' : 'direction-close';
+
+    const row = document.createElement('div');
+    row.className = 'trading-table-row fade-in';
+    row.innerHTML = `
+        <div class="col-time">${dateStr} ${timeStr}</div>
+        <div class="col-type ${typeClass}">${tradeData.side}</div>
+        <div class="col-direction ${directionClass}">${isBuy ? 'OPENED' : 'CLOSED'}</div>
+        <div class="col-price">${avgPrice.toFixed(4)}</div>
+        <div class="col-size">${shares.toFixed(2)}</div>
+        <div class="col-value">${costUsd.toFixed(4)}</div>
+        <div class="col-fees">-${fees.toFixed(4)}</div>
+    `;
+
+    // Prepend to show newest first (at top)
+    tableBody.insertBefore(row, tableBody.firstChild);
+
+    // Remove oldest items if we have too many (keep last 50)
+    const allRows = tableBody.querySelectorAll('.trading-table-row');
+    if (allRows.length > 50) {
+        allRows[allRows.length - 1].remove();
+    }
 }
 
 function switchFeedTab(tab) {
     const liveFeedTab = document.getElementById('liveFeedTab');
-    const historyFeedTab = document.getElementById('historyFeedTab');
+    const settlementFeedTab = document.getElementById('settlementFeedTab');
+    const tradingFeedTab = document.getElementById('tradingFeedTab');
     const tradeFeed = document.getElementById('tradeFeed');
-    const historyFeed = document.getElementById('historyFeed');
+    const settlementFeed = document.getElementById('settlementFeed');
+    const tradingFeed = document.getElementById('tradingFeed');
+
+    // Reset all tabs
+    liveFeedTab.classList.remove('active');
+    settlementFeedTab.classList.remove('active');
+    tradingFeedTab.classList.remove('active');
+    tradeFeed.classList.add('hidden');
+    settlementFeed.classList.add('hidden');
+    tradingFeed.classList.add('hidden');
+
+    // Update current tab tracker
+    currentFeedTab = tab;
 
     if (tab === 'live') {
         liveFeedTab.classList.add('active');
-        historyFeedTab.classList.remove('active');
         tradeFeed.classList.remove('hidden');
-        historyFeed.classList.add('hidden');
-    } else if (tab === 'history') {
-        historyFeedTab.classList.add('active');
-        liveFeedTab.classList.remove('active');
-        historyFeed.classList.remove('hidden');
-        tradeFeed.classList.add('hidden');
-
-        // Load history when switching to tab
+    } else if (tab === 'settlement') {
+        settlementFeedTab.classList.add('active');
+        settlementFeed.classList.remove('hidden');
         loadSettlementHistory();
+    } else if (tab === 'trading') {
+        tradingFeedTab.classList.add('active');
+        tradingFeed.classList.remove('hidden');
+        loadTradingHistory();
     }
 }
 

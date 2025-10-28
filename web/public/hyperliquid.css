@@ -1096,6 +1096,19 @@ button.disabled {
     }
 }
 
+@keyframes tradeFadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.trade-item.fade-in {
+    animation: tradeFadeIn 0.5s ease-out;
+}
+
 @keyframes tradeHighlight {
     0% {
         opacity: 0;
@@ -1221,6 +1234,23 @@ button.disabled {
     color: var(--text-dim);
 }
 
+.trade-pnl {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 2px;
+}
+
+.trade-pnl.profit {
+    color: var(--green);
+    background: rgba(0, 255, 0, 0.1);
+}
+
+.trade-pnl.loss {
+    color: var(--red);
+    background: rgba(255, 0, 0, 0.1);
+}
+
 /* ===== TROLLBOX SECTION ===== */
 
 .trollbox-section {
@@ -1235,78 +1265,84 @@ button.disabled {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 12px;
+    padding: 6px 10px;
     background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color);
 }
 
 .trollbox-title {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     color: var(--text-primary);
     font-family: 'SF Mono', Monaco, Consolas, monospace;
 }
 
 .trollbox-count {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     font-family: 'SF Mono', Monaco, Consolas, monospace;
     color: var(--text-secondary);
 }
 
 .trollbox-messages {
-    padding: 8px;
+    padding: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
 .trollbox-empty {
-    padding: 60px 20px;
+    padding: 40px 20px;
     text-align: center;
     color: var(--text-dim);
-    font-size: 12px;
+    font-size: 11px;
 }
 
 .trollbox-message {
-    padding: 6px 8px;
-    margin-bottom: 4px;
+    padding: 3px 6px;
+    margin-bottom: 2px;
     background: var(--bg-tertiary);
     border-radius: 2px;
-    font-size: 11px;
+    font-size: 10px;
     font-family: 'SF Mono', Monaco, Consolas, monospace;
-    line-height: 1.4;
+    line-height: 1.3;
 }
 
 .chat-time {
     color: var(--text-dim);
-    font-size: 10px;
-    margin-right: 8px;
+    font-size: 9px;
+    margin-right: 6px;
 }
 
 .chat-user {
     color: var(--green);
     font-weight: 600;
-    margin-right: 6px;
+    margin-right: 4px;
+    font-size: 9px;
 }
 
 .chat-text {
     color: var(--text-primary);
+    font-size: 10px;
 }
 
 .trollbox-input-wrapper {
     display: flex;
-    gap: 8px;
-    padding: 8px;
+    gap: 6px;
+    padding: 6px;
     background: var(--bg-tertiary);
     border-top: 1px solid var(--border-color);
 }
 
 .trollbox-input {
     flex: 1;
-    padding: 8px 10px;
+    padding: 6px 8px;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: 2px;
     color: var(--text-primary);
-    font-size: 11px;
+    font-size: 10px;
     font-family: 'SF Mono', Monaco, Consolas, monospace;
     outline: none;
 }
@@ -1316,12 +1352,12 @@ button.disabled {
 }
 
 .trollbox-send-btn {
-    padding: 8px 16px;
+    padding: 6px 12px;
     background: var(--green);
     border: none;
     border-radius: 2px;
     color: #000;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     font-family: 'SF Mono', Monaco, Consolas, monospace;
     cursor: pointer;
@@ -1655,6 +1691,186 @@ button.disabled {
     background: var(--bg-hover);
 }
 
+/* ===== DEPOSIT BUTTON ===== */
+
+.btn-deposit {
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-right: 16px;
+    white-space: nowrap;
+}
+
+.btn-deposit:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-light);
+}
+
+/* ===== DEPOSIT MODAL ===== */
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+}
+
+.modal-content {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    z-index: 1001;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 32px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.modal-close:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+    border-radius: 6px;
+}
+
+.modal-body {
+    padding: 24px;
+}
+
+.deposit-instructions {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+}
+
+.deposit-address-container {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.deposit-address {
+    flex: 1;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 13px;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+.btn-copy {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+}
+
+.btn-copy:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-light);
+    color: var(--text-primary);
+}
+
+.deposit-note {
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    margin: 0;
+    margin-top: 12px;
+}
+
+.deposit-note.deposit-warning {
+    background: rgba(255, 165, 0, 0.1);
+    border: 1px solid rgba(255, 165, 0, 0.3);
+    color: var(--text-primary);
+}
+
+.deposit-note code {
+    background: rgba(0, 0, 0, 0.3);
+    color: #00ff88;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.deposit-note strong {
+    color: #ff9500;
+    font-weight: 700;
+}
+
 /* ===== RESPONSIVE DESIGN ===== */
 
 /* Large tablets and small desktops */
@@ -1664,8 +1880,22 @@ button.disabled {
     }
 }
 
-/* Tablets */
+/* Tablets - narrower sidebar */
+@media (max-width: 1024px) {
+    .terminal-grid {
+        grid-template-columns: 1fr 260px;
+    }
+}
+
+/* Small tablets - maintain horizontal layout */
 @media (max-width: 900px) {
+    .terminal-grid {
+        grid-template-columns: 1fr 240px;
+    }
+}
+
+/* Only go vertical on very narrow screens */
+@media (max-width: 700px) {
     .terminal-grid {
         grid-template-columns: 1fr;
         display: flex;
@@ -2321,4 +2551,318 @@ button.disabled {
 .log-tx a {
     color: var(--green);
     text-decoration: underline;
+}
+
+/* ===== LIVE TRADES TABLE ===== */
+
+.live-table {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    font-size: 12px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.live-table-header {
+    display: grid;
+    grid-template-columns: 60px 60px 60px 80px 70px 70px 80px 70px;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border-bottom: 2px solid var(--border-color);
+    font-weight: 700;
+    color: var(--text-dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.live-table-header > div {
+    display: flex;
+    align-items: center;
+}
+
+.live-table-header .col-price,
+.live-table-header .col-size,
+.live-table-header .col-value,
+.live-table-header .col-fees {
+    justify-content: flex-end;
+}
+
+.live-table-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.live-table-row {
+    display: grid;
+    grid-template-columns: 60px 60px 60px 80px 70px 70px 80px 70px;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    transition: background 0.2s;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    align-items: center;
+}
+
+.live-table-row:hover {
+    background: var(--bg-hover);
+}
+
+.live-table-row.fade-in {
+    animation: tradeFadeIn 0.5s ease-out;
+}
+
+.live-table-row .col-time,
+.live-table-row .col-user {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.live-table-row .col-type {
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.live-table-row .col-type.type-up {
+    color: #00ff88;
+}
+
+.live-table-row .col-type.type-down {
+    color: #ff4444;
+}
+
+.live-table-row .col-direction {
+    font-weight: 600;
+    font-size: 11px;
+}
+
+.live-table-row .col-direction.direction-open {
+    color: #4a9eff;
+}
+
+.live-table-row .col-direction.direction-close {
+    color: #ff9500;
+}
+
+.live-table-row .col-direction.direction-redeem {
+    color: #9b59b6;
+}
+
+.live-table-row .col-price,
+.live-table-row .col-size,
+.live-table-row .col-value,
+.live-table-row .col-fees {
+    font-size: 12px;
+    color: var(--text-primary);
+    text-align: right;
+}
+
+.live-table-row .col-fees {
+    color: var(--red);
+}
+
+/* ===== SETTLEMENT HISTORY TABLE ===== */
+
+.settlement-table {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    font-size: 12px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.settlement-table-header {
+    display: grid;
+    grid-template-columns: 110px 80px 80px 80px 100px;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border-bottom: 2px solid var(--border-color);
+    font-weight: 700;
+    color: var(--text-dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.settlement-table-header > div {
+    display: flex;
+    align-items: center;
+}
+
+.settlement-table-header .col-payout {
+    justify-content: flex-end;
+}
+
+.settlement-table-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.settlement-table-row {
+    display: grid;
+    grid-template-columns: 110px 80px 80px 80px 100px;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    transition: background 0.2s;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    align-items: center;
+}
+
+.settlement-table-row:hover {
+    background: var(--bg-hover);
+}
+
+.settlement-table-row .col-time,
+.settlement-table-row .col-user {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.settlement-table-row .col-side {
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.settlement-table-row .col-side.side-up {
+    color: #00ff88;
+}
+
+.settlement-table-row .col-side.side-down {
+    color: #ff4444;
+}
+
+.settlement-table-row .col-result {
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.settlement-table-row .col-result.result-win {
+    color: #00ff88;
+}
+
+.settlement-table-row .col-result.result-lose {
+    color: #ff4444;
+}
+
+.settlement-table-row .col-payout {
+    font-size: 12px;
+    color: var(--text-primary);
+    text-align: right;
+    font-weight: 600;
+}
+
+/* ===== TRADING HISTORY TABLE ===== */
+
+.trading-table {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    font-size: 12px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.trading-table-header {
+    display: grid;
+    grid-template-columns: 90px 60px 80px 70px 70px 80px 70px;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border-bottom: 2px solid var(--border-color);
+    font-weight: 700;
+    color: var(--text-dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.trading-table-header > div {
+    display: flex;
+    align-items: center;
+}
+
+.trading-table-header .col-price,
+.trading-table-header .col-size,
+.trading-table-header .col-value,
+.trading-table-header .col-fees {
+    justify-content: flex-end;
+}
+
+.trading-table-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.trading-table-row {
+    display: grid;
+    grid-template-columns: 90px 60px 80px 70px 70px 80px 70px;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    transition: background 0.2s;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    align-items: center;
+}
+
+.trading-table-row:hover {
+    background: var(--bg-hover);
+}
+
+.trading-table-row.fade-in {
+    animation: tradeFadeIn 0.5s ease-out;
+}
+
+.trading-table-row .col-time {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.trading-table-row .col-type {
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.trading-table-row .col-type.type-up {
+    color: #00ff88;
+}
+
+.trading-table-row .col-type.type-down {
+    color: #ff4444;
+}
+
+.trading-table-row .col-direction {
+    font-weight: 600;
+    font-size: 11px;
+}
+
+.trading-table-row .col-direction.direction-open {
+    color: #4a9eff;
+}
+
+.trading-table-row .col-direction.direction-close {
+    color: #ff9500;
+}
+
+.trading-table-row .col-price,
+.trading-table-row .col-size,
+.trading-table-row .col-value,
+.trading-table-row .col-fees {
+    font-size: 12px;
+    color: var(--text-primary);
+    text-align: right;
+}
+
+.trading-table-row .col-fees {
+    color: var(--red);
 }
