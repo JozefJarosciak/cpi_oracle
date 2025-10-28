@@ -2130,25 +2130,24 @@ button.disabled {
     .chart-price-header {
         display: flex;
         flex-direction: row;
-        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
         padding: 12px 14px;
         gap: 12px;
     }
 
     .price-header-item {
         display: flex;
-        flex-direction: row;
-        justify-content: space-between;
+        flex-direction: column;
+        justify-content: center;
         align-items: center;
+        gap: 4px;
+        flex: 1;
     }
 
     .price-header-item:first-child {
-        flex: 1 1 100%;
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
         order: 1;
+        align-items: flex-start;
     }
 
     .price-header-center {
@@ -2157,15 +2156,19 @@ button.disabled {
         border: none;
         margin: 0;
         display: flex;
-        flex-direction: row;
-        justify-content: flex-end;
+        flex-direction: column;
+        justify-content: center;
         align-items: center;
         flex: 0 0 auto;
     }
 
     .price-header-item:last-child {
-        flex: 1 1 100%;
         order: 3;
+        align-items: flex-end;
+    }
+
+    .price-header-right {
+        align-items: flex-end;
     }
 
     .price-header-label {
