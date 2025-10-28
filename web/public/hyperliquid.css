@@ -810,7 +810,7 @@ button.disabled {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 12px;
-    margin-bottom: 16px;
+    margin-bottom: 6px;
     padding: 0 16px;
 }
 
@@ -1957,7 +1957,7 @@ button.disabled {
 
     .volume-stats-row {
         order: 4;
-        margin: 0 12px 12px 12px;
+        margin: 0 12px 2px 12px;
         padding: 0;
         gap: 8px;
     }
