@@ -3167,11 +3167,12 @@ async function executeTrade() {
         });
 
         // Add unique memo instruction to prevent duplicate transaction signatures
-        const nonce = Math.floor(Math.random() * 256);
+        const nonce = Math.floor(Math.random() * 256).toString();
+        const encoder = new TextEncoder();
         const memoInstruction = new solanaWeb3.TransactionInstruction({
             keys: [{ pubkey: wallet.publicKey, isSigner: true, isWritable: false }],
             programId: new solanaWeb3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
-            data: new Uint8Array([nonce])
+            data: encoder.encode(nonce)
         });
 
         const budgetIxs = createComputeBudgetInstructions();
@@ -3823,15 +3824,7 @@ async function withdrawToBackpack() {
             data,
         });
 
-        // Add unique memo instruction to prevent duplicate transaction signatures
-        const nonce = Math.floor(Math.random() * 256);
-        const memoInstruction = new solanaWeb3.TransactionInstruction({
-            keys: [{ pubkey: backpackWallet.publicKey, isSigner: true, isWritable: false }],
-            programId: new solanaWeb3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
-            data: new Uint8Array([nonce])
-        });
-
-        const tx = new solanaWeb3.Transaction().add(memoInstruction, withdrawIx);
+        const tx = new solanaWeb3.Transaction().add(withdrawIx);
         tx.feePayer = backpackWallet.publicKey;  // Backpack pays transaction fees
         tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
 
@@ -3999,16 +3992,8 @@ async function initPosition() {
             lamports: feeReserve
         });
 
-        // Add unique memo instruction to prevent duplicate transaction signatures
-        const nonce = Math.floor(Math.random() * 256);
-        const memoInstruction = new solanaWeb3.TransactionInstruction({
-            keys: [{ pubkey: backpackWallet.publicKey, isSigner: true, isWritable: false }],
-            programId: new solanaWeb3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
-            data: new Uint8Array([nonce])
-        });
-
         const budgetIxs = createComputeBudgetInstructions(200000, 0);
-        const transaction = new solanaWeb3.Transaction().add(...budgetIxs, memoInstruction, fundSessionIx, instruction);
+        const transaction = new solanaWeb3.Transaction().add(...budgetIxs, fundSessionIx, instruction);
         transaction.feePayer = backpackWallet.publicKey; // Backpack pays fees
         transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
 
@@ -5899,20 +5884,10 @@ async function executeDeposit() {
             lamports: sessionFunding               // Amount: 1.0 XNT
         });
 
-        // Add unique memo instruction to prevent duplicate transaction signatures
-        const nonce = Math.floor(Math.random() * 256);
-        const memoInstruction = new solanaWeb3.TransactionInstruction({
-            keys: [{ pubkey: backpackWallet.publicKey, isSigner: true, isWritable: false }],
-            programId: new solanaWeb3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
-            data: new Uint8Array([nonce])
-        });
-
-        // Build transaction with THREE instructions:
-        // 1. Unique memo (prevents duplicate tx hashes)
-        // 2. Fund session wallet (SystemProgram transfer)
-        // 3. Deposit to vault (program instruction)
+        // Build transaction with TWO instructions:
+        // 1. Fund session wallet (SystemProgram transfer)
+        // 2. Deposit to vault (program instruction)
         const transaction = new solanaWeb3.Transaction().add(
-            memoInstruction,   // Unique nonce
             fundSessionIx,     // Transfer 1.0 XNT to session wallet
             instruction        // Deposit to vault
         );
