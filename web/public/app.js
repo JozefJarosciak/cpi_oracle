@@ -3235,29 +3235,11 @@ async function executeTrade() {
         // Update last trade info
         updateLastTradeInfo(action, side, numShares, estimatedCost);
 
-        // Fetch actual shares received after a short delay
+        // Refresh data after trade
         setTimeout(async () => {
             fetchMarketData();
             fetchPositionData();
             updateWalletBalance();
-
-            // After another short delay, show actual shares received
-            setTimeout(async () => {
-                const positionAfter = await getPositionShares();
-                if (positionBefore && positionAfter) {
-                    const yesChange = positionAfter.yes - positionBefore.yes;
-                    const noChange = positionAfter.no - positionBefore.no;
-                    const actualShares = side === 'yes' ? yesChange : noChange;
-                    if (action === 'buy' && Math.abs(actualShares) > 0.01) {
-                        const percentDiff = ((actualShares - numShares) / numShares * 100).toFixed(1);
-                        if (Math.abs(actualShares - numShares) > 0.5) {
-                            addLog(`Actual shares received: ${actualShares.toFixed(2)} (${percentDiff}% ${percentDiff > 0 ? 'more' : 'less'} due to LMSR slippage)`, 'info');
-                        } else {
-                            addLog(`Actual shares received: ${actualShares.toFixed(2)}`, 'info');
-                        }
-                    }
-                }
-            }, 500);
         }, 1000);
 
     } catch (err) {
