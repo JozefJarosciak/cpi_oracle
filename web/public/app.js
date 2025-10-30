@@ -3167,11 +3167,11 @@ async function executeTrade() {
         });
 
         // Add unique memo instruction to prevent duplicate transaction signatures
-        const nonce = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const nonce = Math.floor(Math.random() * 256);
         const memoInstruction = new solanaWeb3.TransactionInstruction({
             keys: [{ pubkey: wallet.publicKey, isSigner: true, isWritable: false }],
             programId: new solanaWeb3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
-            data: Buffer.from(nonce, 'utf8')
+            data: new Uint8Array([nonce])
         });
 
         const budgetIxs = createComputeBudgetInstructions();
@@ -3824,11 +3824,11 @@ async function withdrawToBackpack() {
         });
 
         // Add unique memo instruction to prevent duplicate transaction signatures
-        const nonce = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const nonce = Math.floor(Math.random() * 256);
         const memoInstruction = new solanaWeb3.TransactionInstruction({
             keys: [{ pubkey: backpackWallet.publicKey, isSigner: true, isWritable: false }],
             programId: new solanaWeb3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
-            data: Buffer.from(nonce, 'utf8')
+            data: new Uint8Array([nonce])
         });
 
         const tx = new solanaWeb3.Transaction().add(memoInstruction, withdrawIx);
@@ -4000,11 +4000,11 @@ async function initPosition() {
         });
 
         // Add unique memo instruction to prevent duplicate transaction signatures
-        const nonce = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const nonce = Math.floor(Math.random() * 256);
         const memoInstruction = new solanaWeb3.TransactionInstruction({
             keys: [{ pubkey: backpackWallet.publicKey, isSigner: true, isWritable: false }],
             programId: new solanaWeb3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
-            data: Buffer.from(nonce, 'utf8')
+            data: new Uint8Array([nonce])
         });
 
         const budgetIxs = createComputeBudgetInstructions(200000, 0);
@@ -5900,11 +5900,11 @@ async function executeDeposit() {
         });
 
         // Add unique memo instruction to prevent duplicate transaction signatures
-        const nonce = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const nonce = Math.floor(Math.random() * 256);
         const memoInstruction = new solanaWeb3.TransactionInstruction({
             keys: [{ pubkey: backpackWallet.publicKey, isSigner: true, isWritable: false }],
             programId: new solanaWeb3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
-            data: Buffer.from(nonce, 'utf8')
+            data: new Uint8Array([nonce])
         });
 
         // Build transaction with THREE instructions:
