@@ -747,16 +747,10 @@ pub mod cpi_oracle {
             let time_until_end = amm.market_end_time.saturating_sub(oracle_ts);
 
             if oracle_ts >= lockout_start_time {
-                msg!("🚫 TRADING LOCKED: Oracle time {} >= lockout start {} (market ends at {})",
-                     oracle_ts, lockout_start_time, amm.market_end_time);
-                msg!("   Time until market end: {} seconds", time_until_end);
+                msg!("LOCKED: ts={} lockout={} end={}", oracle_ts, lockout_start_time, amm.market_end_time);
                 return err!(ReaderError::TradingLocked);
-            } else {
-                msg!("✅ Lockout Check PASSED: Oracle time {} < lockout start {} (OK to trade)",
-                     oracle_ts, lockout_start_time);
-                msg!("   Time until lockout: {} seconds | Time until market end: {} seconds",
-                     time_until_lockout, time_until_end);
             }
+            // No success logging - saves CU
         }
 
         match (side, action) {
@@ -796,8 +790,9 @@ pub mod cpi_oracle {
                 // Update vault balance with actual spend
                 pos.vault_balance_e6 -= spend_e6;
 
-                emit_trade(amm, 1, 1, spend_e6, desired_shares_e6, avg_h);
-                log_trade_buy("BUY YES", spend_e6, desired_shares_e6 as f64, avg_h, lmsr_p_yes(amm), amm);
+                // Optimized: single msg with integers only (no floats, no emit)
+                msg!("BUY YES: spend={} shares={} qY={} qN={} vault={}",
+                     spend_e6, desired_shares_e6, amm.q_yes, amm.q_no, amm.vault_e6);
             }
             (2, 1) => { // BUY NO - amount is SHARES to buy (not spend)
                 require!(amount >= MIN_SELL_E6 && amount <= DQ_MAX_E6, ReaderError::BadParam);
@@ -835,8 +830,9 @@ pub mod cpi_oracle {
                 // Update vault balance with actual spend
                 pos.vault_balance_e6 -= spend_e6;
 
-                emit_trade(amm, 2, 1, spend_e6, desired_shares_e6, avg_h);
-                log_trade_buy("BUY NO ", spend_e6, desired_shares_e6 as f64, avg_h, lmsr_p_yes(amm), amm);
+                // Optimized: single msg with integers only (no floats, no emit)
+                msg!("BUY NO: spend={} shares={} qY={} qN={} vault={}",
+                     spend_e6, desired_shares_e6, amm.q_yes, amm.q_no, amm.vault_e6);
             }
             (1, 2) => { // SELL YES → pay proceeds to user_vault
                 require!(amount >= MIN_SELL_E6 && amount <= DQ_MAX_E6, ReaderError::BadParam);
@@ -867,8 +863,9 @@ pub mod cpi_oracle {
                 pos.vault_balance_e6 += proceeds_e6;
                 pos.yes_shares_e6 = pos.yes_shares_e6.saturating_sub(sold_e6.round() as i64);
 
-                emit_trade(amm, 1, 2, proceeds_e6, sold_e6.round() as i64, avg_h);
-                log_trade_sell("SELL YES", sold_e6, proceeds_e6, avg_h, lmsr_p_yes(amm), amm);
+                // Optimized: single msg with integers only (no floats, no emit)
+                msg!("SELL YES: proceeds={} sold={} qY={} qN={} vault={}",
+                     proceeds_e6, sold_e6.round() as i64, amm.q_yes, amm.q_no, amm.vault_e6);
             }
             (2, 2) => { // SELL NO → pay proceeds to user_vault
                 require!(amount >= MIN_SELL_E6 && amount <= DQ_MAX_E6, ReaderError::BadParam);
@@ -899,8 +896,9 @@ pub mod cpi_oracle {
                 pos.vault_balance_e6 += proceeds_e6;
                 pos.no_shares_e6 = pos.no_shares_e6.saturating_sub(sold_e6.round() as i64);
 
-                emit_trade(amm, 2, 2, proceeds_e6, sold_e6.round() as i64, avg_h);
-                log_trade_sell("SELL NO ", sold_e6, proceeds_e6, avg_h, lmsr_p_yes(amm), amm);
+                // Optimized: single msg with integers only (no floats, no emit)
+                msg!("SELL NO: proceeds={} sold={} qY={} qN={} vault={}",
+                     proceeds_e6, sold_e6.round() as i64, amm.q_yes, amm.q_no, amm.vault_e6);
             }
             _ => return err!(ReaderError::BadParam),
         }
