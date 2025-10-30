@@ -763,20 +763,25 @@ pub mod cpi_oracle {
             (1, 1) => { // BUY YES - amount is SHARES to buy (not spend)
                 require!(amount >= MIN_SELL_E6 && amount <= DQ_MAX_E6, ReaderError::BadParam);
 
-                // Calculate required spend for desired shares using binary search
+                // Calculate required spend for desired shares DIRECTLY (no binary search needed!)
                 let desired_shares_e6 = amount;
                 let spend_e6 = lmsr_buy_yes_for_shares(amm, desired_shares_e6)?;
 
                 // Check user vault balance (needs spend_e6, not shares)
                 require!(pos.vault_balance_e6 >= spend_e6, ReaderError::InsufficientBalance);
 
-                // Execute the buy with calculated spend (this will give us exactly the shares we want)
-                let (actual_shares_e6, avg_h) = lmsr_buy_yes(amm, spend_e6)?;
-                pos.yes_shares_e6 = pos.yes_shares_e6.saturating_add(actual_shares_e6.round() as i64);
-
                 // Calculate fee and net from spend
                 let fee_e6 = ((spend_e6 as i128) * (amm.fee_bps as i128) / 10_000) as i64;
                 let net_e6 = spend_e6.saturating_sub(fee_e6);
+
+                // Update AMM state directly (no need for binary search since we know exact shares!)
+                amm.fees = amm.fees.saturating_add(fee_e6);
+                amm.q_yes = amm.q_yes.saturating_add(desired_shares_e6);
+                amm.vault_e6 = amm.vault_e6.saturating_add(net_e6);
+                pos.yes_shares_e6 = pos.yes_shares_e6.saturating_add(desired_shares_e6);
+
+                // Average price = net spend / shares
+                let avg_h = (net_e6 as f64) / (desired_shares_e6 as f64);
 
                 // Transfer from user_vault PDA (using signed transfer)
                 let pos_key = pos.key();
@@ -791,26 +796,31 @@ pub mod cpi_oracle {
                 // Update vault balance with actual spend
                 pos.vault_balance_e6 -= spend_e6;
 
-                emit_trade(amm, 1, 1, spend_e6, actual_shares_e6.round() as i64, avg_h);
-                log_trade_buy("BUY YES", spend_e6, actual_shares_e6, avg_h, lmsr_p_yes(amm), amm);
+                emit_trade(amm, 1, 1, spend_e6, desired_shares_e6, avg_h);
+                log_trade_buy("BUY YES", spend_e6, desired_shares_e6 as f64, avg_h, lmsr_p_yes(amm), amm);
             }
             (2, 1) => { // BUY NO - amount is SHARES to buy (not spend)
                 require!(amount >= MIN_SELL_E6 && amount <= DQ_MAX_E6, ReaderError::BadParam);
 
-                // Calculate required spend for desired shares using binary search
+                // Calculate required spend for desired shares DIRECTLY (no binary search needed!)
                 let desired_shares_e6 = amount;
                 let spend_e6 = lmsr_buy_no_for_shares(amm, desired_shares_e6)?;
 
                 // Check user vault balance (needs spend_e6, not shares)
                 require!(pos.vault_balance_e6 >= spend_e6, ReaderError::InsufficientBalance);
 
-                // Execute the buy with calculated spend (this will give us exactly the shares we want)
-                let (actual_shares_e6, avg_h) = lmsr_buy_no(amm, spend_e6)?;
-                pos.no_shares_e6 = pos.no_shares_e6.saturating_add(actual_shares_e6.round() as i64);
-
                 // Calculate fee and net from spend
                 let fee_e6 = ((spend_e6 as i128) * (amm.fee_bps as i128) / 10_000) as i64;
                 let net_e6 = spend_e6.saturating_sub(fee_e6);
+
+                // Update AMM state directly (no need for binary search since we know exact shares!)
+                amm.fees = amm.fees.saturating_add(fee_e6);
+                amm.q_no = amm.q_no.saturating_add(desired_shares_e6);
+                amm.vault_e6 = amm.vault_e6.saturating_add(net_e6);
+                pos.no_shares_e6 = pos.no_shares_e6.saturating_add(desired_shares_e6);
+
+                // Average price = net spend / shares
+                let avg_h = (net_e6 as f64) / (desired_shares_e6 as f64);
 
                 // Transfer from user_vault PDA (using signed transfer)
                 let pos_key = pos.key();
@@ -825,8 +835,8 @@ pub mod cpi_oracle {
                 // Update vault balance with actual spend
                 pos.vault_balance_e6 -= spend_e6;
 
-                emit_trade(amm, 2, 1, spend_e6, actual_shares_e6.round() as i64, avg_h);
-                log_trade_buy("BUY NO ", spend_e6, actual_shares_e6, avg_h, lmsr_p_yes(amm), amm);
+                emit_trade(amm, 2, 1, spend_e6, desired_shares_e6, avg_h);
+                log_trade_buy("BUY NO ", spend_e6, desired_shares_e6 as f64, avg_h, lmsr_p_yes(amm), amm);
             }
             (1, 2) => { // SELL YES → pay proceeds to user_vault
                 require!(amount >= MIN_SELL_E6 && amount <= DQ_MAX_E6, ReaderError::BadParam);
