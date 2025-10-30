@@ -13,6 +13,7 @@ operator*.json
 
 # Logs and temporary files
 logs/
+*.log
 nohup.out
 
 # Local data files
