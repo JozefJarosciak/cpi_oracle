@@ -3133,7 +3133,9 @@ async function executeTradeInternal(tradeData) {
     const estimatedCost = totalCost;
 
     const tradeDesc = `${action.toUpperCase()} ${numShares} ${side.toUpperCase()} shares (~${estimatedCost.toFixed(2)} XNT)`;
-    addLog(`Executing trade: ${tradeDesc}`, 'info');
+    const startTime = new Date();
+    const startTimestamp = startTime.toTimeString().split(' ')[0] + '.' + startTime.getMilliseconds().toString().padStart(3, '0');
+    addLog(`Executing trade [${startTimestamp}]: ${tradeDesc}`, 'info');
     showStatus('Executing trade...');
 
     // Get position before trade for comparison
@@ -3223,14 +3225,18 @@ async function executeTradeInternal(tradeData) {
         transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
         transaction.sign(wallet);
 
-        addLog('Submitting transaction...', 'tx');
+        const submitTime = new Date();
+        const submitTimestamp = submitTime.toTimeString().split(' ')[0] + '.' + submitTime.getMilliseconds().toString().padStart(3, '0');
+        addLog(`Submitting transaction [${submitTimestamp}]...`, 'tx');
         const signature = await connection.sendRawTransaction(transaction.serialize(), {
             skipPreflight: false,
             maxRetries: 3
         });
         addLog('TX: ' + signature, 'tx');
 
-        addLog('Confirming transaction...', 'info');
+        const confirmTime = new Date();
+        const confirmTimestamp = confirmTime.toTimeString().split(' ')[0] + '.' + confirmTime.getMilliseconds().toString().padStart(3, '0');
+        addLog(`Confirming transaction [${confirmTimestamp}]...`, 'info');
 
         // Use a longer timeout (60 seconds) and better error handling
         let confirmed = false;
@@ -3260,7 +3266,10 @@ async function executeTradeInternal(tradeData) {
         }
 
         if (confirmed) {
-            addLog(`Trade SUCCESS: ${tradeDesc}`, 'success');
+            // Get current time with milliseconds
+            const now = new Date();
+            const timestamp = now.toTimeString().split(' ')[0] + '.' + now.getMilliseconds().toString().padStart(3, '0');
+            addLog(`Trade SUCCESS [${timestamp}]: ${tradeDesc}`, 'success');
             showStatus('Trade success: ' + signature.substring(0, 16) + '...');
 
             // Show toast notification
@@ -3286,12 +3295,14 @@ async function executeTradeInternal(tradeData) {
 
     } catch (err) {
         // Better error messages
+        const now = new Date();
+        const timestamp = now.toTimeString().split(' ')[0] + '.' + now.getMilliseconds().toString().padStart(3, '0');
         let errorMsg = err.message;
         if (errorMsg.includes('TransactionExpiredTimeoutError') || errorMsg.includes('was not confirmed')) {
             errorMsg = 'Transaction confirmation timed out. Check Explorer to verify if transaction succeeded.';
-            addLog('ERROR: ' + errorMsg, 'error');
+            addLog(`ERROR [${timestamp}]: ${errorMsg}`, 'error');
         } else {
-            addLog('Trade FAILED: ' + errorMsg, 'error');
+            addLog(`Trade FAILED [${timestamp}]: ${errorMsg}`, 'error');
         }
 
         showError('Trade error - check logs');
