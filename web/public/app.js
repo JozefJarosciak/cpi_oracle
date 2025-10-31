@@ -6209,11 +6209,14 @@ async function confirmTradeExecution() {
         console.log('[Trade Confirmation] User confirmed trade, executing...', pendingTradeData);
     }
 
+    // Save trade data before closing modal (closeTradeConfirmModal sets pendingTradeData to null)
+    const tradeData = pendingTradeData;
+
     // Close modal immediately
     closeTradeConfirmModal();
 
     // Execute the trade with the stored data
-    await executeTradeInternal(pendingTradeData);
+    await executeTradeInternal(tradeData);
 }
 
 // Expose modal functions to window for hyperliquid.html
