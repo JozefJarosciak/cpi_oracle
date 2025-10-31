@@ -36,6 +36,20 @@
                 </div>
             </div>
             <div class="nav-right">
+                <div class="nav-settings">
+                    <div class="toggle-group">
+                        <label class="toggle-switch" title="Enable rapid fire trading (no confirmation)">
+                            <input type="checkbox" id="rapidFireToggle" onchange="toggleRapidFire()">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">Rapid Fire</span>
+                        </label>
+                        <label class="toggle-switch" title="Show debug information in console">
+                            <input type="checkbox" id="debugToggle" onchange="toggleDebug()">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">Debug</span>
+                        </label>
+                    </div>
+                </div>
                 <div id="walletNavDisconnected" class="hidden">
                     <button class="btn-connect" onclick="connectBackpack()">Connect Wallet</button>
                 </div>
@@ -281,6 +295,48 @@
                             <span class="log-message">Initializing...</span>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trade Confirmation Modal -->
+    <div id="tradeConfirmModal" class="modal hidden">
+        <div class="modal-overlay" onclick="closeTradeConfirmModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title-section">
+                    <h3 class="modal-title" id="confirmModalTitle">Confirm Trade</h3>
+                    <p class="modal-subtitle">Review your trade before confirming</p>
+                </div>
+                <button class="modal-close" onclick="closeTradeConfirmModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="confirm-trade-details">
+                    <div class="confirm-row">
+                        <span class="confirm-label">Action:</span>
+                        <span class="confirm-value confirm-action" id="confirmAction">BUY</span>
+                    </div>
+                    <div class="confirm-row">
+                        <span class="confirm-label">Outcome:</span>
+                        <span class="confirm-value confirm-outcome" id="confirmOutcome">UP</span>
+                    </div>
+                    <div class="confirm-row">
+                        <span class="confirm-label">Shares:</span>
+                        <span class="confirm-value" id="confirmShares">10.00</span>
+                    </div>
+                    <div class="confirm-row">
+                        <span class="confirm-label">Price per Share:</span>
+                        <span class="confirm-value" id="confirmPrice">0.50 XNT</span>
+                    </div>
+                    <div class="confirm-row confirm-total-row">
+                        <span class="confirm-label">Total Cost:</span>
+                        <span class="confirm-value confirm-total" id="confirmCost">~5.00 XNT</span>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-modal-secondary" onclick="closeTradeConfirmModal()">Cancel</button>
+                    <button class="btn-modal-primary" onclick="confirmTradeExecution()">Confirm Trade</button>
                 </div>
             </div>
         </div>

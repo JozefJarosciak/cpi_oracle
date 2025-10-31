@@ -15,6 +15,9 @@ console.log('[CONFIG] Using AMM_SEED:', CONFIG.AMM_SEED);
 let wallet = null; // Session wallet (Keypair)
 let backpackWallet = null; // Backpack wallet provider
 let currentFeeBps = 25; // Default fee in basis points (0.25%)
+let rapidFireMode = false; // Rapid fire trading mode (no confirmation)
+let debugMode = false; // Debug mode (console logging)
+let pendingTradeData = null; // Stores trade data when waiting for confirmation
 
 // Alarm state for market close warning
 let alarmPlayed = false; // Track if alarm has been played for current market
@@ -3090,6 +3093,40 @@ async function executeTrade() {
         console.log(`[SELL] Proceeding with transaction (on-chain validation will check vault coverage)`);
     }
 
+    // Prepare trade data
+    const tradeData = {
+        action,
+        side,
+        numShares,
+        shares: numShares,
+        pricePerShare: sharePrice,
+        totalCost: estimatedCost,
+        amount_e6
+    };
+
+    // Check rapid fire mode
+    if (!rapidFireMode) {
+        // Show confirmation modal
+        if (debugMode) {
+            console.log('[Trade] Rapid fire OFF - showing confirmation modal');
+        }
+        openTradeConfirmModal(tradeData);
+        return;
+    }
+
+    // Rapid fire mode ON - execute immediately
+    if (debugMode) {
+        console.log('[Trade] Rapid fire ON - executing immediately');
+    }
+    await executeTradeInternal(tradeData);
+}
+
+// Internal function that performs the actual trade execution
+async function executeTradeInternal(tradeData) {
+    const { action, side, numShares, pricePerShare, totalCost, amount_e6 } = tradeData;
+    const sharePrice = pricePerShare;
+    const estimatedCost = totalCost;
+
     const tradeDesc = `${action.toUpperCase()} ${numShares} ${side.toUpperCase()} shares (~${estimatedCost.toFixed(2)} XNT)`;
     addLog(`Executing trade: ${tradeDesc}`, 'info');
     showStatus('Executing trade...');
@@ -5440,6 +5477,9 @@ setInterval(() => {
 // ============= INITIALIZATION =============
 
 window.addEventListener('DOMContentLoaded', async () => {
+    // Initialize rapid fire and debug toggles
+    initToggles();
+
     // Initialize alarm toggle from localStorage
     const alarmToggle = document.getElementById('alarmToggle');
 
@@ -6084,6 +6124,140 @@ async function topupSessionWallet() {
         console.error('Top-up failed:', err);
         addLog(`ERROR: ${err.message}`, 'error');
         showError('Top-up failed');
+    }
+}
+
+// ============================================================================
+// Trade Confirmation Modal Functions
+// ============================================================================
+
+function openTradeConfirmModal(tradeData) {
+    // Store trade data for later execution
+    pendingTradeData = tradeData;
+
+    // Update modal content
+    const modal = document.getElementById('tradeConfirmModal');
+    if (!modal) return;
+
+    // Set action (BUY or SELL)
+    const actionEl = document.getElementById('confirmAction');
+    actionEl.textContent = tradeData.action.toUpperCase();
+    actionEl.className = 'confirm-value confirm-action ' + tradeData.action.toLowerCase();
+
+    // Set outcome (UP or DOWN - converting yes/no to UP/DOWN)
+    const outcomeEl = document.getElementById('confirmOutcome');
+    const outcomeText = tradeData.side === 'yes' ? 'UP' : 'DOWN';
+    outcomeEl.textContent = outcomeText;
+    outcomeEl.className = 'confirm-value confirm-outcome ' + tradeData.side.toLowerCase();
+
+    // Set shares
+    document.getElementById('confirmShares').textContent = tradeData.shares.toFixed(2);
+
+    // Set price per share
+    document.getElementById('confirmPrice').textContent = tradeData.pricePerShare.toFixed(4) + ' XNT';
+
+    // Set total cost/proceeds
+    const costLabel = tradeData.action === 'buy' ? 'Total Cost:' : 'Expected Proceeds:';
+    document.querySelector('.confirm-total-row .confirm-label').textContent = costLabel;
+    document.getElementById('confirmCost').textContent = '~' + tradeData.totalCost.toFixed(4) + ' XNT';
+
+    // Update modal title based on action
+    const titleEl = document.getElementById('confirmModalTitle');
+    titleEl.textContent = tradeData.action === 'buy' ? 'Confirm Purchase' : 'Confirm Sale';
+
+    // Show modal
+    modal.classList.remove('hidden');
+
+    if (debugMode) {
+        console.log('[Trade Confirmation] Modal opened:', tradeData);
+    }
+}
+
+function closeTradeConfirmModal() {
+    const modal = document.getElementById('tradeConfirmModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+    pendingTradeData = null;
+
+    if (debugMode) {
+        console.log('[Trade Confirmation] Modal closed');
+    }
+}
+
+async function confirmTradeExecution() {
+    if (!pendingTradeData) {
+        console.error('[Trade Confirmation] No pending trade data');
+        return;
+    }
+
+    if (debugMode) {
+        console.log('[Trade Confirmation] User confirmed trade, executing...', pendingTradeData);
+    }
+
+    // Close modal immediately
+    closeTradeConfirmModal();
+
+    // Execute the trade with the stored data
+    await executeTradeInternal(pendingTradeData);
+}
+
+// ============================================================================
+// Toggle Functions
+// ============================================================================
+
+function toggleRapidFire() {
+    const toggle = document.getElementById('rapidFireToggle');
+    if (!toggle) return;
+
+    rapidFireMode = toggle.checked;
+    localStorage.setItem('rapidFireMode', rapidFireMode.toString());
+
+    if (rapidFireMode) {
+        addLog('⚡ Rapid Fire enabled - trades will execute without confirmation', 'info');
+        showToast('info', '⚡ Rapid Fire Enabled', 'Trades will execute immediately without confirmation');
+    } else {
+        addLog('🛡️ Rapid Fire disabled - trades will require confirmation', 'info');
+        showToast('info', '🛡️ Rapid Fire Disabled', 'You will be asked to confirm each trade');
+    }
+
+    console.log('[Rapid Fire] Mode:', rapidFireMode ? 'ON' : 'OFF');
+}
+
+function toggleDebug() {
+    const toggle = document.getElementById('debugToggle');
+    if (!toggle) return;
+
+    debugMode = toggle.checked;
+    localStorage.setItem('debugMode', debugMode.toString());
+
+    if (debugMode) {
+        addLog('🔧 Debug mode enabled - detailed logging active', 'info');
+    } else {
+        addLog('🔧 Debug mode disabled', 'info');
+    }
+
+    console.log('[Debug] Mode:', debugMode ? 'ON' : 'OFF');
+}
+
+// Initialize toggles from localStorage on page load
+function initToggles() {
+    // Initialize rapid fire toggle
+    const rapidFireToggle = document.getElementById('rapidFireToggle');
+    if (rapidFireToggle) {
+        const savedRapidFire = localStorage.getItem('rapidFireMode');
+        rapidFireMode = savedRapidFire === 'true';
+        rapidFireToggle.checked = rapidFireMode;
+        console.log('[Rapid Fire] Initialized:', rapidFireMode ? 'ON' : 'OFF');
+    }
+
+    // Initialize debug toggle
+    const debugToggle = document.getElementById('debugToggle');
+    if (debugToggle) {
+        const savedDebug = localStorage.getItem('debugMode');
+        debugMode = savedDebug === 'true';
+        debugToggle.checked = debugMode;
+        console.log('[Debug] Initialized:', debugMode ? 'ON' : 'OFF');
     }
 }
 
