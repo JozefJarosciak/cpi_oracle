@@ -3266,11 +3266,13 @@ async function executeTradeInternal(tradeData) {
         }
 
         if (confirmed) {
-            // Get current time with milliseconds
+            // Get current time with milliseconds and calculate elapsed time
             const now = new Date();
             const timestamp = now.toTimeString().split(' ')[0] + '.' + now.getMilliseconds().toString().padStart(3, '0');
+            const elapsedMs = now - startTime;
+            const elapsedSec = (elapsedMs / 1000).toFixed(3);
             addLog(`Trade SUCCESS [${timestamp}]: ${tradeDesc}`, 'success');
-            showStatus('Trade success: ' + signature.substring(0, 16) + '...');
+            showStatus(`Trade success: ${signature.substring(0, 16)}... (${elapsedSec}s)`);
 
             // Show toast notification
             const actionText = action.toUpperCase();
@@ -3297,6 +3299,8 @@ async function executeTradeInternal(tradeData) {
         // Better error messages
         const now = new Date();
         const timestamp = now.toTimeString().split(' ')[0] + '.' + now.getMilliseconds().toString().padStart(3, '0');
+        const elapsedMs = now - startTime;
+        const elapsedSec = (elapsedMs / 1000).toFixed(3);
         let errorMsg = err.message;
         if (errorMsg.includes('TransactionExpiredTimeoutError') || errorMsg.includes('was not confirmed')) {
             errorMsg = 'Transaction confirmation timed out. Check Explorer to verify if transaction succeeded.';
@@ -3305,7 +3309,7 @@ async function executeTradeInternal(tradeData) {
             addLog(`Trade FAILED [${timestamp}]: ${errorMsg}`, 'error');
         }
 
-        showError('Trade error - check logs');
+        showError(`Trade error (${elapsedSec}s) - check logs`);
 
         // Show error toast
         const actionText = currentAction ? currentAction.toUpperCase() : 'TRADE';
