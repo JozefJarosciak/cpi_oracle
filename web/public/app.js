@@ -3104,8 +3104,12 @@ async function executeTrade() {
         amount_e6
     };
 
-    // Check rapid fire mode
-    if (!rapidFireMode) {
+    // Check rapid fire mode (use window.rapidFireMode to support both inline and external usage)
+    const isRapidFire = typeof window !== 'undefined' && window.rapidFireMode !== undefined
+        ? window.rapidFireMode
+        : rapidFireMode;
+
+    if (!isRapidFire) {
         // Show confirmation modal
         if (debugMode) {
             console.log('[Trade] Rapid fire OFF - showing confirmation modal');
@@ -3122,6 +3126,7 @@ async function executeTrade() {
 }
 
 // Internal function that performs the actual trade execution
+// Expose to window for hyperliquid.html inline script
 async function executeTradeInternal(tradeData) {
     const { action, side, numShares, pricePerShare, totalCost, amount_e6 } = tradeData;
     const sharePrice = pricePerShare;
@@ -3299,6 +3304,11 @@ async function executeTradeInternal(tradeData) {
 
         console.error('ERROR: Trade failed:', err);
     }
+}
+
+// Expose executeTradeInternal to window for hyperliquid.html inline script
+if (typeof window !== 'undefined') {
+    window.executeTradeInternal = executeTradeInternal;
 }
 
 // Open close position modal with estimates (called by button click)
@@ -6202,6 +6212,13 @@ async function confirmTradeExecution() {
     await executeTradeInternal(pendingTradeData);
 }
 
+// Expose modal functions to window for hyperliquid.html
+if (typeof window !== 'undefined') {
+    window.openTradeConfirmModal = openTradeConfirmModal;
+    window.closeTradeConfirmModal = closeTradeConfirmModal;
+    window.confirmTradeExecution = confirmTradeExecution;
+}
+
 // ============================================================================
 // Toggle Functions
 // ============================================================================
@@ -6211,6 +6228,10 @@ function toggleRapidFire() {
     if (!toggle) return;
 
     rapidFireMode = toggle.checked;
+    // Sync with window.rapidFireMode for hyperliquid.html
+    if (typeof window !== 'undefined') {
+        window.rapidFireMode = rapidFireMode;
+    }
     localStorage.setItem('rapidFireMode', rapidFireMode.toString());
 
     if (rapidFireMode) {
@@ -6247,6 +6268,10 @@ function initToggles() {
     if (rapidFireToggle) {
         const savedRapidFire = localStorage.getItem('rapidFireMode');
         rapidFireMode = savedRapidFire === 'true';
+        // Also sync with window.rapidFireMode for hyperliquid.html
+        if (typeof window !== 'undefined') {
+            window.rapidFireMode = rapidFireMode;
+        }
         rapidFireToggle.checked = rapidFireMode;
         console.log('[Rapid Fire] Initialized:', rapidFireMode ? 'ON' : 'OFF');
     }
@@ -6259,6 +6284,12 @@ function initToggles() {
         debugToggle.checked = debugMode;
         console.log('[Debug] Initialized:', debugMode ? 'ON' : 'OFF');
     }
+}
+
+// Expose toggle functions to window for hyperliquid.html
+if (typeof window !== 'undefined') {
+    window.toggleRapidFire = toggleRapidFire;
+    window.toggleDebug = toggleDebug;
 }
 
 // ============================================================================
