@@ -1368,7 +1368,7 @@ async function loadPriceHistory(seconds = null) {
 }
 
 // Available time ranges (in order for cycling)
-const TIME_RANGES = [60, 300, 900, 1800, 3600];
+const TIME_RANGES = [60, 300, 900, 1800, 3600, 86400];
 let currentTimeRangeIndex = 0; // Start at 1m (60 seconds)
 
 // Toggle time range dropdown menu
@@ -1471,8 +1471,11 @@ function generateTimeLabels(numPoints, timeRangeSeconds) {
         } else if (timeRangeSeconds <= 3600) {
             // For <= 1 hour, show HH:MM
             labels.push(`${hours}:${minutes}`);
+        } else if (timeRangeSeconds <= 86400) {
+            // For 24 hours, show HH:MM (every few hours will have a date marker naturally)
+            labels.push(`${hours}:${minutes}`);
         } else {
-            // For > 1 hour, show HH:MM
+            // For > 24 hours, show HH:MM
             labels.push(`${hours}:${minutes}`);
         }
     }
