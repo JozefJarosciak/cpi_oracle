@@ -1012,11 +1012,11 @@ const server = http.createServer((req, res) => {
     // Route handling
     let filePath;
     if (req.url === '/') {
-        filePath = '/hyperliquid.html';
+        filePath = '/index.html';
     } else if (req.url === '/hl' || req.url === '/hyperliquid') {
-        filePath = '/hyperliquid.html';
+        filePath = '/index.html';
     } else if (req.url === '/proto1') {
-        filePath = '/hyperliquid.html';
+        filePath = '/index.html';
     } else if (req.url === '/index') {
         filePath = '/index.html';
     } else if (req.url === '/proto1-original') {

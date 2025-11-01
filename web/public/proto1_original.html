@@ -105,6 +105,7 @@
                         <div class="timerange-option" data-seconds="900" onclick="selectTimeRange(900)">15m</div>
                         <div class="timerange-option" data-seconds="1800" onclick="selectTimeRange(1800)">30m</div>
                         <div class="timerange-option" data-seconds="3600" onclick="selectTimeRange(3600)">1h</div>
+                        <div class="timerange-option" data-seconds="21600" onclick="selectTimeRange(21600)">6h</div>
                         <div class="timerange-option" data-seconds="86400" onclick="selectTimeRange(86400)">24h</div>
                     </div>
                 </div>
@@ -241,18 +242,20 @@
                         <!-- Shares Input -->
                         <div class="input-section" id="sharesInputSection">
                             <label class="input-label">Number of Shares</label>
-                            <input type="number" id="tradeAmountShares" class="amount-input" placeholder="10" step="1" value="10" oninput="updateFromInput()">
-                            <input type="range" id="sharesSlider" class="amount-slider" min="1" max="500" value="10" step="1" oninput="updateFromSlider('shares')">
+                            <div style="position: relative; display: flex; align-items: center; gap: 8px;">
+                                <input type="number" id="tradeAmountShares" class="amount-input" placeholder="0" step="1" value="0" oninput="updateFromInput()" style="flex: 1;">
+                                <button onclick="resetShares()" style="position: absolute; right: 10px; background: transparent; border: none; color: #ff5353; cursor: pointer; font-size: 18px; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; opacity: 0.6;" title="Reset to 0">✕</button>
+                            </div>
+                            <input type="range" id="sharesSlider" class="amount-slider" min="0" max="500" value="0" step="1" oninput="updateFromSlider('shares')">
                             <div class="slider-labels">
-                                <span>1</span>
+                                <span>0</span>
                                 <span>500</span>
                             </div>
                             <div class="quick-amounts">
-                                <button class="quick-btn" onclick="setShares(1)">1</button>
-                                <button class="quick-btn" onclick="setShares(10)">10</button>
-                                <button class="quick-btn" onclick="setShares(50)">50</button>
-                                <button class="quick-btn" onclick="setShares(100)">100</button>
-                                <button class="quick-btn" onclick="setShares(500)">500</button>
+                                <button class="quick-btn" onclick="addShares(1)">+1</button>
+                                <button class="quick-btn" onclick="addShares(10)">+10</button>
+                                <button class="quick-btn" onclick="addShares(50)">+50</button>
+                                <button class="quick-btn" onclick="addShares(100)">+100</button>
                             </div>
                         </div>
 

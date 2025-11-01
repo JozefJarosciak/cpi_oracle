@@ -116,7 +116,7 @@ const DQ_MAX_E6: i64    = 50_000_000_000;  // 50,000,000 shares per trade
 
 // ---- Market timing ----
 const TRADING_LOCKOUT_SLOTS: u64 = 90;      // Lock trading 90 slots (~45 seconds) before market end - DEPRECATED
-const TRADING_LOCKOUT_SECONDS: i64 = 30;    // Lock trading 30 seconds before market end
+const TRADING_LOCKOUT_SECONDS: i64 = 45;    // Lock trading 45 seconds before market end
 
 // ---- Events ----
 #[event]
@@ -737,7 +737,7 @@ pub mod cpi_oracle {
         let status = amm.status();
         require!(status == MarketStatus::Premarket || status == MarketStatus::Open, ReaderError::MarketClosed);
 
-        // Check trading lockout using oracle timestamp (30 seconds before market end)
+        // Check trading lockout using oracle timestamp (45 seconds before market end)
         if amm.market_end_time > 0 {
             // Read current time from oracle via CPI (returns milliseconds)
             let (_, oracle_ts_ms) = read_btc_price_e6(&ctx.accounts.oracle_state)?;
@@ -793,6 +793,9 @@ pub mod cpi_oracle {
                 // Optimized: single msg with integers only (no floats, no emit)
                 msg!("BUY YES: spend={} shares={} qY={} qN={} vault={}",
                      spend_e6, desired_shares_e6, amm.q_yes, amm.q_no, amm.vault_e6);
+
+                // Emit trade event for monitoring
+                emit_trade(amm, 1, 1, spend_e6, desired_shares_e6, avg_h);
             }
             (2, 1) => { // BUY NO - amount is SHARES to buy (not spend)
                 require!(amount >= MIN_SELL_E6 && amount <= DQ_MAX_E6, ReaderError::BadParam);
@@ -833,6 +836,9 @@ pub mod cpi_oracle {
                 // Optimized: single msg with integers only (no floats, no emit)
                 msg!("BUY NO: spend={} shares={} qY={} qN={} vault={}",
                      spend_e6, desired_shares_e6, amm.q_yes, amm.q_no, amm.vault_e6);
+
+                // Emit trade event for monitoring
+                emit_trade(amm, 2, 1, spend_e6, desired_shares_e6, avg_h);
             }
             (1, 2) => { // SELL YES → pay proceeds to user_vault
                 require!(amount >= MIN_SELL_E6 && amount <= DQ_MAX_E6, ReaderError::BadParam);
@@ -914,7 +920,7 @@ pub mod cpi_oracle {
         let status = amm.status();
         require!(status == MarketStatus::Premarket || status == MarketStatus::Open, ReaderError::MarketClosed);
 
-        // Check trading lockout using oracle timestamp (30 seconds before market end)
+        // Check trading lockout using oracle timestamp (45 seconds before market end)
         if amm.market_end_time > 0 {
             // Read current time from oracle via CPI (returns milliseconds)
             let (_, oracle_ts_ms) = read_btc_price_e6(&ctx.accounts.oracle_state)?;
@@ -1313,7 +1319,7 @@ pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
         amm.market_end_time = market_end_time;
 
         msg!("⏰ Market end time set to: {} (unix timestamp)", market_end_time);
-        msg!("   Trading locks at: {} (30 seconds before close)", market_end_time - TRADING_LOCKOUT_SECONDS);
+        msg!("   Trading locks at: {} (45 seconds before close)", market_end_time - TRADING_LOCKOUT_SECONDS);
         msg!("   Market end slot (legacy): {}", market_end_slot);
         Ok(())
     }
