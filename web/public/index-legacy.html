@@ -15,7 +15,7 @@
         <!-- Top Bar -->
         <header class="top-bar">
             <div class="top-left">
-                <div class="brand">X1 <span class="brand-subtitle">Vero Prediction Markets</span> <span style="background: #3178c6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; margin-left: 8px;">TypeScript</span></div>
+                <div class="brand">X1 <span class="brand-subtitle">Vero Prediction Markets</span></div>
                 <label class="debug-toggle" title="Enable rapid fire trading (no confirmation)">
                     <input type="checkbox" id="rapidFireToggle" onchange="toggleRapidFire()">
                     <span class="debug-toggle-track">
@@ -632,11 +632,6 @@
     </div>
 
     <script src="solana-web3.min.js"></script>
-    <script>
-        // Configure proto2 to use TypeScript backend
-        window.API_BASE = '/api/ts';
-        console.log('🔷 Proto2: Using TypeScript API endpoints (/api/ts/*)');
-    </script>
     <script src="app.js"></script>
     <script>
         // Shares input management
@@ -784,7 +779,7 @@
         // Fetch and update cumulative volume from server (confirmation)
         async function updateCumulativeVolume() {
             try {
-                const response = await fetch('/api/ts/volume');
+                const response = await fetch('/api/volume');
                 if (!response.ok) {
                     console.error('Failed to fetch volume:', response.status);
                     return;
@@ -809,36 +804,9 @@
             }
         }
 
-        // Update volume on page load (SSE stream in app.js handles updates)
+        // Update volume on page load and periodically
         updateCumulativeVolume();
-        // REMOVED: Polling replaced by SSE volume-stream in app.js
-        // setInterval(updateCumulativeVolume, 10000);
-
-        // TypeScript Services Integration - Fetch from compiled TypeScript backend
-        async function fetchTypeScriptServices() {
-            try {
-                const response = await fetch('/api/ts/market-data');
-                if (!response.ok) {
-                    console.error('TypeScript API error:', response.status);
-                    return;
-                }
-
-                const data = await response.json();
-                console.log('✅ TypeScript services data:', data);
-
-                // Log to show TypeScript backend is being used
-                if (window.location.pathname === '/proto2') {
-                    console.log('🔷 Using TypeScript backend for proto2');
-                }
-            } catch (err) {
-                console.error('Error fetching TypeScript services:', err);
-            }
-        }
-
-        // Fetch TypeScript data on load (SSE stream in app.js handles updates)
-        fetchTypeScriptServices();
-        // REMOVED: Polling replaced by SSE market-stream in app.js
-        // setInterval(fetchTypeScriptServices, 5000);
+        setInterval(updateCumulativeVolume, 10000); // Sync with server every 10 seconds
 
         // DEPRECATED: Old function that used market state (qY/qN)
         // Keeping for backward compatibility but no longer used
@@ -1811,7 +1779,7 @@
         // Load recent cycles into dropdown
         async function loadRecentCycles() {
             try {
-                const response = await fetch('/api/ts/recent-cycles');
+                const response = await fetch('/api/recent-cycles');
                 if (!response.ok) return;
 
                 const data = await response.json();
