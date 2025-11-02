@@ -4744,6 +4744,43 @@ async function displaySettledMarketWinner(winner, startPriceE6) {
     }
 }
 
+// SSE connection for market status updates
+let statusEventSource = null;
+
+function initStatusStream() {
+    const streamUrl = `${CONFIG.API_PREFIX}/cycle-stream`;
+    console.log('Connecting to market status stream:', streamUrl);
+
+    statusEventSource = new EventSource(streamUrl);
+
+    statusEventSource.onmessage = (event) => {
+        try {
+            const status = JSON.parse(event.data);
+            updateCycleDisplay(status);
+        } catch (err) {
+            console.error('Failed to parse status update:', err);
+        }
+    };
+
+    statusEventSource.onerror = (err) => {
+        console.error('Status stream error:', err);
+        updateCycleDisplay({ state: 'OFFLINE' });
+
+        // Reconnect after 5 seconds
+        setTimeout(() => {
+            if (statusEventSource) {
+                statusEventSource.close();
+            }
+            initStatusStream();
+        }, 5000);
+    };
+
+    statusEventSource.onopen = () => {
+        console.log('Market status stream connected');
+    };
+}
+
+// Legacy polling function (kept for fallback)
 async function fetchCycleStatus() {
     try {
         const response = await fetch(CONFIG.STATUS_URL + '?t=' + Date.now());
@@ -5921,10 +5958,7 @@ function switchFeedTab(tab) {
 }
 
 // Auto-refresh settlement history if tab is active
-// Poll market/cycle status every 2 seconds
-setInterval(() => {
-    fetchCycleStatus();
-}, 2000);
+// Market status is now handled via SSE stream (initStatusStream)
 
 setInterval(() => {
     if (currentFeedTab === 'settlement') {
@@ -5938,8 +5972,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Initialize rapid fire and debug toggles
     initToggles();
 
-    // Load market/cycle status
-    await fetchCycleStatus();
+    // Initialize real-time market status stream (SSE)
+    initStatusStream();
 
     // Initialize alarm toggle from localStorage
     const alarmToggle = document.getElementById('alarmToggle');

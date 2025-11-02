@@ -8,10 +8,45 @@
  * - Volume cycle tracking
  * - Database synchronization
  */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StreamService = void 0;
 const oracle_service_1 = require("../solana/oracle.service");
 const market_service_1 = require("../solana/market.service");
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
 class StreamService {
     constructor(config) {
         // Active stream clients
@@ -19,17 +54,22 @@ class StreamService {
         this.marketClients = new Set();
         this.volumeClients = new Set();
         this.cycleClients = new Set();
+        this.statusClients = new Set();
         // Stream intervals (undefined or Timeout, not mixed)
         this.priceInterval = undefined;
         this.marketInterval = undefined;
         this.volumeInterval = undefined;
         this.cycleInterval = undefined;
+        // File watcher for market_status.json
+        this.statusFileWatcher = undefined;
         this.oracleService = new oracle_service_1.OracleService(config.connection, config.oracleStateKey, { enableLogging: config.enableLogging ?? false, pollInterval: 1000, maxAge: 90 });
         this.marketService = new market_service_1.MarketService(config.connection, config.programId, { ammSeed: config.ammSeed, enableLogging: config.enableLogging ?? false, pollInterval: 1500, lamportsPerE6: 100 });
         if (config.volumeRepo) {
             this.volumeRepo = config.volumeRepo;
         }
         this.enableLogging = config.enableLogging ?? false;
+        // Path to market_status.json (one level up from web/)
+        this.statusFilePath = path.join(__dirname, '..', '..', '..', 'market_status.json');
     }
     /**
      * Initialize SSE response headers
@@ -210,6 +250,64 @@ class StreamService {
         });
     }
     /**
+     * Market Status Stream - Watches market_status.json for changes
+     */
+    async addStatusClient(res) {
+        this.initSSE(res);
+        this.statusClients.add(res);
+        if (this.enableLogging) {
+            console.log(`[StreamService] Status client added (${this.statusClients.size} active)`);
+        }
+        // Send initial data
+        try {
+            const statusData = fs.readFileSync(this.statusFilePath, 'utf8');
+            const status = JSON.parse(statusData);
+            this.sendEvent(res, 'status', status);
+        }
+        catch (err) {
+            // File doesn't exist yet or settlement bot not running
+            this.sendEvent(res, 'status', { state: 'OFFLINE' });
+        }
+        // Start file watcher if first client
+        if (this.statusClients.size === 1) {
+            try {
+                this.statusFileWatcher = fs.watch(this.statusFilePath, (eventType) => {
+                    if (eventType === 'change') {
+                        try {
+                            const statusData = fs.readFileSync(this.statusFilePath, 'utf8');
+                            const status = JSON.parse(statusData);
+                            if (this.enableLogging) {
+                                console.log(`[StreamService] Market status updated: ${status.state}`);
+                            }
+                            this.broadcastToClients(this.statusClients, 'status', status);
+                        }
+                        catch (err) {
+                            if (this.enableLogging) {
+                                console.error('[StreamService] Failed to read market status:', err);
+                            }
+                        }
+                    }
+                });
+            }
+            catch (err) {
+                if (this.enableLogging) {
+                    console.error('[StreamService] Failed to watch market status file:', err);
+                }
+            }
+        }
+        // Cleanup on disconnect
+        res.on('close', () => {
+            this.statusClients.delete(res);
+            if (this.enableLogging) {
+                console.log(`[StreamService] Status client removed (${this.statusClients.size} active)`);
+            }
+            if (this.statusClients.size === 0 && this.statusFileWatcher) {
+                this.statusFileWatcher.close();
+                this.statusFileWatcher = undefined;
+            }
+        });
+    }
+    /**
      * Broadcast event to all clients in a set
      */
     broadcastToClients(clients, event, data) {
@@ -237,10 +335,13 @@ class StreamService {
             clearInterval(this.volumeInterval);
         if (this.cycleInterval)
             clearInterval(this.cycleInterval);
+        if (this.statusFileWatcher)
+            this.statusFileWatcher.close();
         this.priceClients.clear();
         this.marketClients.clear();
         this.volumeClients.clear();
         this.cycleClients.clear();
+        this.statusClients.clear();
     }
 }
 exports.StreamService = StreamService;

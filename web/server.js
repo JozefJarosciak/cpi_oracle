@@ -11,6 +11,24 @@ const STATUS_FILE = path.join(__dirname, '..', 'market_status.json');
 const DB_FILE = path.join(__dirname, 'price_history.db');
 const VOLUME_FILE = path.join(__dirname, 'cumulative_volume.json');
 
+// Log buffer for real-time log viewer
+const logBuffer = [];
+const MAX_LOG_ENTRIES = 1000;
+
+// Helper function to log to both console and buffer
+function logToBuffer(message) {
+    console.log(message);
+    logBuffer.push({
+        timestamp: new Date().toISOString(),
+        message: message
+    });
+
+    // Limit buffer size
+    if (logBuffer.length > MAX_LOG_ENTRIES) {
+        logBuffer.shift();
+    }
+}
+
 // Solana Oracle Configuration
 const RPC_URL = 'https://rpc.testnet.x1.xyz';
 const ORACLE_STATE = '4KYeNyv1B9YjjQkfJk2C6Uqo71vKzFZriRe5NXg6GyCq';
@@ -127,6 +145,35 @@ let cumulativeVolume = {
     cycleStartTime: Date.now() // When this market cycle started
 };
 
+// ========== TypeScript Integration ==========
+// Import compiled TypeScript controllers
+const { ApiController, StreamService } = require('./dist/api');
+const { VolumeRepository } = require('./dist/database');
+
+// Initialize TypeScript API Controller for proto2
+const tsApiController = new ApiController({
+    rpcUrl: RPC_URL,
+    oracleStateKey: ORACLE_STATE,
+    programId: PROGRAM_ID,
+    ammSeed: AMM_SEED,
+    dbPath: DB_FILE,
+    enableLogging: false
+});
+
+// Initialize TypeScript StreamService for proto2
+const volumeRepo = new VolumeRepository(db);
+const tsStreamService = new StreamService({
+    connection: connection,
+    oracleStateKey: ORACLE_STATE,
+    programId: PROGRAM_ID,
+    ammSeed: AMM_SEED,
+    volumeRepo: volumeRepo,
+    enableLogging: false
+});
+
+console.log('✅ TypeScript controllers initialized for /api/ts/* endpoints');
+// ============================================
+
 // Get price history count
 function getPriceHistoryCount() {
     try {
@@ -175,7 +222,7 @@ function cleanupOldPrices() {
         const stmt = db.prepare('DELETE FROM price_history WHERE timestamp < ?');
         const result = stmt.run(cutoffTime);
         if (result.changes > 0) {
-            console.log(`Cleaned up ${result.changes} old price records`);
+            // Debug log removed
         }
         return result.changes;
     } catch (err) {
@@ -235,7 +282,7 @@ async function fetchOraclePrice() {
         const maxTs = [t1, t2, t3].reduce((a, b) => a > b ? a : b);
         const age = Math.floor(Date.now() / 1000) - Number(maxTs);
 
-        console.log(`📊 Oracle: BTC $${btcPrice.toFixed(2)} (age: ${age}s)`);
+        // Debug log removed
 
         return {
             price: btcPrice,
@@ -256,7 +303,7 @@ async function fetchMarketData() {
             [Buffer.from(AMM_SEED)],
             new PublicKey(PROGRAM_ID)
         );
-        console.log('[SERVER fetchMarketData] Using AMM_SEED:', AMM_SEED, 'PDA:', ammPda.toString());
+        // Debug log removed
 
         const accountInfo = await connection.getAccountInfo(ammPda);
         if (!accountInfo) {
@@ -311,7 +358,7 @@ async function fetchMarketData() {
             timestamp: Date.now()
         };
 
-        console.log(`📈 Market: status=${status} vault=${marketData.vault.toFixed(2)} qY=${marketData.qYes.toFixed(2)} qN=${marketData.qNo.toFixed(2)}`);
+        // Debug log removed
 
         return marketData;
     } catch (err) {
@@ -339,7 +386,7 @@ function loadCumulativeVolume() {
                 lastUpdate: row.last_update,
                 cycleStartTime: row.cycle_start_time
             };
-            console.log(`Loaded volume for cycle ${row.cycle_id}: ${row.total_volume.toFixed(2)} XNT total`);
+            // Debug log removed
         } else {
             // No existing cycle, start fresh
             const cycleId = `cycle_${Date.now()}`;
@@ -355,7 +402,7 @@ function loadCumulativeVolume() {
                 cycleStartTime: Date.now()
             };
             saveCumulativeVolume();
-            console.log(`New volume cycle started: ${cycleId}`);
+            // Debug log removed
         }
     } catch (err) {
         console.error('Failed to load volume from database:', err.message);
@@ -603,8 +650,247 @@ const MIME_TYPES = {
 };
 
 const server = http.createServer((req, res) => {
+    // ============================================================================
+    // REQUEST LOGGING - Track which APIs are accessed and service type used
+    // ============================================================================
+    const timestamp = new Date().toISOString();
+    const logPrefix = `[${timestamp}]`;
+
+    // API: Get logs for real-time viewer
+    if (req.url.startsWith('/api/logs')) {
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        const from = parseInt(url.searchParams.get('from')) || 0;
+        const limit = parseInt(url.searchParams.get('limit')) || 100;
+
+        const logs = logBuffer.slice(from).slice(-limit).map(entry => entry.message);
+
+        res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+            ...SECURITY_HEADERS
+        });
+        res.end(JSON.stringify({
+            logs: logs,
+            position: logBuffer.length,
+            total: logBuffer.length
+        }));
+        return;
+    }
+
+    // Log requests selectively (skip high-frequency chart endpoints to reduce overhead)
+    const shouldLog = (req.url.startsWith('/api/') || req.url === '/' || req.url === '/proto2' || req.url === '/logs')
+        && !req.url.includes('/api/quote-history/')
+        && !req.url.includes('/api/volume-stream')
+        && !req.url.includes('/api/price-stream')
+        && !req.url.includes('/api/market-stream')
+        && !req.url.includes('/api/cycle-stream')
+        && req.url !== '/api/volume'
+        && req.url !== '/api/logs';
+
+    if (shouldLog) {
+        logToBuffer(`\n${logPrefix} 📥 REQUEST: ${req.method} ${req.url}`);
+    }
+
+    // API: TypeScript Integration Demo (for /proto2)
+    if (req.url === '/api/typescript-demo' && req.method === 'GET') {
+        logToBuffer(`${logPrefix} 🔷 TypeScript: Calling OracleService + MarketService (compiled from /dist/solana)`);
+        (async () => {
+            try {
+                // Import TypeScript services
+                const { OracleService, MarketService } = require('./dist/solana');
+
+                // Initialize services
+                const oracleService = new OracleService(connection, ORACLE_STATE, {
+                    enableLogging: false
+                });
+                const marketService = new MarketService(connection, PROGRAM_ID, {
+                    ammSeed: AMM_SEED,
+                    lamportsPerE6: 100,
+                    enableLogging: false
+                });
+
+                // Fetch data
+                const oraclePrice = await oracleService.fetchPrice();
+                const marketState = await marketService.fetchMarketState();
+
+                if (!oraclePrice || !marketState) {
+                    res.writeHead(500, {
+                        'Content-Type': 'application/json',
+                        ...SECURITY_HEADERS
+                    });
+                    res.end(JSON.stringify({
+                        error: 'Failed to fetch data from TypeScript services'
+                    }));
+                    return;
+                }
+
+                // Calculate LMSR prices
+                const lmsrPrices = marketService.calculatePrices(marketState);
+
+                logToBuffer(`${logPrefix} ✅ TypeScript Response: BTC $${oraclePrice.price.toFixed(2)} (${oraclePrice.age}s old) | Market: ${['Open','Stopped','Settled'][marketState.status]} | YES: ${(lmsrPrices.probYes*100).toFixed(1)}% NO: ${(lmsrPrices.probNo*100).toFixed(1)}%`);
+
+                // Send response
+                res.writeHead(200, {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify({
+                    oracle: oraclePrice,
+                    market: marketState,
+                    lmsr: lmsrPrices,
+                    timestamp: Date.now()
+                }));
+            } catch (err) {
+                console.error('TypeScript demo API error:', err);
+                res.writeHead(500, {
+                    'Content-Type': 'application/json',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify({
+                    error: err.message || 'Internal server error'
+                }));
+            }
+        })();
+        return;
+    }
+
+    // ========== TypeScript API Endpoints for proto2 ==========
+
+    // TypeScript: Current price endpoint
+    if (req.url === '/api/ts/current-price' && req.method === 'GET') {
+        (async () => {
+            try {
+                const price = await tsApiController.getCurrentPrice();
+                res.writeHead(200, {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify(price || { error: 'Price not available' }));
+            } catch (err) {
+                console.error('TypeScript API /ts/current-price error:', err);
+                res.writeHead(500, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+                res.end(JSON.stringify({ error: err.message }));
+            }
+        })();
+        return;
+    }
+
+    // TypeScript: Volume endpoint
+    if (req.url === '/api/ts/volume' && req.method === 'GET') {
+        try {
+            const volume = tsApiController.getVolume();
+            res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify(volume || { error: 'Volume not available' }));
+        } catch (err) {
+            console.error('TypeScript API /ts/volume error:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
+    // TypeScript: Recent cycles endpoint
+    if (req.url === '/api/ts/recent-cycles' && req.method === 'GET') {
+        try {
+            const cycles = tsApiController.getRecentCycles(10);
+            res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify(cycles));
+        } catch (err) {
+            console.error('TypeScript API /ts/recent-cycles error:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
+    // TypeScript: Settlement history endpoint
+    if (req.url === '/api/ts/settlement-history' && req.method === 'GET') {
+        try {
+            const settlements = tsApiController.getSettlementHistory(100);
+            res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify(settlements));
+        } catch (err) {
+            console.error('TypeScript API /ts/settlement-history error:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
+    // TypeScript: Market data endpoint
+    if (req.url === '/api/ts/market-data' && req.method === 'GET') {
+        (async () => {
+            try {
+                const data = await tsApiController.getMarketData();
+                res.writeHead(200, {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify(data || { error: 'Market data not available' }));
+            } catch (err) {
+                console.error('TypeScript API /ts/market-data error:', err);
+                res.writeHead(500, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+                res.end(JSON.stringify({ error: err.message }));
+            }
+        })();
+        return;
+    }
+
+    // TypeScript SSE: Price stream
+    if (req.url === '/api/ts/price-stream' && req.method === 'GET') {
+        logToBuffer(`${logPrefix} 📡 TypeScript SSE: Price stream client connected`);
+        tsStreamService.addPriceClient(res);
+        return;
+    }
+
+    // TypeScript SSE: Market stream
+    if (req.url === '/api/ts/market-stream' && req.method === 'GET') {
+        logToBuffer(`${logPrefix} 📡 TypeScript SSE: Market stream client connected`);
+        tsStreamService.addMarketClient(res);
+        return;
+    }
+
+    // TypeScript SSE: Volume stream
+    if (req.url === '/api/ts/volume-stream' && req.method === 'GET') {
+        logToBuffer(`${logPrefix} 📡 TypeScript SSE: Volume stream client connected`);
+        tsStreamService.addVolumeClient(res);
+        return;
+    }
+
+    // TypeScript SSE: Cycle stream (market status from market_status.json)
+    if (req.url === '/api/ts/cycle-stream' && req.method === 'GET') {
+        logToBuffer(`${logPrefix} 📡 TypeScript SSE: Market status stream client connected`);
+        tsStreamService.addStatusClient(res);
+        return;
+    }
+
+    // TypeScript SSE: Market status stream
+    if (req.url === '/api/ts/status-stream' && req.method === 'GET') {
+        logToBuffer(`${logPrefix} 📡 TypeScript SSE: Status stream client connected`);
+        tsStreamService.addStatusClient(res);
+        return;
+    }
+
+    // ========== End TypeScript API Endpoints ==========
+
     // API: Get cumulative volume
     if (req.url === '/api/volume' && req.method === 'GET') {
+        // Logging disabled for high-frequency endpoint
         res.writeHead(200, {
             'Content-Type': 'application/json',
             'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -702,6 +988,7 @@ const server = http.createServer((req, res) => {
 
     // API: Get price history
     if (req.url.startsWith('/api/price-history') && req.method === 'GET') {
+        logToBuffer(`${logPrefix} 📦 SERVICE: Original JavaScript (SQLite database query)`);
         // Parse query parameters for time range
         const urlObj = new URL(req.url, `http://${req.headers.host}`);
         const seconds = parseInt(urlObj.searchParams.get('seconds')) || null;
@@ -774,6 +1061,7 @@ const server = http.createServer((req, res) => {
 
     // API: Get current BTC price from oracle cache
     if (req.url === '/api/current-price' && req.method === 'GET') {
+        logToBuffer(`${logPrefix} 📦 SERVICE: Original JavaScript (cached oracle price)`);
         res.writeHead(200, {
             'Content-Type': 'application/json',
             'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -1158,6 +1446,10 @@ const server = http.createServer((req, res) => {
         filePath = '/index.html';
     } else if (req.url === '/proto1-original') {
         filePath = '/proto1_original.html';
+    } else if (req.url === '/proto2') {
+        filePath = '/proto2.html';
+    } else if (req.url === '/logs') {
+        filePath = '/logs.html';
     } else {
         filePath = req.url;
     }

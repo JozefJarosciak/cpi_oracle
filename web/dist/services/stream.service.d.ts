@@ -27,10 +27,13 @@ export declare class StreamService {
     private marketClients;
     private volumeClients;
     private cycleClients;
+    private statusClients;
     private priceInterval;
     private marketInterval;
     private volumeInterval;
     private cycleInterval;
+    private statusFileWatcher;
+    private readonly statusFilePath;
     constructor(config: StreamServiceConfig);
     /**
      * Initialize SSE response headers
@@ -56,6 +59,10 @@ export declare class StreamService {
      * Cycle Stream - Volume cycle changes
      */
     addCycleClient(res: ServerResponse): Promise<void>;
+    /**
+     * Market Status Stream - Watches market_status.json for changes
+     */
+    addStatusClient(res: ServerResponse): Promise<void>;
     /**
      * Broadcast event to all clients in a set
      */

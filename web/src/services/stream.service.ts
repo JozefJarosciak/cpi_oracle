@@ -13,6 +13,8 @@ import { OracleService } from '../solana/oracle.service';
 import { MarketService } from '../solana/market.service';
 import { VolumeRepository } from '../database/volume.repository';
 import type { ServerResponse } from 'http';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface StreamServiceConfig {
   connection: Connection;
@@ -34,12 +36,17 @@ export class StreamService {
   private marketClients: Set<ServerResponse> = new Set();
   private volumeClients: Set<ServerResponse> = new Set();
   private cycleClients: Set<ServerResponse> = new Set();
+  private statusClients: Set<ServerResponse> = new Set();
 
   // Stream intervals (undefined or Timeout, not mixed)
   private priceInterval: NodeJS.Timeout | undefined = undefined;
   private marketInterval: NodeJS.Timeout | undefined = undefined;
   private volumeInterval: NodeJS.Timeout | undefined = undefined;
   private cycleInterval: NodeJS.Timeout | undefined = undefined;
+
+  // File watcher for market_status.json
+  private statusFileWatcher: fs.FSWatcher | undefined = undefined;
+  private readonly statusFilePath: string;
 
   constructor(config: StreamServiceConfig) {
     this.oracleService = new OracleService(
@@ -58,6 +65,9 @@ export class StreamService {
       this.volumeRepo = config.volumeRepo;
     }
     this.enableLogging = config.enableLogging ?? false;
+
+    // Path to market_status.json (one level up from web/)
+    this.statusFilePath = path.join(__dirname, '..', '..', '..', 'market_status.json');
   }
 
   /**
@@ -262,6 +272,66 @@ export class StreamService {
   }
 
   /**
+   * Market Status Stream - Watches market_status.json for changes
+   */
+  async addStatusClient(res: ServerResponse): Promise<void> {
+    this.initSSE(res);
+    this.statusClients.add(res);
+
+    if (this.enableLogging) {
+      console.log(`[StreamService] Status client added (${this.statusClients.size} active)`);
+    }
+
+    // Send initial data
+    try {
+      const statusData = fs.readFileSync(this.statusFilePath, 'utf8');
+      const status = JSON.parse(statusData);
+      this.sendEvent(res, 'status', status);
+    } catch (err) {
+      // File doesn't exist yet or settlement bot not running
+      this.sendEvent(res, 'status', { state: 'OFFLINE' });
+    }
+
+    // Start file watcher if first client
+    if (this.statusClients.size === 1) {
+      try {
+        this.statusFileWatcher = fs.watch(this.statusFilePath, (eventType) => {
+          if (eventType === 'change') {
+            try {
+              const statusData = fs.readFileSync(this.statusFilePath, 'utf8');
+              const status = JSON.parse(statusData);
+              if (this.enableLogging) {
+                console.log(`[StreamService] Market status updated: ${status.state}`);
+              }
+              this.broadcastToClients(this.statusClients, 'status', status);
+            } catch (err) {
+              if (this.enableLogging) {
+                console.error('[StreamService] Failed to read market status:', err);
+              }
+            }
+          }
+        });
+      } catch (err) {
+        if (this.enableLogging) {
+          console.error('[StreamService] Failed to watch market status file:', err);
+        }
+      }
+    }
+
+    // Cleanup on disconnect
+    res.on('close', () => {
+      this.statusClients.delete(res);
+      if (this.enableLogging) {
+        console.log(`[StreamService] Status client removed (${this.statusClients.size} active)`);
+      }
+      if (this.statusClients.size === 0 && this.statusFileWatcher) {
+        this.statusFileWatcher.close();
+        this.statusFileWatcher = undefined;
+      }
+    });
+  }
+
+  /**
    * Broadcast event to all clients in a set
    */
   private broadcastToClients(clients: Set<ServerResponse>, event: string, data: any): void {
@@ -288,10 +358,12 @@ export class StreamService {
     if (this.marketInterval) clearInterval(this.marketInterval);
     if (this.volumeInterval) clearInterval(this.volumeInterval);
     if (this.cycleInterval) clearInterval(this.cycleInterval);
+    if (this.statusFileWatcher) this.statusFileWatcher.close();
 
     this.priceClients.clear();
     this.marketClients.clear();
     this.volumeClients.clear();
     this.cycleClients.clear();
+    this.statusClients.clear();
   }
 }
