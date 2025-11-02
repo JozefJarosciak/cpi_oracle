@@ -48,6 +48,24 @@ impl GuardConfig {
     }
 }
 
+// Slippage Protection Config (percentage-based tolerance)
+// ===========================
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug)]
+pub struct SlippageConfig {
+    pub max_slippage_bps: u16,  // Max acceptable slippage in basis points (e.g., 500 = 5%)
+}
+
+impl SlippageConfig {
+    pub fn none() -> Self {
+        Self { max_slippage_bps: 0 }
+    }
+
+    pub fn has_slippage_limit(&self) -> bool {
+        self.max_slippage_bps > 0
+    }
+}
+
 // ===========================
 // Market (single) with LMSR + coverage + settlement
 // ===========================
@@ -1117,6 +1135,45 @@ pub mod cpi_oracle {
         Ok(())
     }
 
+    // ---------- TRADE WITH SLIPPAGE PROTECTION (percentage-based tolerance) ----------
+    pub fn trade_with_slippage(
+        ctx: Context<Trade>,
+        side: u8,
+        action: u8,
+        amount: i64,
+        slippage: SlippageConfig,
+    ) -> Result<()> {
+        // Calculate current market price based on LMSR
+        let amm = &ctx.accounts.amm;
+        let current_price_e6 = if side == 1 { // YES
+            calculate_yes_price(amm)
+        } else { // NO
+            calculate_no_price(amm)
+        };
+
+        // Calculate price limit based on slippage tolerance
+        let price_limit_e6 = if slippage.has_slippage_limit() {
+            if action == 1 { // BUY: allow price to go UP by slippage%
+                let max_increase = (current_price_e6 as i128 * slippage.max_slippage_bps as i128) / 10_000;
+                (current_price_e6 as i128 + max_increase) as i64
+            } else { // SELL: allow price to go DOWN by slippage%
+                let max_decrease = (current_price_e6 as i128 * slippage.max_slippage_bps as i128) / 10_000;
+                (current_price_e6 as i128 - max_decrease).max(0) as i64
+            }
+        } else {
+            0 // No slippage protection
+        };
+
+        msg!("💫 SLIPPAGE CHECK: current_price={:.6} tolerance={}bps limit={:.6}",
+             current_price_e6 as f64 / 1e6,
+             slippage.max_slippage_bps,
+             price_limit_e6 as f64 / 1e6);
+
+        // Convert slippage config to guard config and call trade_guarded
+        let guard = GuardConfig { price_limit_e6 };
+        trade_guarded(ctx, side, action, amount, guard)
+    }
+
     // ---------- CLOSE POSITION (sell all YES and NO shares) ----------
     pub fn close_position(ctx: Context<Trade>) -> Result<()> {
         let amm = &mut ctx.accounts.amm;
@@ -1605,6 +1662,28 @@ fn lmsr_p_yes(amm: &Amm) -> f64 {
     a / (a + c)
 }
 
+// Helper: Calculate current YES price for slippage protection
+fn calculate_yes_price(amm: &Amm) -> i64 {
+    let b = amm.b as f64;
+    let q_yes = amm.q_yes as f64;
+    let q_no = amm.q_no as f64;
+    let exp_yes = (q_yes / b).exp();
+    let exp_no = (q_no / b).exp();
+    let prob = exp_yes / (exp_yes + exp_no);
+    (prob * 1e6) as i64
+}
+
+// Helper: Calculate current NO price for slippage protection
+fn calculate_no_price(amm: &Amm) -> i64 {
+    let b = amm.b as f64;
+    let q_yes = amm.q_yes as f64;
+    let q_no = amm.q_no as f64;
+    let exp_yes = (q_yes / b).exp();
+    let exp_no = (q_no / b).exp();
+    let prob = exp_no / (exp_yes + exp_no);
+    (prob * 1e6) as i64
+}
+
 // ---- logging helpers ----
 fn emit_trade(amm: &Amm, side: u8, action: u8, net_e6: i64, dq_e6: i64, avg_h: f64) {
     let p_yes_e6 = (lmsr_p_yes(amm) * 1_000_000.0).round() as i64;
@@ -1938,5 +2017,8 @@ pub enum ReaderError {
     // Guarded transactions
     #[msg("price exceeds limit for BUY")]         PriceLimitExceeded,
     #[msg("price below limit for SELL")]          PriceLimitNotMet,
+
+    // Slippage protection
+    #[msg("slippage tolerance exceeded")]         SlippageExceeded,
 }
 
