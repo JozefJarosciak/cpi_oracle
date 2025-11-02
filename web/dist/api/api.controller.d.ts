@@ -8,6 +8,7 @@
  * - Settlement history
  * - Market data
  */
+import { type AdvancedGuardConfig, type SimulationResult } from './guarded-trade-simulator';
 import type { CumulativeVolume, CycleInfo, SettlementHistoryRow, TradingHistoryRow } from '../types';
 export interface ApiControllerConfig {
     rpcUrl: string;
@@ -77,6 +78,11 @@ export declare class ApiController {
         volumeCount: number;
         quoteCount: number;
     };
+    /**
+     * POST /api/simulate-guarded-trade
+     * Simulates a guarded trade execution and returns expected results
+     */
+    simulateGuardedTrade(side: number, action: number, amountE6: number, guards: AdvancedGuardConfig): Promise<SimulationResult | null>;
     /**
      * Close database connection
      */

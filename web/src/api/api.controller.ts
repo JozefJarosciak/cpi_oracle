@@ -13,6 +13,7 @@ import { Connection } from '@solana/web3.js';
 import { OracleService } from '../solana/oracle.service';
 import { MarketService } from '../solana/market.service';
 import { SimpleDatabaseController } from './simple-database.controller';
+import { simulateGuardedTrade, type AdvancedGuardConfig, type SimulationResult } from './guarded-trade-simulator';
 import type { CumulativeVolume, CycleInfo, SettlementHistoryRow, TradingHistoryRow } from '../types';
 
 export interface ApiControllerConfig {
@@ -177,6 +178,47 @@ export class ApiController {
    */
   getStats() {
     return this.db.getStats();
+  }
+
+  /**
+   * POST /api/simulate-guarded-trade
+   * Simulates a guarded trade execution and returns expected results
+   */
+  async simulateGuardedTrade(
+    side: number,
+    action: number,
+    amountE6: number,
+    guards: AdvancedGuardConfig
+  ): Promise<SimulationResult | null> {
+    try {
+      const marketState = await this.marketService.fetchMarketState();
+      if (!marketState) {
+        return {
+          success: false,
+          sharesToExecute: 0,
+          executionPrice: 0,
+          totalCost: 0,
+          isPartialFill: false,
+          guardsStatus: {},
+          error: 'Failed to fetch current market state'
+        };
+      }
+
+      return simulateGuardedTrade(side, action, amountE6, guards, marketState);
+    } catch (err) {
+      if (this.enableLogging) {
+        console.error('[ApiController] simulateGuardedTrade error:', err);
+      }
+      return {
+        success: false,
+        sharesToExecute: 0,
+        executionPrice: 0,
+        totalCost: 0,
+        isPartialFill: false,
+        guardsStatus: {},
+        error: err instanceof Error ? err.message : 'Simulation failed'
+      };
+    }
   }
 
   /**

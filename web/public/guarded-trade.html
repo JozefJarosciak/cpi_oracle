@@ -658,24 +658,179 @@
         const CONFIG = {
             PROGRAM_ID: 'EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF',
             RPC_URL: 'https://rpc.testnet.x1.xyz',
-            AMM_SEED: 'amm_btc_v6'
+            AMM_SEED: 'amm_btc_v6',
+            ORACLE_STATE: '4KYeNyv1B9YjjQkfJk2C6Uqo71vKzFZriRe5NXg6GyCq'
         };
 
         let connection = null;
         let simulationData = null;
+        let backpackWallet = null;  // Backpack browser extension wallet
+        let wallet = null;  // Session wallet (Keypair) - used for signing transactions
+
+        // Session wallet cache keys
+        const SESSION_WALLET_SEED_KEY = 'session_wallet_seed';
+        const SESSION_WALLET_ADDRESS_KEY = 'session_wallet_address';
+
+        // Session wallet cache functions
+        function cacheSessionWallet(seed, address) {
+            try {
+                const seedHex = Array.from(seed).map(b => b.toString(16).padStart(2, '0')).join('');
+                sessionStorage.setItem(SESSION_WALLET_SEED_KEY, seedHex);
+                sessionStorage.setItem(SESSION_WALLET_ADDRESS_KEY, address);
+                console.log('[Session Cache] Wallet seed cached for address:', address);
+            } catch (err) {
+                console.warn('[Session Cache] Failed to cache wallet seed:', err);
+            }
+        }
+
+        function getCachedSessionWallet() {
+            try {
+                const seedHex = sessionStorage.getItem(SESSION_WALLET_SEED_KEY);
+                const address = sessionStorage.getItem(SESSION_WALLET_ADDRESS_KEY);
+
+                if (seedHex && address) {
+                    const seed = new Uint8Array(seedHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                    console.log('[Session Cache] Found cached wallet seed for address:', address);
+                    return { seed, address };
+                }
+            } catch (err) {
+                console.warn('[Session Cache] Failed to get cached wallet:', err);
+            }
+            return null;
+        }
+
+        function clearSessionWalletCache() {
+            try {
+                sessionStorage.removeItem(SESSION_WALLET_SEED_KEY);
+                sessionStorage.removeItem(SESSION_WALLET_ADDRESS_KEY);
+                console.log('[Session Cache] Wallet seed cache cleared');
+            } catch (err) {
+                console.warn('[Session Cache] Failed to clear wallet cache:', err);
+            }
+        }
+
+        // Derive deterministic session wallet from Backpack signature
+        async function deriveSessionWalletFromBackpack(backpackWallet) {
+            // Check for cached session wallet first
+            const cached = getCachedSessionWallet();
+            if (cached) {
+                console.log('[Derive] Using cached session wallet, no signature needed');
+
+                const keypair = solanaWeb3.Keypair.fromSeed(cached.seed);
+                const derivedAddress = keypair.publicKey.toString();
+
+                if (derivedAddress === cached.address) {
+                    console.log('[Derive] Cached wallet verified:', derivedAddress);
+                    return keypair;
+                } else {
+                    console.warn('[Derive] Cached wallet mismatch, re-deriving');
+                    clearSessionWalletCache();
+                }
+            }
+
+            const message = new TextEncoder().encode('x1-markets-deterministic-session-wallet-v1');
+
+            try {
+                console.log('[Derive] Requesting signature from Backpack...');
+                const signature = await backpackWallet.signMessage(message);
+
+                // Convert signature to Uint8Array
+                let signatureBytes;
+                if (signature instanceof Uint8Array) {
+                    signatureBytes = signature;
+                } else if (signature.signature) {
+                    signatureBytes = signature.signature;
+                } else if (ArrayBuffer.isView(signature)) {
+                    signatureBytes = new Uint8Array(signature.buffer);
+                } else {
+                    throw new Error('Unexpected signature format from Backpack');
+                }
+
+                // Use first 32 bytes of signature as Ed25519 seed
+                const seed = signatureBytes.slice(0, 32);
+
+                // Create keypair from deterministic seed
+                const keypair = solanaWeb3.Keypair.fromSeed(seed);
+                const sessionAddress = keypair.publicKey.toString();
+
+                // Cache the session wallet
+                cacheSessionWallet(seed, sessionAddress);
+
+                console.log('[Derive] Session wallet derived:', sessionAddress);
+                return keypair;
+            } catch (err) {
+                console.error('Failed to derive session wallet:', err);
+                throw new Error('User denied signature request or Backpack error');
+            }
+        }
 
         // Initialize
         window.addEventListener('load', async () => {
             connection = new solanaWeb3.Connection(CONFIG.RPC_URL, 'confirmed');
             console.log('Connected to X1 testnet');
 
-            // Load wallet balance if connected
-            await updateWalletInfo();
+            // Attempt to connect to available wallets
+            await connectWallet();
         });
 
+        async function connectWallet() {
+            try {
+                // Try Backpack first
+                if (window.backpack?.solana) {
+                    console.log('Backpack wallet detected');
+                    backpackWallet = window.backpack.solana;
+                }
+                // Try Phantom as fallback
+                else if (window.solana?.isPhantom) {
+                    console.log('Phantom wallet detected');
+                    backpackWallet = window.solana;
+                }
+                else {
+                    console.warn('No wallet found');
+                    document.getElementById('walletBalance').textContent = 'No wallet';
+                    return;
+                }
+
+                // Connect Backpack wallet
+                await backpackWallet.connect({ onlyIfTrusted: true }).catch(() => {});
+
+                if (backpackWallet.publicKey) {
+                    // Derive session wallet from Backpack signature
+                    console.log('Deriving session wallet from Backpack...');
+                    try {
+                        wallet = await deriveSessionWalletFromBackpack(backpackWallet);
+                        console.log('✅ Session wallet ready:', wallet.publicKey.toString());
+                        await updateWalletInfo();
+                    } catch (err) {
+                        console.error('Failed to derive session wallet:', err);
+                        document.getElementById('walletBalance').textContent = 'Derivation failed';
+                    }
+                } else {
+                    // Show connect button
+                    document.getElementById('walletBalance').textContent = 'Click to connect';
+                    document.getElementById('walletStatus').onclick = async () => {
+                        await backpackWallet.connect();
+                        wallet = await deriveSessionWalletFromBackpack(backpackWallet);
+                        await updateWalletInfo();
+                    };
+                }
+            } catch (err) {
+                console.error('Wallet connection error:', err);
+            }
+        }
+
         async function updateWalletInfo() {
-            // Placeholder - integrate with Backpack wallet or session wallet
-            document.getElementById('walletBalance').textContent = '0.00';
+            if (!wallet?.publicKey) return;
+
+            try {
+                const balance = await connection.getBalance(wallet.publicKey);
+                const xnt = balance / 1e9;  // Convert lamports to XNT
+                document.getElementById('walletBalance').textContent = xnt.toFixed(4);
+                console.log('Wallet balance:', xnt, 'XNT');
+            } catch (err) {
+                console.error('Failed to fetch balance:', err);
+                document.getElementById('walletBalance').textContent = 'Error';
+            }
         }
 
         function togglePriceLimit() {
@@ -768,10 +923,30 @@
                     Math.floor(parseFloat(document.getElementById('maxCost').value) * 1e6) : 0,
                 allowPartial: document.getElementById('allowPartial').checked,
                 minFillSharesE6: document.getElementById('allowPartial').checked ?
-                    Math.floor(parseFloat(document.getElementById('minFill').value) * 1e6) : 0
+                    Math.floor(parseFloat(document.getElementById('minFill').value) * 10_000_000) : 0
             };
 
-            console.log('Simulating trade:', { side, action, amount, guards });
+            console.log('🔧 CONFIGURED GUARDS:');
+            console.log('  Side:', side === 1 ? 'YES/UP' : 'NO/DOWN');
+            console.log('  Action:', action === 1 ? 'BUY' : 'SELL');
+            console.log('  Amount:', amount, 'shares');
+            if (guards.priceLimitE6 > 0) {
+                console.log('  Price Limit:', `$${(guards.priceLimitE6 / 1e6).toFixed(4)}`, action === 1 ? '(max for BUY)' : '(min for SELL)');
+            }
+            if (guards.maxSlippageBps > 0) {
+                console.log('  Slippage:', `${guards.maxSlippageBps} bps (${(guards.maxSlippageBps / 100).toFixed(1)}%)`);
+                console.log('  Quote Price:', `$${(guards.quotePriceE6 / 1e6).toFixed(4)}`);
+                console.log('  Quote Age:', `${Math.floor(Date.now() / 1000) - guards.quoteTimestamp} seconds`);
+            }
+            if (guards.maxTotalCostE6 > 0) {
+                console.log('  Max Cost:', `$${(guards.maxTotalCostE6 / 1e6).toFixed(2)}`);
+            }
+            if (guards.allowPartial) {
+                console.log('  Partial Fills: ENABLED');
+                console.log('  Min Fill:', `${(guards.minFillSharesE6 / 1e7).toFixed(2)} shares`);
+            } else {
+                console.log('  Partial Fills: DISABLED');
+            }
 
             // Show simulation panel with loading state
             const simResults = document.getElementById('simulationResults');
@@ -783,7 +958,7 @@
                 const response = await fetch('/api/simulate-guarded-trade', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ side, action, amountE6: Math.floor(amount * 1e6), guards })
+                    body: JSON.stringify({ side, action, amountE6: Math.floor(amount * 10_000_000), guards })
                 });
 
                 if (!response.ok) {
@@ -792,6 +967,24 @@
 
                 const result = await response.json();
                 simulationData = result;
+
+                // Log detailed results to console
+                console.log('📊 SIMULATION RESULT:', {
+                    success: result.success,
+                    sharesToExecute: `${(result.sharesToExecute / 1e7).toFixed(2)} shares`,
+                    executionPrice: `$${(result.executionPrice / 1e7).toFixed(4)}`,
+                    totalCost: `$${(result.totalCost / 1e7).toFixed(2)}`,
+                    isPartialFill: result.isPartialFill
+                });
+
+                console.log('🛡️ GUARDS STATUS:');
+                for (const [guard, status] of Object.entries(result.guardsStatus || {})) {
+                    console.log(`  ${guard}:`, status.passed ? '✓ PASS' : '✗ FAIL', status.reason || '');
+                }
+
+                if (result.error) {
+                    console.error('❌ Simulation error:', result.error);
+                }
 
                 // Display results
                 displaySimulationResults(result);
@@ -805,7 +998,7 @@
         }
 
         function displaySimulationResults(result) {
-            const { success, sharesToExecute, executionPrice, totalCost, guardsStatus, isPartialFill } = result;
+            const { success, sharesToExecute, executionPrice, totalCost, guardsStatus, isPartialFill, error } = result;
 
             // Status
             const statusEl = document.getElementById('simStatus');
@@ -819,15 +1012,32 @@
 
             // Shares
             document.getElementById('simShares').textContent =
-                `${(sharesToExecute / 1e6).toFixed(2)} / ${parseFloat(document.getElementById('amount').value).toFixed(2)}`;
+                `${(sharesToExecute / 1e7).toFixed(2)} / ${parseFloat(document.getElementById('amount').value).toFixed(2)}`;
 
             // Price
             document.getElementById('simPrice').textContent =
-                `$${(executionPrice / 1e6).toFixed(4)}`;
+                `$${(executionPrice / 1e7).toFixed(4)}`;
 
             // Cost
             document.getElementById('simCost').textContent =
-                `$${(totalCost / 1e6).toFixed(2)}`;
+                `$${(totalCost / 1e7).toFixed(2)}`;
+
+            // Show error message if present
+            if (!success && error) {
+                const errorDiv = document.createElement('div');
+                errorDiv.style.background = 'rgba(244, 67, 54, 0.1)';
+                errorDiv.style.border = '1px solid var(--red)';
+                errorDiv.style.borderRadius = '6px';
+                errorDiv.style.padding = '12px';
+                errorDiv.style.marginTop = '16px';
+                errorDiv.style.fontSize = '12px';
+                errorDiv.style.color = 'var(--red)';
+                errorDiv.style.fontFamily = "'SF Mono', Monaco, Consolas, monospace";
+                errorDiv.innerHTML = `<strong>❌ Error:</strong><br>${error}`;
+
+                const badgesContainer = document.getElementById('guardBadges');
+                badgesContainer.insertBefore(errorDiv, badgesContainer.firstChild);
+            }
 
             // Guard badges
             displayGuardBadges(guardsStatus);
@@ -851,9 +1061,27 @@
             badgesContainer.innerHTML = '';
 
             for (const [guard, status] of Object.entries(guardsStatus)) {
-                const badge = document.createElement('span');
-                badge.className = status.passed ? 'guard-status active' : 'guard-status failed';
-                badge.textContent = `${guard}: ${status.passed ? '✓ PASS' : '✗ FAIL'}`;
+                const badge = document.createElement('div');
+                badge.style.marginBottom = '12px';
+
+                const statusBadge = document.createElement('span');
+                statusBadge.className = status.passed ? 'guard-status active' : 'guard-status failed';
+                statusBadge.textContent = `${guard}: ${status.passed ? '✓ PASS' : '✗ FAIL'}`;
+                badge.appendChild(statusBadge);
+
+                // Add reason/details (show for both pass and fail)
+                if (status.reason) {
+                    const reason = document.createElement('div');
+                    reason.style.fontSize = '11px';
+                    reason.style.color = status.passed ? 'var(--text-secondary)' : 'var(--red)';
+                    reason.style.marginTop = '4px';
+                    reason.style.paddingLeft = '12px';
+                    reason.style.fontFamily = "'SF Mono', Monaco, Consolas, monospace";
+                    reason.style.lineHeight = '1.5';
+                    reason.textContent = `↳ ${status.reason}`;
+                    badge.appendChild(reason);
+                }
+
                 badgesContainer.appendChild(badge);
             }
         }
@@ -864,11 +1092,230 @@
                 return;
             }
 
-            if (!confirm('Execute this guarded trade on-chain?')) {
+            if (!wallet?.publicKey) {
+                alert('Please connect your wallet first');
+                await connectWallet();
                 return;
             }
 
-            alert('Trade execution not yet implemented - wallet integration required. Simulation shows the trade would succeed with current guards.');
+            const confirmMsg = `Execute guarded trade?\n\n` +
+                `Shares: ${(simulationData.sharesToExecute / 1e7).toFixed(2)}\n` +
+                `Price: $${(simulationData.executionPrice / 1e7).toFixed(4)}\n` +
+                `Total Cost: $${(simulationData.totalCost / 1e7).toFixed(2)}${simulationData.isPartialFill ? '\n\n⚠️ PARTIAL FILL' : ''}`;
+
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+
+            const executeBtn = document.getElementById('executeBtn');
+            const originalText = executeBtn.textContent;
+            executeBtn.disabled = true;
+            executeBtn.textContent = '⏳ BUILDING TRANSACTION...';
+
+            try {
+                // Derive PDAs
+                const programId = new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID);
+                const oracleState = new solanaWeb3.PublicKey(CONFIG.ORACLE_STATE);
+
+                // Helper to convert string to Uint8Array (browser compatible)
+                const textEncoder = new TextEncoder();
+                const stringToBytes = (str) => textEncoder.encode(str);
+
+                const [ammPda] = solanaWeb3.PublicKey.findProgramAddressSync(
+                    [stringToBytes(CONFIG.AMM_SEED)],
+                    programId
+                );
+
+                const [positionPda] = solanaWeb3.PublicKey.findProgramAddressSync(
+                    [stringToBytes('pos'), ammPda.toBuffer(), wallet.publicKey.toBuffer()],
+                    programId
+                );
+
+                const [vaultSolPda] = solanaWeb3.PublicKey.findProgramAddressSync(
+                    [stringToBytes('vault_sol'), ammPda.toBuffer()],
+                    programId
+                );
+
+                const [userVaultPda] = solanaWeb3.PublicKey.findProgramAddressSync(
+                    [stringToBytes('user_vault'), positionPda.toBuffer()],
+                    programId
+                );
+
+                console.log('PDAs:', { ammPda: ammPda.toString(), positionPda: positionPda.toString() });
+
+                // Build instruction data for trade_advanced
+                const side = parseInt(document.getElementById('side').value);
+                const action = parseInt(document.getElementById('action').value);
+                const amount = simulationData.sharesToExecute; // Use validated amount from simulation
+
+                // Collect guards config (matching simulation)
+                const guards = {
+                    priceLimitE6: document.getElementById('enablePriceLimit').checked ?
+                        Math.floor(parseFloat(document.getElementById('priceLimit').value) * 1e6) : 0,
+                    maxSlippageBps: document.getElementById('enableSlippage').checked ?
+                        parseInt(document.getElementById('maxSlippage').value) : 0,
+                    quotePriceE6: document.getElementById('enableSlippage').checked ?
+                        Math.floor(parseFloat(document.getElementById('quotePrice').value) * 1e6) : 0,
+                    quoteTimestamp: document.getElementById('enableSlippage').checked ?
+                        Math.floor(Date.now() / 1000) : 0,
+                    maxTotalCostE6: document.getElementById('enableCostLimit').checked ?
+                        Math.floor(parseFloat(document.getElementById('maxCost').value) * 1e6) : 0,
+                    allowPartial: document.getElementById('allowPartial').checked,
+                    minFillSharesE6: document.getElementById('allowPartial').checked ?
+                        Math.floor(parseFloat(document.getElementById('minFill').value) * 10_000_000) : 0
+                };
+
+                // Anchor discriminator for "trade_advanced" = sha256("global:trade_advanced").slice(0,8)
+                const discriminator = new Uint8Array([130, 167, 223, 30, 233, 80, 38, 147]);
+
+                // Build instruction data
+                const instructionData = concatUint8Arrays([
+                    discriminator,
+                    new Uint8Array([side]), // u8
+                    new Uint8Array([action]), // u8
+                    longToBuffer(amount), // i64
+                    // AdvancedGuardConfig struct
+                    longToBuffer(guards.priceLimitE6),
+                    shortToBuffer(guards.maxSlippageBps),
+                    longToBuffer(guards.quotePriceE6),
+                    longToBuffer(guards.quoteTimestamp),
+                    longToBuffer(guards.maxTotalCostE6),
+                    new Uint8Array([guards.allowPartial ? 1 : 0]),
+                    longToBuffer(guards.minFillSharesE6)
+                ]);
+
+                // First, fetch AMM to get fee_dest
+                const ammAccount = await connection.getAccountInfo(ammPda);
+                if (!ammAccount) {
+                    throw new Error('Market not found');
+                }
+                // AMM structure: discriminator(8) + bump(1) + decimals(1) + b(8) + fee_bps(2) + q_yes(8) + q_no(8) +
+                // fees(8) + vault_e6(8) + status(1) + winner(1) + w_total_e6(8) + pps_e6(8) + fee_dest(32)
+                // fee_dest offset = 8 + 1 + 1 + 8 + 2 + 8 + 8 + 8 + 8 + 1 + 1 + 8 + 8 = 70
+                const feeDestBytes = ammAccount.data.slice(70, 70 + 32);
+                const feeDest = new solanaWeb3.PublicKey(feeDestBytes);
+
+                // Build instruction with correct account order
+                const instruction = new solanaWeb3.TransactionInstruction({
+                    keys: [
+                        { pubkey: ammPda, isSigner: false, isWritable: true },              // 0: amm
+                        { pubkey: wallet.publicKey, isSigner: true, isWritable: true },     // 1: user (SIGNER!)
+                        { pubkey: positionPda, isSigner: false, isWritable: true },         // 2: pos
+                        { pubkey: userVaultPda, isSigner: false, isWritable: true },        // 3: user_vault
+                        { pubkey: feeDest, isSigner: false, isWritable: true },             // 4: fee_dest
+                        { pubkey: vaultSolPda, isSigner: false, isWritable: true },         // 5: vault_sol
+                        { pubkey: oracleState, isSigner: false, isWritable: false },        // 6: oracle_state
+                        { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false }, // 7: system_program
+                        { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false }       // 8: rent
+                    ],
+                    programId,
+                    data: instructionData
+                });
+
+                executeBtn.textContent = '⏳ SIGNING TRANSACTION...';
+
+                // Build and send transaction (session wallet signs directly, no approval needed!)
+                const transaction = new solanaWeb3.Transaction().add(instruction);
+                transaction.feePayer = wallet.publicKey;
+                transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+                console.log('Signing with session wallet (no approval needed)...');
+                transaction.sign(wallet);  // Session wallet is a Keypair, signs directly
+
+                executeBtn.textContent = '⏳ SENDING TRANSACTION...';
+                console.log('Sending transaction...');
+                const signature = await connection.sendRawTransaction(transaction.serialize(), {
+                    skipPreflight: false,
+                    preflightCommitment: 'confirmed'
+                });
+
+                executeBtn.textContent = '⏳ CONFIRMING...';
+                console.log('Transaction sent:', signature);
+
+                // Wait for confirmation
+                const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+
+                if (confirmation.value.err) {
+                    throw new Error('Transaction failed: ' + JSON.stringify(confirmation.value.err));
+                }
+
+                // Success!
+                executeBtn.textContent = '✅ SUCCESS!';
+                executeBtn.style.background = 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)';
+
+                const explorerUrl = `https://explorer.testnet.x1.xyz/tx/${signature}`;
+                alert(`✅ Trade executed successfully!\n\nTx: ${signature}\n\nView on explorer: ${explorerUrl}`);
+
+                // Open explorer in new tab
+                window.open(explorerUrl, '_blank');
+
+                // Refresh wallet balance
+                await updateWalletInfo();
+
+                // Reset button after 3 seconds
+                setTimeout(() => {
+                    executeBtn.textContent = originalText;
+                    executeBtn.style.background = '';
+                    executeBtn.disabled = false;
+                    // Clear simulation to force re-simulation
+                    simulationData = null;
+                    document.getElementById('simulationResults').style.display = 'none';
+                }, 3000);
+
+            } catch (err) {
+                console.error('Transaction error:', err);
+                executeBtn.textContent = '❌ FAILED';
+                executeBtn.style.background = 'linear-gradient(135deg, #f44336 0%, #c62828 100%)';
+
+                let errorMsg = err.message || 'Unknown error';
+
+                // Parse common error messages
+                if (errorMsg.includes('User rejected')) {
+                    errorMsg = 'Transaction cancelled by user';
+                } else if (errorMsg.includes('insufficient')) {
+                    errorMsg = 'Insufficient balance';
+                } else if (errorMsg.includes('PriceLimitExceeded')) {
+                    errorMsg = 'Price limit exceeded (price moved since simulation)';
+                } else if (errorMsg.includes('SlippageExceeded')) {
+                    errorMsg = 'Slippage exceeded (price moved since simulation)';
+                }
+
+                alert(`❌ Transaction failed:\n\n${errorMsg}\n\nTry simulating again to get updated price.`);
+
+                setTimeout(() => {
+                    executeBtn.textContent = originalText;
+                    executeBtn.style.background = '';
+                    executeBtn.disabled = false;
+                }, 3000);
+            }
+        }
+
+        // Helper to convert number to i64 little-endian Uint8Array
+        function longToBuffer(num) {
+            const buf = new Uint8Array(8);
+            const view = new DataView(buf.buffer);
+            view.setBigInt64(0, BigInt(num), true); // true = little-endian
+            return buf;
+        }
+
+        // Helper to convert number to u16 little-endian Uint8Array
+        function shortToBuffer(num) {
+            const buf = new Uint8Array(2);
+            const view = new DataView(buf.buffer);
+            view.setUint16(0, num, true); // true = little-endian
+            return buf;
+        }
+
+        // Helper to concatenate Uint8Arrays
+        function concatUint8Arrays(arrays) {
+            const totalLength = arrays.reduce((acc, arr) => acc + arr.length, 0);
+            const result = new Uint8Array(totalLength);
+            let offset = 0;
+            for (const arr of arrays) {
+                result.set(arr, offset);
+                offset += arr.length;
+            }
+            return result;
         }
     </script>
 </body>

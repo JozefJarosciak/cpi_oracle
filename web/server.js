@@ -907,6 +907,40 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // TypeScript: Simulate guarded trade endpoint
+    if (req.url === '/api/simulate-guarded-trade' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', async () => {
+            try {
+                const { side, action, amountE6, guards } = JSON.parse(body);
+                const result = await tsApiController.simulateGuardedTrade(side, action, amountE6, guards);
+                res.writeHead(200, {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify(result));
+            } catch (err) {
+                console.error('Simulate guarded trade error:', err);
+                res.writeHead(500, {
+                    'Content-Type': 'application/json',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify({
+                    success: false,
+                    sharesToExecute: 0,
+                    executionPrice: 0,
+                    totalCost: 0,
+                    isPartialFill: false,
+                    guardsStatus: {},
+                    error: err.message || 'Simulation failed'
+                }));
+            }
+        });
+        return;
+    }
+
     // ========== End TypeScript API Endpoints ==========
 
     // API: Get cumulative volume

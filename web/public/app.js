@@ -69,6 +69,7 @@ let currentSamplingRate = 1; // How many data points to skip (1 = no skip, 2 = e
 // See CHART_SMOOTHNESS_FIX.md for why overwriting this causes 8-second delays
 let currentTargetPrice = null; // Latest real-time BTC price (DO NOT overwrite with historical data)
 let lastActualPrice = null;    // Last interpolated display price (sync to currentTargetPrice on rebuild)
+let lastAddedTargetPrice = null; // Track the last target price we added to prevent duplicate points
 
 // Calculate optimal sampling rate based on time range to stay under MAX_CHART_POINTS
 function getOptimalSamplingRate(timeRangeSeconds) {
@@ -362,21 +363,16 @@ window.addEventListener('load', async () => {
     // Try to restore session if Backpack is already connected
     await restoreSession();
 
-    // Load 1 hour of data to support all time ranges (1m to 1h)
-    // This preloads enough data for switching between time ranges
-    await loadPriceHistory(3600);
-
-    // Set display time range to 1 minute (but we have 1h of data loaded)
+    // Set display time range to 1 minute
     currentTimeRange = 60;
 
-    // Initialize BTC chart with Chart.js
-    initBTCChart();
+    // Load only what we need for 1m view (with 2x buffer for smooth scrolling)
+    // Data for other time ranges will be loaded on-demand when user switches
+    await loadPriceHistory(currentTimeRange * 2); // Load 2 minutes for 1m view
 
-    // Immediately populate chart with last 1 minute of historical data
-    if (priceHistory.length > 0) {
-        rebuildChartFromHistory();
-        console.log('Chart prerendered with', priceHistory.length, 'seconds of historical data');
-    }
+    // Initialize BTC chart with Chart.js
+    // Note: initBTCChart calls rebuildChartFromHistory internally after successful init
+    initBTCChart();
 
     // Start polling
     startPolling();
@@ -1689,7 +1685,8 @@ function rebuildChartFromHistory() {
     currentSamplingRate = getOptimalSamplingRate(currentTimeRange);
     const effectivePointsPerSecond = getEffectivePointsPerSecond(currentTimeRange);
 
-    console.log(`Rebuilding chart with sampling rate: ${currentSamplingRate} (${effectivePointsPerSecond.toFixed(2)} points/sec)`);
+    const oldPointsCount = chartDataPoints.length;
+    console.log(`🔴 REBUILD CHART - Had ${oldPointsCount} points, rebuilding with ${priceHistory.length} history points, sampling rate: ${currentSamplingRate}`);
 
     chartDataPoints = [];
 
@@ -1777,15 +1774,18 @@ function rebuildChartFromHistory() {
             lastActualPrice = currentTargetPrice;
             console.log(`📊 INTERPOLATION RESET - Synced to current real-time price: ${currentTargetPrice.toFixed(2)}`);
         } else if (chartDataPoints.length > 0 && priceHistory.length > 0) {
-            // Fallback: if no current target, use historical data
-            lastActualPrice = chartDataPoints[chartDataPoints.length - 1];
-            currentTargetPrice = priceHistory[priceHistory.length - 1];
-            console.log(`📊 INTERPOLATION RESET - Fallback to historical: ${currentTargetPrice.toFixed(2)}`);
+            // Fallback: if no current target (initial load), initialize from historical data
+            // This ensures the chart animates immediately even before live stream connects
+            const lastHistoricalPrice = priceHistory[priceHistory.length - 1];
+            lastActualPrice = lastHistoricalPrice;
+            currentTargetPrice = lastHistoricalPrice;
+            console.log(`📊 INTERPOLATION RESET - Initialized from historical: ${currentTargetPrice.toFixed(2)}`);
         }
 
         // Reset update counter to align live sampling with rebuilt chart
         // This ensures smooth updates immediately after time range change
         chartUpdateCounter = 0;
+        lastAddedTargetPrice = null; // Reset so next price update triggers a new point
         console.log(`📊 UPDATE COUNTER RESET - Aligned live sampling to rebuilt chart`);
     }
 }
@@ -2105,6 +2105,14 @@ function initBTCChart() {
         });
     }
 
+    // Populate chart with historical data if available
+    if (priceHistory.length > 0) {
+        rebuildChartFromHistory();
+        console.log('Chart initialized with', priceHistory.length, 'seconds of historical data');
+    } else {
+        console.log('Chart initialized empty - waiting for price history');
+    }
+
     // Start the smooth scrolling update loop
     startChartUpdateLoop();
 }
@@ -2116,6 +2124,7 @@ function startChartUpdateLoop() {
     }
 
     chartUpdateCounter = 0; // Reset global counter for sampling
+    lastAddedTargetPrice = null; // Reset price tracker for clean state
 
     chartUpdateTimer = setInterval(() => {
         if (!btcChart || !currentTargetPrice) return;
@@ -2129,9 +2138,20 @@ function startChartUpdateLoop() {
             lastActualPrice = displayPrice;
         }
 
-        // Only add point if it passes sampling filter (preserves accuracy)
-        if (chartUpdateCounter % currentSamplingRate === 0) {
+        // Update the last point with interpolated price for smooth animation
+        // This ensures visual smoothness even with low sampling rates (15m = 2 updates/sec)
+        if (chartDataPoints.length > 0) {
+            chartDataPoints[chartDataPoints.length - 1] = displayPrice;
+        }
+
+        // Only add NEW point when target price actually changes (not every frame)
+        // This prevents replacing all historical data with duplicate live points
+        const priceHasChanged = lastAddedTargetPrice === null || currentTargetPrice !== lastAddedTargetPrice;
+
+        // Only add point if price changed AND it passes sampling filter (preserves accuracy)
+        if (priceHasChanged && chartUpdateCounter % currentSamplingRate === 0) {
             chartDataPoints.push(displayPrice);
+            lastAddedTargetPrice = currentTargetPrice;
 
             // Calculate effective points per second and max points
             const effectivePointsPerSecond = getEffectivePointsPerSecond(currentTimeRange);
@@ -2164,11 +2184,12 @@ function startChartUpdateLoop() {
                 btcChart.data.labels = generateTimeLabels(displayPoints, actualTimeRange);
                 this.lastLabelUpdate = now;
             }
-
-            // Update chart - use actual data without padding
-            btcChart.data.datasets[0].data = chartDataPoints;
-            btcChart.update('none'); // No animation - we handle smoothness manually
         }
+
+        // Update chart every frame for smooth interpolation (even when not adding new points)
+        // This is critical for smooth animation on longer time ranges (15m, 30m, etc.)
+        btcChart.data.datasets[0].data = chartDataPoints;
+        btcChart.update('none'); // No animation - we handle smoothness manually
 
         chartUpdateCounter++;
 

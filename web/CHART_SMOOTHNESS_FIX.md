@@ -448,7 +448,103 @@ Apply the same pattern:
 
 ---
 
-**Status**: ✅ COMPLETE AND TESTED
+**Status**: ✅ COMPLETE AND TESTED (Updated 2025-11-02)
 **Performance**: Excellent
 **User Experience**: Smooth and responsive
-**Next**: Monitor for any edge cases in production use
+
+---
+
+## Update 2025-11-02: Additional Fix for 15m Jerkiness
+
+### New Issue Discovered
+After the initial fix, the 15m chart was still jerky. Investigation revealed the chart was only being visually updated when adding new points (every 495ms for 15m), even though interpolation was calculated every 55ms.
+
+### Root Cause
+The chart update (`btcChart.update()`) was inside the sampling check:
+```javascript
+if (chartUpdateCounter % currentSamplingRate === 0) {
+    chartDataPoints.push(displayPrice);
+    // ... other code ...
+    btcChart.update('none'); // ❌ Only updates when adding points!
+}
+```
+
+**Result**: For 15m (sampling rate 9), chart only updated 2.02 times/sec, looking jerky.
+
+### The Fix
+Two changes:
+1. **Update last point every frame** with interpolated price
+2. **Update chart display every frame** (move outside sampling check)
+
+```javascript
+// Update the last point with interpolated price for smooth animation
+if (chartDataPoints.length > 0) {
+    chartDataPoints[chartDataPoints.length - 1] = displayPrice;
+}
+
+// Only add NEW point if sampling allows
+if (chartUpdateCounter % currentSamplingRate === 0) {
+    chartDataPoints.push(displayPrice);
+    // ... calculate labels, manage array size ...
+}
+
+// Update chart every frame (outside sampling check)
+btcChart.data.datasets[0].data = chartDataPoints;
+btcChart.update('none');
+```
+
+**Result**: Chart now updates at 18.18 FPS for ALL time ranges, including 15m, 30m, etc. ✅
+
+---
+
+## Update 2025-11-02 (Part 2): Flat Line on Initial Load
+
+### New Issue Discovered
+After the previous fix, on initial page load (1m view), the chart would show historical data for a few seconds, then become a flat line as all historical points were replaced with duplicate current price points.
+
+### Root Cause
+The update loop was adding a NEW point every 55ms (18.18 points/sec) for 1m view, even though the target price only changes once per second. This meant:
+- Chart starts with 1090 historical points ✅
+- Live update loop runs at 18.18 Hz
+- For 1m (sampling rate 1), it adds a new point EVERY frame (55ms)
+- All 1090 historical points get replaced within 60 seconds!
+- If price isn't changing, all new points have the same value → flat line
+
+**Before:**
+```javascript
+// Runs every 55ms
+if (chartUpdateCounter % currentSamplingRate === 0) {
+    chartDataPoints.push(displayPrice); // ❌ Adds point every frame for 1m!
+}
+```
+
+**For 1m**: Counter increments every 55ms, sampling rate = 1, so condition is ALWAYS true → adds 18.18 points/sec → replaces all historical data quickly!
+
+### The Fix
+Only add a NEW point when the target price actually CHANGES (not every frame):
+
+```javascript
+// Track what price we last added
+let lastAddedTargetPrice = null;
+
+// In update loop (every 55ms):
+const priceHasChanged = lastAddedTargetPrice === null || currentTargetPrice !== lastAddedTargetPrice;
+
+// Only add NEW point when price changed AND sampling allows
+if (priceHasChanged && chartUpdateCounter % currentSamplingRate === 0) {
+    chartDataPoints.push(displayPrice);
+    lastAddedTargetPrice = currentTargetPrice; // ✅ Track it!
+}
+```
+
+**Result:**
+- Historical data is preserved (not replaced)
+- New points only added when price actually updates (~1 per second from stream)
+- Chart still animates smoothly via interpolation (last point updated every 55ms)
+- Works correctly for all time ranges ✅
+
+### Key Insight
+The 55ms loop should:
+- ✅ Update LAST point with interpolated value (smooth animation)
+- ✅ Redraw chart (smooth scrolling)
+- ❌ NOT add new points every frame (only when price changes)
