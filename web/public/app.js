@@ -5,11 +5,14 @@ const CONFIG = {
     ORACLE_STATE: '4KYeNyv1B9YjjQkfJk2C6Uqo71vKzFZriRe5NXg6GyCq',
     AMM_SEED: 'amm_btc_v6',  // v6: time-based trading lockout
     LAMPORTS_PER_E6: 100,
-    STATUS_URL: '/market_status.json'
+    STATUS_URL: '/market_status.json',
+    // API prefix - Use TypeScript endpoints if window.API_BASE is set (proto2)
+    API_PREFIX: window.API_BASE || '/api'
 };
 
 // Log the config on load to verify we're using the right version
 console.log('[CONFIG] Using AMM_SEED:', CONFIG.AMM_SEED);
+console.log('[CONFIG] Using API endpoints:', CONFIG.API_PREFIX);
 
 // Global state
 let wallet = null; // Session wallet (Keypair)
@@ -136,14 +139,14 @@ function updateSlotHeaderDisplay() {
                 diffEl.textContent = diff.toLocaleString('en-US');
                 diffEl.style.color = '#ff4757';
             }
-            console.log(`[Slot Display] DIFF: ${diff} (end: ${currentMarketEndSlot}, current: ${latestObservedSlot})`);
+//             console.log(`[Slot Display] DIFF: ${diff} (end: ${currentMarketEndSlot}, current: ${latestObservedSlot})`);
         } else {
             diffEl.textContent = '--';
             diffEl.style.color = 'rgba(255, 255, 255, 0.4)';
-            console.log(`[Slot Display] DIFF showing '--' (end: ${currentMarketEndSlot}, current: ${latestObservedSlot})`);
+//             console.log(`[Slot Display] DIFF showing '--' (end: ${currentMarketEndSlot}, current: ${latestObservedSlot})`);
         }
     } else {
-        console.warn('[Slot Display] slotDiffValue element not found!');
+//         console.warn('[Slot Display] slotDiffValue element not found!');
     }
 
     if (container) {
@@ -1231,12 +1234,12 @@ async function fetchPositionAccount() {
         const accountInfo = await connection.getAccountInfo(posPda);
 
         if (!accountInfo) {
-            console.log('[fetchPositionAccount] No position account found');
+//             console.log('[fetchPositionAccount] No position account found');
             return null;
         }
 
         const d = accountInfo.data;
-        console.log('[fetchPositionAccount] Account data length:', d.length, 'bytes (expected:', 8 + 89, ')');
+//         console.log('[fetchPositionAccount] Account data length:', d.length, 'bytes (expected:', 8 + 89, ')');
 
         // Position struct: discriminator(8) + owner(32) + yes_shares_e6(8) + no_shares_e6(8) + master_wallet(32) + vault_balance_e6(8) + vault_bump(1)
         if (d.length >= 8 + 32 + 8 + 8 + 32 + 8) {
@@ -1247,8 +1250,8 @@ async function fetchPositionAccount() {
             o += 32; // Skip master_wallet
             const vaultBalance = readI64LE(d, o); o += 8;
 
-            console.log('[fetchPositionAccount] Raw vault_balance_e6:', vaultBalance);
-            console.log('[fetchPositionAccount] Converted to XNT:', vaultBalance / 1e7);
+//             console.log('[fetchPositionAccount] Raw vault_balance_e6:', vaultBalance);
+//             console.log('[fetchPositionAccount] Converted to XNT:', vaultBalance / 1e7);
 
             return {
                 yes_shares_e6: sharesY,
@@ -1257,7 +1260,7 @@ async function fetchPositionAccount() {
             };
         }
 
-        console.log('[fetchPositionAccount] Account data too small');
+//         console.log('[fetchPositionAccount] Account data too small');
 
 
         return null;
@@ -2241,7 +2244,7 @@ function connectPriceStream() {
     }
 
     // console.log('Connecting to price stream...');
-    priceEventSource = new EventSource('/api/price-stream');
+    priceEventSource = new EventSource(`${CONFIG.API_PREFIX}/price-stream`);
 
     priceEventSource.onopen = () => {
         // console.log('✅ Price stream connected');
@@ -2309,7 +2312,7 @@ function connectMarketStream() {
     }
 
     // console.log('Connecting to market stream...');
-    marketEventSource = new EventSource('/api/market-stream');
+    marketEventSource = new EventSource(`${CONFIG.API_PREFIX}/market-stream`);
 
     marketEventSource.onopen = () => {
         // console.log('✅ Market stream connected');
@@ -2424,7 +2427,7 @@ function connectVolumeStream() {
     }
 
     // console.log('Connecting to volume stream...');
-    volumeEventSource = new EventSource('/api/volume-stream');
+    volumeEventSource = new EventSource(`${CONFIG.API_PREFIX}/volume-stream`);
 
     volumeEventSource.onopen = () => {
         // console.log('✅ Volume stream connected');
@@ -2465,7 +2468,7 @@ function connectCycleStream() {
     }
 
     // console.log('[Cycle Stream] Connecting to /api/cycle-stream...');
-    cycleEventSource = new EventSource('/api/cycle-stream');
+    cycleEventSource = new EventSource(`${CONFIG.API_PREFIX}/cycle-stream`);
 
     cycleEventSource.onopen = () => {
         // console.log('[Cycle Stream] ✅ Connected successfully');
@@ -2500,7 +2503,7 @@ function connectCycleStream() {
 // Fallback: Fetch current price (for initial load before SSE connects)
 async function fetchOracleData() {
     try {
-        const response = await fetch('/api/current-price');
+        const response = await fetch(`${CONFIG.API_PREFIX}/current-price`);
         if (!response.ok) return;
 
         const data = await response.json();
@@ -2534,7 +2537,7 @@ function readU64LE(buf, off) {
 
 async function fetchMarketData() {
     try {
-        console.log('[fetchMarketData] Fetching account:', ammPda ? ammPda.toString() : 'NULL');
+//         console.log('[fetchMarketData] Fetching account:', ammPda ? ammPda.toString() : 'NULL');
         const accountInfo = await connection.getAccountInfo(ammPda);
 
         if (!accountInfo) {
@@ -2584,7 +2587,7 @@ async function fetchMarketData() {
         // Log market timing info
         if (currentMarketEndTime > 0) {
             const lockoutStartTime = currentMarketEndTime - (TRADING_LOCKOUT_SECONDS * 1000);
-            console.log('[fetchMarketData] Market Timing Configuration:');
+//             console.log('[fetchMarketData] Market Timing Configuration:');
             console.log(`  Market End Time: ${new Date(currentMarketEndTime).toLocaleString()}`);
             console.log(`  Lockout Start: ${new Date(lockoutStartTime).toLocaleString()}`);
             console.log(`  Trading locks ${TRADING_LOCKOUT_SECONDS} seconds before market end`);
@@ -2593,8 +2596,8 @@ async function fetchMarketData() {
         // Store start price for arrow indicator
         marketStartPrice = startPriceE6 > 0 ? startPriceE6 / 1_000_000 : null;
 
-        console.log('[fetchMarketData] Start price E6:', startPriceE6, '→ USD:', marketStartPrice);
-        console.log('[fetchMarketData] Market end slot:', marketEndSlot);
+//         console.log('[fetchMarketData] Start price E6:', startPriceE6, '→ USD:', marketStartPrice);
+//         console.log('[fetchMarketData] Market end slot:', marketEndSlot);
 
         // Update "Price to Beat" display
         const beatPriceEl = document.getElementById('chartBeatPrice');
@@ -2605,10 +2608,10 @@ async function fetchMarketData() {
                     maximumFractionDigits: 2
                 });
                 beatPriceEl.textContent = `$${formattedPrice}`;
-                console.log('[fetchMarketData] ✅ Updated beatPrice display to:', formattedPrice);
+//                 console.log('[fetchMarketData] ✅ Updated beatPrice display to:', formattedPrice);
             } else {
                 beatPriceEl.textContent = '--';
-                console.log('[fetchMarketData] ⚠️ No start price yet, showing --');
+//                 console.log('[fetchMarketData] ⚠️ No start price yet, showing --');
             }
         }
 
@@ -5574,7 +5577,7 @@ function clearLog() {
 
 async function loadSettlementHistory() {
     try {
-        const response = await fetch('/api/settlement-history');
+        const response = await fetch(`${CONFIG.API_PREFIX}/settlement-history`);
         if (!response.ok) {
             console.warn('Failed to load settlement history:', response.status);
             return;
@@ -5918,6 +5921,11 @@ function switchFeedTab(tab) {
 }
 
 // Auto-refresh settlement history if tab is active
+// Poll market/cycle status every 2 seconds
+setInterval(() => {
+    fetchCycleStatus();
+}, 2000);
+
 setInterval(() => {
     if (currentFeedTab === 'settlement') {
         loadSettlementHistory();
@@ -5929,6 +5937,9 @@ setInterval(() => {
 window.addEventListener('DOMContentLoaded', async () => {
     // Initialize rapid fire and debug toggles
     initToggles();
+
+    // Load market/cycle status
+    await fetchCycleStatus();
 
     // Initialize alarm toggle from localStorage
     const alarmToggle = document.getElementById('alarmToggle');

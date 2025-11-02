@@ -1,0 +1,1981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X1 Markets - Pro (TypeScript)</title>
+    <link rel="stylesheet" href="index.css">
+    <script src="chart.min.js"></script>
+</head>
+<body>
+    <!-- Toast Notifications Container -->
+    <div id="toastContainer"></div>
+
+    <div class="trading-terminal">
+        <!-- Top Bar -->
+        <header class="top-bar">
+            <div class="top-left">
+                <div class="brand">X1 <span class="brand-subtitle">Vero Prediction Markets</span> <span style="background: #3178c6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; margin-left: 8px;">TypeScript</span></div>
+                <label class="debug-toggle" title="Enable rapid fire trading (no confirmation)">
+                    <input type="checkbox" id="rapidFireToggle" onchange="toggleRapidFire()">
+                    <span class="debug-toggle-track">
+                        <span class="debug-toggle-thumb"></span>
+                    </span>
+                    <span class="debug-label">RAPID FIRE</span>
+                </label>
+                <label class="debug-toggle" title="Toggle slot debug view">
+                    <input type="checkbox" id="debugToggle" checked>
+                    <span class="debug-toggle-track">
+                        <span class="debug-toggle-thumb"></span>
+                    </span>
+                    <span class="debug-label">DEBUG</span>
+                </label>
+            </div>
+            <div class="top-right">
+                <div id="walletNavDisconnected" class="hidden">
+                    <button class="btn-wallet" onclick="connectBackpack()">Connect Wallet</button>
+                </div>
+                <div id="walletNavConnected" class="hidden">
+                    <div class="wallet-info">
+                        <button class="btn-deposit" onclick="openDepositModal()">Deposit</button>
+                        <button class="btn-withdraw-nav" onclick="openWithdrawModal()">Withdraw</button>
+                        <span class="balance" id="navWalletBal">0.00</span>
+                        <span class="balance-unit">XNT</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Deposit Modal -->
+        <div id="depositModal" class="modal hidden">
+            <div class="modal-overlay" onclick="closeDepositModal()"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="modal-title-section">
+                        <h3 class="modal-title">Deposit</h3>
+                        <p class="modal-subtitle">Transfer funds to trading account</p>
+                    </div>
+                    <button class="modal-close" onclick="closeDepositModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="balance-info">
+                        <div class="balance-row">
+                            <div class="balance-label-section">
+                                <span class="balance-label">Backpack Wallet</span>
+                                <span class="balance-sublabel">Available</span>
+                            </div>
+                            <span class="balance-value" id="sessionWalletBalance">Loading...</span>
+                        </div>
+                        <div class="balance-row">
+                            <div class="balance-label-section">
+                                <span class="balance-label">Session Wallet</span>
+                                <span class="balance-sublabel">TX Fees</span>
+                            </div>
+                            <span class="balance-value" id="tradingWalletBalance">Loading...</span>
+                        </div>
+                        <div class="balance-row">
+                            <div class="balance-label-section">
+                                <span class="balance-label">Trading Account</span>
+                                <span class="balance-sublabel">Current</span>
+                            </div>
+                            <span class="balance-value" id="currentVaultBalance">Loading...</span>
+                        </div>
+                    </div>
+
+                    <!-- Show Accounts Toggle -->
+                    <div style="margin: 16px 0; padding: 8px 0; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: #888;">
+                            <input type="checkbox" id="showAccountsToggle" onchange="toggleAccountsDisplay()" style="cursor: pointer;">
+                            <span>Show Account Addresses</span>
+                        </label>
+                    </div>
+
+                    <!-- Account Addresses (hidden by default) -->
+                    <div id="accountAddressesSection" style="display: none; margin: 16px 0; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                        <div style="font-size: 11px; color: #888; margin-bottom: 12px;">
+                            <div style="margin-bottom: 8px;">
+                                <div style="color: #aaa; margin-bottom: 2px;">Backpack Wallet (Master)</div>
+                                <div style="font-family: monospace; color: #0f0; word-break: break-all; cursor: pointer;" id="backpackWalletAddr" onclick="copyAddress(this)" title="Click to copy">-</div>
+                            </div>
+                            <div style="margin-bottom: 8px;">
+                                <div style="color: #aaa; margin-bottom: 2px;">Session Wallet (Derived)</div>
+                                <div style="font-family: monospace; color: #0f0; word-break: break-all; cursor: pointer;" id="sessionWalletAddr" onclick="copyAddress(this)" title="Click to copy">-</div>
+                            </div>
+                            <div style="margin-bottom: 8px;">
+                                <div style="color: #aaa; margin-bottom: 2px;">Position PDA</div>
+                                <div style="font-family: monospace; color: #0f0; word-break: break-all; cursor: pointer;" id="positionPdaAddr" onclick="copyAddress(this)" title="Click to copy">-</div>
+                            </div>
+                            <div>
+                                <div style="color: #aaa; margin-bottom: 2px;">User Vault PDA</div>
+                                <div style="font-family: monospace; color: #0f0; word-break: break-all; cursor: pointer;" id="userVaultPdaAddr" onclick="copyAddress(this)" title="Click to copy">-</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="depositAmount">Amount</label>
+                        <div class="input-wrapper">
+                            <input type="number" id="depositAmount" placeholder="0.00" step="0.01" min="0.01">
+                            <span class="input-currency">XNT</span>
+                            <button class="btn-max-deposit" onclick="setMaxAmount()">MAX</button>
+                        </div>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button class="btn-primary" id="depositBtn" onclick="executeDeposit()">Deposit</button>
+                        <button class="btn-withdraw" id="withdrawBtn" onclick="executeWithdraw()">Withdraw</button>
+                        <button class="btn-secondary" onclick="closeDepositModal()">Cancel</button>
+                    </div>
+
+                    <div class="modal-actions-secondary">
+                        <button class="btn-fund-session" onclick="fundSessionWallet()">Fund Session Wallet</button>
+                    </div>
+
+                    <div class="deposit-info-section">
+                        <div class="deposit-info-item">
+                            <div class="info-icon">ℹ️</div>
+                            <div class="info-text">
+                                <strong>Direct transfer</strong> from Backpack to vault. Session wallet trades using vault funds.
+                            </div>
+                        </div>
+                        <div class="deposit-info-item">
+                            <div class="info-icon">🔒</div>
+                            <div class="info-text">
+                                <strong>Secure architecture</strong> — Session wallet never holds funds. Only Backpack can withdraw.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Close Position Confirmation Modal -->
+        <div id="closePositionModal" class="modal hidden">
+            <div class="modal-overlay" onclick="closeClosePositionModal()"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="modal-title-section">
+                        <h3 class="modal-title">🔒 Close All Positions</h3>
+                        <p class="modal-subtitle">Review estimated proceeds before closing</p>
+                    </div>
+                    <button class="modal-close" onclick="closeClosePositionModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="balance-info">
+                        <div class="balance-row">
+                            <div class="balance-label-section">
+                                <span class="balance-label">YES Shares</span>
+                                <span class="balance-sublabel">To Sell</span>
+                            </div>
+                            <span class="balance-value" id="closeYesShares">0</span>
+                        </div>
+                        <div class="balance-row">
+                            <div class="balance-label-section">
+                                <span class="balance-label">NO Shares</span>
+                                <span class="balance-sublabel">To Sell</span>
+                            </div>
+                            <span class="balance-value" id="closeNoShares">0</span>
+                        </div>
+                        <div class="balance-row highlight">
+                            <div class="balance-label-section">
+                                <span class="balance-label">Estimated Proceeds</span>
+                                <span class="balance-sublabel">After Fees</span>
+                            </div>
+                            <span class="balance-value" id="closeEstimatedProceeds">~0.00 XNT</span>
+                        </div>
+                    </div>
+
+                    <div class="deposit-info-section">
+                        <div class="deposit-info-item">
+                            <div class="info-icon">💰</div>
+                            <div class="info-text">
+                                <strong>Instant liquidation</strong> — Both YES and NO positions will be sold at current market prices.
+                            </div>
+                        </div>
+                        <div class="deposit-info-item">
+                            <div class="info-icon">⚠️</div>
+                            <div class="info-text">
+                                <strong>Price impact</strong> — Final proceeds may vary based on LMSR curve and market depth.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button class="btn-close-position-confirm" id="confirmCloseBtn" onclick="executeClosePosition()">
+                            Confirm Close
+                        </button>
+                        <button class="btn-secondary" onclick="closeClosePositionModal()">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trade Confirmation Modal -->
+        <div id="tradeConfirmModal" class="modal hidden">
+            <div class="modal-overlay" onclick="closeTradeConfirmModal()"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="modal-title-section">
+                        <h3 class="modal-title" id="confirmModalTitle">Confirm Trade</h3>
+                        <p class="modal-subtitle">Review your trade before confirming</p>
+                    </div>
+                    <button class="modal-close" onclick="closeTradeConfirmModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="balance-info">
+                        <div class="balance-row">
+                            <div class="balance-label-section">
+                                <span class="balance-label">Action</span>
+                            </div>
+                            <span class="balance-value" id="confirmAction">BUY</span>
+                        </div>
+                        <div class="balance-row">
+                            <div class="balance-label-section">
+                                <span class="balance-label">Outcome</span>
+                            </div>
+                            <span class="balance-value" id="confirmOutcome">UP</span>
+                        </div>
+                        <div class="balance-row">
+                            <div class="balance-label-section">
+                                <span class="balance-label">Shares</span>
+                            </div>
+                            <span class="balance-value" id="confirmShares">10.00</span>
+                        </div>
+                        <div class="balance-row">
+                            <div class="balance-label-section">
+                                <span class="balance-label">Price per Share</span>
+                            </div>
+                            <span class="balance-value" id="confirmPrice">0.50 XNT</span>
+                        </div>
+                        <div class="balance-row highlight">
+                            <div class="balance-label-section">
+                                <span class="balance-label" id="confirmCostLabel">Total Cost</span>
+                            </div>
+                            <span class="balance-value" id="confirmCost">~5.00 XNT</span>
+                        </div>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button class="btn-close-position-confirm" onclick="confirmTradeExecution()">
+                            Confirm Trade
+                        </button>
+                        <button class="btn-secondary" onclick="closeTradeConfirmModal()">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="terminal-grid">
+            <!-- Left: Chart + Market Info -->
+            <div class="grid-chart">
+                <div class="chart-header">
+                    <div class="chart-title">Will BTC go UP or DOWN?</div>
+                    <div class="winning-badge" id="winningIndicator">--</div>
+                </div>
+
+                <!-- Winner Banner -->
+                <div class="trade-banner" id="winnerBanner" style="display: none;">
+                    <span id="winnerOutcome">UP WON</span>
+                    <span class="banner-price" id="winnerReason">$95,000 ↑ $96,500</span>
+                </div>
+
+                <!-- Price Header -->
+                <div class="chart-price-header">
+                    <div class="price-header-item">
+                        <div class="price-header-label">Price to Beat</div>
+                        <div id="chartBeatPrice" class="price-header-value price-beat">--</div>
+                    </div>
+                    <div class="price-header-item price-header-center">
+                        <div class="price-arrow-indicator" id="priceArrowIndicator">
+                            <div class="arrow-icon" id="arrowIcon">↑</div>
+                            <div class="arrow-content">
+                                <div class="arrow-label-change" id="arrowLabelChange">+$0</div>
+                                <div class="arrow-label-percent" id="arrowLabelPercent">+0.00%</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="price-header-item price-header-right">
+                        <div class="price-header-label">Current Price</div>
+                        <div id="chartCurrentPrice" class="price-header-value price-current">$0.00</div>
+                    </div>
+                </div>
+
+                <!-- Volume Stats Row -->
+                <div class="volume-stats-row">
+                    <div class="volume-stat volume-up">
+                        <div class="volume-label">UP VOLUME</div>
+                        <div class="volume-value" id="volumeUp">0 XNT</div>
+                        <div class="volume-shares" id="volumeUpShares">0 shares</div>
+                    </div>
+                    <div class="volume-stat volume-down">
+                        <div class="volume-label">DOWN VOLUME</div>
+                        <div class="volume-value" id="volumeDown">0 XNT</div>
+                        <div class="volume-shares" id="volumeDownShares">0 shares</div>
+                    </div>
+                    <div class="volume-stat volume-total">
+                        <div class="volume-label">TOTAL VOLUME</div>
+                        <div class="volume-value" id="volumeTotal">0 XNT</div>
+                        <div class="volume-shares" id="volumeTotalShares">0 shares</div>
+                    </div>
+                </div>
+
+                <!-- Time Range Dropdown & Chart Style Toggle -->
+                <div class="chart-controls">
+                    <div class="chart-timerange-dropdown">
+                        <div class="timerange-dropdown-trigger" onclick="toggleTimeRangeDropdown()">
+                            <span id="selectedTimeRange">1m</span>
+                            <svg class="dropdown-arrow" width="12" height="8" viewBox="0 0 12 8">
+                                <path d="M1 1L6 6L11 1" stroke="currentColor" stroke-width="2" fill="none"/>
+                            </svg>
+                        </div>
+                        <div class="timerange-dropdown-menu" id="timeRangeMenu">
+                            <div class="timerange-option active" data-seconds="60" onclick="selectTimeRange(60)">1m</div>
+                            <div class="timerange-option" data-seconds="300" onclick="selectTimeRange(300)">5m</div>
+                            <div class="timerange-option" data-seconds="900" onclick="selectTimeRange(900)">15m</div>
+                            <div class="timerange-option" data-seconds="1800" onclick="selectTimeRange(1800)">30m</div>
+                            <div class="timerange-option" data-seconds="3600" onclick="selectTimeRange(3600)">1h</div>
+                            <div class="timerange-option" data-seconds="21600" onclick="selectTimeRange(21600)">6h</div>
+                            <div class="timerange-option" data-seconds="86400" onclick="selectTimeRange(86400)">24h</div>
+                        </div>
+                    </div>
+                    <button class="chart-style-toggle" onclick="toggleChartStyle()" title="Toggle candlestick/solid color">
+                        <svg id="chartStyleIcon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <!-- Candlestick icon (default) -->
+                            <rect x="2" y="4" width="3" height="8" fill="currentColor" opacity="0.6"/>
+                            <rect x="6.5" y="2" width="3" height="12" fill="currentColor" opacity="0.6"/>
+                            <rect x="11" y="6" width="3" height="6" fill="currentColor" opacity="0.6"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Chart -->
+                <div class="chart-container">
+                    <canvas id="btcChart"></canvas>
+                </div>
+
+                <!-- Market Stats -->
+                <div class="market-stats">
+                    <div class="stat-item">
+                        <div class="stat-label">STATUS</div>
+                        <div class="stat-value" id="cycleState">LOADING</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">TIME</div>
+                        <div class="stat-value" id="currentTime">--:--:--</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label" id="nextMarketLabel">NEXT</div>
+                        <div class="stat-value" id="nextMarketTime">--:--</div>
+                    </div>
+                    <div class="stat-item countdown-item" id="countdownItem" style="display: none;">
+                        <div class="stat-label-with-toggle">
+                            <span class="stat-label">CLOSES IN</span>
+                            <label class="alarm-toggle-inline" title="Toggle alarm sounds">
+                                <input type="checkbox" id="alarmToggle" checked>
+                                <span class="toggle-track">
+                                    <span class="toggle-thumb">
+                                        <svg class="toggle-icon" width="8" height="8" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M3 4.5C3 2.567 4.567 1 6.5 1C8.433 1 10 2.567 10 4.5V6.5C10 7.328 10.672 8 11.5 8V9C10.119 9 9 7.881 9 6.5V4.5C9 3.119 7.881 2 6.5 2C5.119 2 4 3.119 4 4.5V6.5C4 7.881 2.881 9 1.5 9V8C2.328 8 3 7.328 3 6.5V4.5Z" fill="currentColor"/>
+                                            <path d="M6.5 10.5C7.328 10.5 8 9.828 8 9H5C5 9.828 5.672 10.5 6.5 10.5Z" fill="currentColor"/>
+                                        </svg>
+                                    </span>
+                                </span>
+                            </label>
+                        </div>
+                        <div class="stat-value countdown-value" id="countdownTimer">--:--</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">VAULT</div>
+                        <div class="stat-value"><span id="vaultTotalDisplay">0.00</span> XNT</div>
+                    </div>
+                </div>
+
+                <!-- Live Trade Feed -->
+                <div class="trade-feed-section">
+                    <div class="feed-header">
+                        <div class="feed-tabs">
+                            <button class="feed-tab active" id="liveFeedTab" onclick="switchFeedTab('live')">LIVE</button>
+                            <button class="feed-tab" id="settlementFeedTab" onclick="switchFeedTab('settlement')">SETTLEMENT</button>
+                            <button class="feed-tab" id="tradingFeedTab" onclick="switchFeedTab('trading')">TRADING</button>
+                        </div>
+                        <div class="feed-status">
+                            <div class="ws-status" id="wsStatus" title="Live Trade Feed">
+                                <span class="ws-dot"></span>
+                                <span class="ws-label">FEED</span>
+                            </div>
+                            <span class="feed-count" id="tradeCount">0</span>
+                        </div>
+                    </div>
+                    <div class="trade-feed-list" id="tradeFeed">
+                        <div class="trade-feed-empty">
+                            <span class="empty-icon">📊</span>
+                            <span class="empty-text">Waiting for trades...</span>
+                        </div>
+                    </div>
+                    <div class="trade-feed-list hidden" id="settlementFeed">
+                        <div class="trade-feed-empty">
+                            <span class="empty-icon">📜</span>
+                            <span class="empty-text">No settlement history</span>
+                        </div>
+                    </div>
+                    <div class="trade-feed-list hidden" id="tradingFeed">
+                        <div class="trade-feed-empty">
+                            <span class="empty-icon">📈</span>
+                            <span class="empty-text">Connect wallet to view your trading history</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Probability Chart -->
+                <div class="quote-history-section" style="display: none;">
+                    <div class="quote-history-header">
+                        <span class="quote-history-title">PROBABILITY</span>
+                        <select id="cycleSelector" class="cycle-selector" onchange="loadQuoteHistory()">
+                            <option value="">Current Market</option>
+                        </select>
+                    </div>
+                    <div class="quote-chart-container">
+                        <canvas id="quoteChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Trollbox -->
+                <div class="trollbox-section">
+                    <div class="trollbox-header">
+                        <span class="trollbox-title">CHAT</span>
+                        <span class="trollbox-count" id="chatCount">0</span>
+                    </div>
+                    <div class="trollbox-messages" id="trollboxMessages">
+                        <div class="trollbox-empty">
+                            <span class="empty-icon">💬</span>
+                            <span class="empty-text">No messages yet...</span>
+                        </div>
+                    </div>
+                    <div class="trollbox-input-wrapper">
+                        <input
+                            type="text"
+                            id="trollboxInput"
+                            class="trollbox-input"
+                            placeholder="Type message (max 300 chars)"
+                            maxlength="300"
+                            onkeypress="if(event.key==='Enter') sendChatMessage()"
+                        >
+                        <button class="trollbox-send-btn" onclick="sendChatMessage()">SEND</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Trade Panel -->
+            <div class="grid-trade">
+                <div class="trade-panel">
+                    <div class="panel-header">TRADE</div>
+
+                    <!-- Buy/Sell Tabs -->
+                    <div class="trade-tabs">
+                        <button class="tab-btn active" id="buyTab" onclick="switchTab('buy')">BUY</button>
+                        <button class="tab-btn" id="sellTab" onclick="switchTab('sell')">SELL</button>
+                    </div>
+
+                    <!-- Direction Toggle -->
+                    <div class="direction-toggle">
+                        <button class="dir-btn dir-yes active" id="yesBtn" onclick="selectOutcome('yes')">
+                            UP <span id="yesBtnPrice">0.50</span>
+                        </button>
+                        <button class="dir-btn dir-no" id="noBtn" onclick="selectOutcome('no')">
+                            DOWN <span id="noBtnPrice">0.50</span>
+                        </button>
+                    </div>
+
+                    <!-- Shares Input -->
+                    <div class="input-section" id="sharesInputSection">
+                        <label class="input-label">NUMBER OF SHARES</label>
+                        <div style="position: relative; display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="tradeAmountShares" class="trade-input" placeholder="0" step="1" value="0" oninput="updateFromInput()" style="flex: 1;">
+                            <button onclick="resetShares()" style="position: absolute; right: 10px; background: transparent; border: none; color: #ff5353; cursor: pointer; font-size: 18px; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; opacity: 0.6;" title="Reset to 0">✕</button>
+                        </div>
+                        <input type="range" id="sharesSlider" class="amount-slider" min="0" max="500" value="0" step="1" oninput="updateFromSlider()">
+                        <div class="slider-labels">
+                            <span>0</span>
+                            <span>500</span>
+                        </div>
+                        <div class="quick-amounts">
+                            <button onclick="addShares(1)">+1</button>
+                            <button onclick="addShares(10)">+10</button>
+                            <button onclick="addShares(50)">+50</button>
+                            <button onclick="addShares(100)">+100</button>
+                        </div>
+                    </div>
+
+                    <!-- Cost Display -->
+                    <div class="trade-cost">
+                        <span id="tradeCostLabel">EST. COST</span>
+                        <span id="tradeCost">~5.00 XNT</span>
+                    </div>
+
+                    <!-- Trade Button -->
+                    <button class="btn-execute" id="tradeBtn" onclick="executeTrade()">
+                        <span id="tradeBtnText">BUY 10 UP</span>
+                    </button>
+
+                    <!-- Close Position Button -->
+                    <button class="btn-close-position" id="closePositionBtn" onclick="closePosition()" style="margin-top: 10px;">
+                        <span>🔒 CLOSE ALL POSITIONS</span>
+                    </button>
+                </div>
+
+                <!-- Position Display -->
+                <div class="position-panel" id="positionStatusConnected">
+                    <div class="panel-header">POSITIONS</div>
+                    <div class="position-rows">
+                        <div class="pos-row pos-yes">
+                            <div>
+                                <div class="pos-label">UP</div>
+                                <div class="pos-amount" id="posYesDisplay">0.00</div>
+                            </div>
+                            <div class="pos-value" id="posYesValue">$0.00</div>
+                        </div>
+                        <div class="pos-row pos-no">
+                            <div>
+                                <div class="pos-label">DOWN</div>
+                                <div class="pos-amount" id="posNoDisplay">0.00</div>
+                            </div>
+                            <div class="pos-value" id="posNoValue">$0.00</div>
+                        </div>
+                    </div>
+                    <div class="pos-summary">
+                        <div class="pos-summary-row">
+                            <span>TOTAL VALUE</span>
+                            <span id="totalPosValue">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Wallet Info (Collapsible) -->
+                <div class="wallet-panel collapsible-panel" id="walletPanel">
+                    <div class="panel-header collapsible-header" onclick="toggleWalletPanel()">
+                        <span>TRADING WALLET</span>
+                        <span class="collapse-arrow" id="walletCollapseArrow">▼</span>
+                    </div>
+                    <div class="collapsible-content" id="walletPanelContent" style="display: none;">
+                        <div id="sidebarWalletDisconnected">
+                            <p class="empty-text">Connect wallet to start trading</p>
+                        </div>
+                        <div id="sidebarWalletConnected" class="hidden">
+                            <div class="wallet-address-section">
+                                <div class="wallet-label">SESSION WALLET</div>
+                                <div class="wallet-address-display">
+                                    <span class="wallet-address" id="sessionAddr">--</span>
+                                    <button class="btn-copy" onclick="copySessionWallet()" title="Copy">
+                                        📋
+                                    </button>
+                                </div>
+                                <div class="wallet-balance-info">
+                                    <span class="wallet-balance-amount"><span id="walletBal">0.0000</span> XNT</span>
+                                </div>
+                            </div>
+                            <div class="wallet-actions">
+                                <input type="number" id="withdrawAmountSidebar" class="input-compact" placeholder="Amount" step="0.01">
+                                <button class="btn-compact" onclick="withdrawToBackpackSidebar()">WITHDRAW</button>
+                                <button class="btn-compact btn-ghost" onclick="disconnectWallet()">DISCONNECT</button>
+                                <button class="btn-compact btn-export" onclick="exportPrivateKey()" title="Export key">
+                                    🔑 EXPORT KEY
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Activity Log -->
+                <div class="activity-panel">
+                    <div class="panel-header">
+                        <span>ACTIVITY</span>
+                        <button class="btn-clear" onclick="clearLog()">CLEAR</button>
+                    </div>
+                    <div class="activity-log" id="logContent">
+                        <div class="log-entry log-info">
+                            <span class="log-time">--:--:--</span>
+                            <span class="log-message">Initializing...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden elements for compatibility -->
+                <div id="yesPercentage" style="display: none;">0.50</div>
+                <div id="noPercentage" style="display: none;">0.50</div>
+                <div id="yesShares" style="display: none;">0 shares</div>
+                <div id="noShares" style="display: none;">0 shares</div>
+                <div id="positionStatusDisconnected" style="display: none;"></div>
+                <div id="sidebarWalletDisconnected" style="display: none;"></div>
+                <div id="sidebarWalletConnected" style="display: none;"></div>
+                <div id="sessionAddr" style="display: none;"></div>
+                <div id="walletBal" style="display: none;"></div>
+                <div id="withdrawAmount" style="display: none;"></div>
+                <div id="navWalletAddr" style="display: none;"></div>
+                <div id="vaultDisplay" style="display: none;"></div>
+                <div id="marketStatusBadge" style="display: none;"></div>
+                <div id="buyTab" style="display: none;"></div>
+                <div id="sellTab" style="display: none;"></div>
+                <div id="redeemableSectionSidebar" style="display: none;"></div>
+                <div id="redeemableAmountSidebar" style="display: none;"></div>
+                <div id="redeemableBreakdownSidebar" style="display: none;"></div>
+                <div id="btnRedeemSidebar" style="display: none;"></div>
+                <div id="netExposure" style="display: none;"></div>
+                <div id="lastTradeAction" style="display: none;"></div>
+                <div id="lastTradeSize" style="display: none;"></div>
+                <div id="snapshotBtn" style="display: none;"></div>
+                <div id="snapshotLabel" style="display: none;"></div>
+                <div id="oracleAge" style="display: none;"></div>
+                <div id="oracleCurrentPrice" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="solana-web3.min.js"></script>
+    <script>
+        // Configure proto2 to use TypeScript backend
+        window.API_BASE = '/api/ts';
+        console.log('🔷 Proto2: Using TypeScript API endpoints (/api/ts/*)');
+    </script>
+    <script src="app.js"></script>
+    <script>
+        // Shares input management
+        function updateFromSlider() {
+            const value = document.getElementById('sharesSlider').value;
+            document.getElementById('tradeAmountShares').value = value;
+            // Update the BUY/SELL button text with new amount
+            if (typeof updateTradeButton === 'function') {
+                updateTradeButton();
+            }
+        }
+
+        function updateFromInput() {
+            // Sync slider with input
+            const sharesInput = document.getElementById('tradeAmountShares');
+            const sharesSlider = document.getElementById('sharesSlider');
+            if (sharesInput.value) {
+                sharesSlider.value = Math.min(Math.max(sharesInput.value, 1), 500);
+            }
+            // Update the BUY/SELL button text with new amount
+            if (typeof updateTradeButton === 'function') {
+                updateTradeButton();
+            }
+        }
+
+        // Override existing setShares to also update slider
+        const originalSetShares = window.setShares;
+        window.setShares = function(shares) {
+            if (originalSetShares) {
+                originalSetShares(shares);
+            }
+            document.getElementById('tradeAmountShares').value = shares;
+            document.getElementById('sharesSlider').value = shares;
+            updateFromInput();
+        };
+
+        // Calculate and set maximum shares based on wallet balance
+        function setMaxShares() {
+            if (!wallet || !wallet.publicKey) {
+                showToast('Please connect wallet first', 'error');
+                return;
+            }
+
+            const balance = window.walletBalance || 0;
+            if (balance <= 0) {
+                showToast('Insufficient balance', 'error');
+                return;
+            }
+
+            // Get current selected side and price
+            const selectedSide = window.selectedSide || 'YES';
+            const priceEl = document.getElementById(selectedSide === 'YES' ? 'yesPercentage' : 'noPercentage');
+            const price = priceEl ? parseFloat(priceEl.textContent) : 0.5;
+
+            if (price <= 0) {
+                showToast('Unable to calculate max shares', 'error');
+                return;
+            }
+
+            // Calculate max shares (with 1% buffer for fees and price changes)
+            const safeBalance = balance * 0.99;
+            const maxShares = Math.floor(safeBalance / price);
+
+            if (maxShares < 1) {
+                showToast('Insufficient balance for minimum purchase', 'error');
+                return;
+            }
+
+            // Cap at slider maximum
+            const cappedShares = Math.min(maxShares, 500);
+
+            setShares(cappedShares);
+            showToast(`Max shares set: ${cappedShares} (≈${(cappedShares * price).toFixed(2)} XNT)`, 'success');
+        }
+
+        // Trade History Management
+        // Keep 2 markets worth of data (20 minutes total at 10 min per market)
+        const MAX_TRADES = 40;
+        const TRADE_HISTORY_KEY = 'x1_trade_history';
+        let tradeHistory = [];
+
+        // Load trade history from localStorage
+        function loadTradeHistory() {
+            try {
+                const saved = localStorage.getItem(TRADE_HISTORY_KEY);
+                if (saved) {
+                    const loaded = JSON.parse(saved);
+                    console.log(`💾 Restored ${loaded.length} trades from localStorage`);
+                    loaded.reverse().forEach(trade => {
+                        addTradeToHistory(trade, false);
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to load trade history:', err);
+            }
+        }
+
+        // Save trade history to localStorage
+        function saveTradeHistory() {
+            try {
+                localStorage.setItem(TRADE_HISTORY_KEY, JSON.stringify(tradeHistory));
+            } catch (err) {
+                console.error('Failed to save trade history:', err);
+            }
+        }
+
+        // Local volume tracking for optimistic updates
+        let localVolume = {
+            upVolume: 0,
+            downVolume: 0,
+            totalVolume: 0,
+            upShares: 0,
+            downShares: 0,
+            totalShares: 0
+        };
+
+        // Update volume display (shared function)
+        function updateVolumeDisplay(volume) {
+            document.getElementById('volumeUp').textContent = volume.upVolume.toFixed(2) + ' XNT';
+            document.getElementById('volumeDown').textContent = volume.downVolume.toFixed(2) + ' XNT';
+            document.getElementById('volumeTotal').textContent = volume.totalVolume.toFixed(2) + ' XNT';
+
+            document.getElementById('volumeUpShares').textContent = (volume.upShares || 0).toFixed(2) + ' shares';
+            document.getElementById('volumeDownShares').textContent = (volume.downShares || 0).toFixed(2) + ' shares';
+            document.getElementById('volumeTotalShares').textContent = (volume.totalShares || 0).toFixed(2) + ' shares';
+        }
+
+        // Volume update - fetch from server (removes double-counting issue)
+        function updateVolumeOptimistic(trade) {
+            // Only update for BUY trades
+            if (trade.action !== 'BUY') return;
+
+            // Don't do optimistic local updates - they cause double counting
+            // because trade_monitor.js POSTs to /api/volume when it detects trades
+            // Just fetch the latest server data immediately
+            if (!updateVolumeOptimistic.pending) {
+                updateVolumeOptimistic.pending = true;
+                setTimeout(() => {
+                    updateCumulativeVolume();
+                    updateVolumeOptimistic.pending = false;
+                }, 500); // Fetch server data after brief delay
+            }
+        }
+
+        // Fetch and update cumulative volume from server (confirmation)
+        async function updateCumulativeVolume() {
+            try {
+                const response = await fetch('/api/ts/volume');
+                if (!response.ok) {
+                    console.error('Failed to fetch volume:', response.status);
+                    return;
+                }
+
+                const data = await response.json();
+
+                // Update local tracking to match server truth
+                localVolume = {
+                    upVolume: data.upVolume,
+                    downVolume: data.downVolume,
+                    totalVolume: data.totalVolume,
+                    upShares: data.upShares || 0,
+                    downShares: data.downShares || 0,
+                    totalShares: data.totalShares || 0
+                };
+
+                // Update UI with confirmed server data
+                updateVolumeDisplay(localVolume);
+            } catch (err) {
+                console.error('Error fetching cumulative volume:', err);
+            }
+        }
+
+        // Update volume on page load and periodically
+        updateCumulativeVolume();
+        setInterval(updateCumulativeVolume, 10000); // Sync with server every 10 seconds
+
+        // TypeScript Services Integration - Fetch from compiled TypeScript backend
+        async function fetchTypeScriptServices() {
+            try {
+                const response = await fetch('/api/ts/market-data');
+                if (!response.ok) {
+                    console.error('TypeScript API error:', response.status);
+                    return;
+                }
+
+                const data = await response.json();
+                console.log('✅ TypeScript services data:', data);
+
+                // Log to show TypeScript backend is being used
+                if (window.location.pathname === '/proto2') {
+                    console.log('🔷 Using TypeScript backend for proto2');
+                }
+            } catch (err) {
+                console.error('Error fetching TypeScript services:', err);
+            }
+        }
+
+        // Fetch TypeScript data periodically (every 5 seconds)
+        fetchTypeScriptServices();
+        setInterval(fetchTypeScriptServices, 5000);
+
+        // DEPRECATED: Old function that used market state (qY/qN)
+        // Keeping for backward compatibility but no longer used
+        window.updateVolumeStatsFromMarket = function(qYes, qNo) {
+            // Now we use server-side cumulative volume instead
+            // This function is deprecated but kept to avoid breaking app.js
+        };
+
+        // Fallback: Calculate from trade history (for when market data not available)
+        function updateVolumeStats() {
+            let upVolume = 0;
+            let downVolume = 0;
+
+            tradeHistory.forEach(trade => {
+                const amount = parseFloat(trade.amount) || 0;
+                const side = trade.side.toLowerCase();
+                const action = trade.action.toLowerCase();
+
+                // Only count BUY trades (not SELL or REDEEM)
+                if (action === 'buy') {
+                    if (side === 'yes') {
+                        upVolume += amount;
+                    } else if (side === 'no') {
+                        downVolume += amount;
+                    }
+                }
+            });
+
+            const totalVolume = upVolume + downVolume;
+
+            // Only update if we have trade history, otherwise wait for market data
+            if (totalVolume > 0) {
+                document.getElementById('volumeUp').textContent = upVolume.toFixed(2) + ' XNT';
+                document.getElementById('volumeDown').textContent = downVolume.toFixed(2) + ' XNT';
+                document.getElementById('volumeTotal').textContent = totalVolume.toFixed(2) + ' XNT';
+            }
+        }
+
+        function addTradeToHistory(trade, shouldSave = true) {
+            // Debug log
+            if (!trade.amount || trade.amount === '0.00' || trade.amount === 0) {
+                console.warn('Trade with zero/missing amount:', trade);
+            }
+
+            const tradeFeed = document.getElementById('tradeFeed');
+
+            // Add to history array
+            tradeHistory.unshift(trade);
+            if (tradeHistory.length > MAX_TRADES) {
+                tradeHistory.pop();
+            }
+
+            // Save to localStorage
+            if (shouldSave) {
+                saveTradeHistory();
+            }
+
+            // Find or create table structure
+            let tableBody = tradeFeed.querySelector('.live-table-body');
+            if (!tableBody) {
+                // Remove empty state
+                tradeFeed.innerHTML = '';
+
+                const table = document.createElement('div');
+                table.className = 'live-table';
+                table.innerHTML = `
+                    <div class="live-table-header">
+                        <div class="col-time">TIME</div>
+                        <div class="col-user">USER</div>
+                        <div class="col-type">TYPE</div>
+                        <div class="col-direction">DIRECTION</div>
+                        <div class="col-price">PRICE</div>
+                        <div class="col-size">SIZE</div>
+                        <div class="col-value">VALUE</div>
+                        <div class="col-fees">FEES</div>
+                    </div>
+                `;
+                tableBody = document.createElement('div');
+                tableBody.className = 'live-table-body';
+                table.appendChild(tableBody);
+                tradeFeed.appendChild(table);
+            }
+
+            const action = trade.action.toLowerCase();
+            const side = trade.side.toLowerCase();
+            const sideDisplay = side === 'yes' ? 'UP' : 'DOWN';
+
+            const userAddr = trade.user || 'Unknown';
+            const shortAddr = userAddr.length > 5 ? userAddr.slice(0, 5) : userAddr;
+
+            // Use trade timestamp instead of current time
+            const tradeTime = trade.timestamp ? new Date(trade.timestamp) : new Date();
+            const timeStr = tradeTime.toLocaleTimeString('en-US', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+
+            const avgPrice = (trade.avgPrice !== undefined && trade.avgPrice !== null) ? trade.avgPrice :
+                             (trade.price !== undefined && trade.price !== null) ? trade.price : '0.0000';
+            const shares = (trade.shares !== undefined && trade.shares !== null) ? trade.shares : '0.00';
+
+            // Calculate amount from shares × avgPrice
+            let amount;
+            if (avgPrice && shares && avgPrice !== '0.0000' && shares !== '0.00') {
+                const calculatedAmount = parseFloat(shares) * parseFloat(avgPrice);
+                amount = calculatedAmount.toFixed(4);
+            } else {
+                amount = (trade.amount !== undefined && trade.amount !== null) ? trade.amount : '0.00';
+            }
+
+            // Calculate fees (25 bps = 0.25%)
+            const feeRate = 0.0025;
+            const fees = (parseFloat(amount) * feeRate).toFixed(4);
+
+            const typeClass = sideDisplay === 'UP' ? 'type-up' : 'type-down';
+            const directionClass = action === 'buy' ? 'direction-open' : action === 'sell' ? 'direction-close' : 'direction-redeem';
+            const directionText = action === 'buy' ? 'OPENED' : action === 'sell' ? 'CLOSED' : 'REDEEM';
+
+            const row = document.createElement('div');
+            row.className = shouldSave ? 'live-table-row fade-in' : 'live-table-row';
+            row.innerHTML = `
+                <div class="col-time">${timeStr}</div>
+                <div class="col-user">${shortAddr}</div>
+                <div class="col-type ${typeClass}">${sideDisplay}</div>
+                <div class="col-direction ${directionClass}">${directionText}</div>
+                <div class="col-price">${avgPrice}</div>
+                <div class="col-size">${shares}</div>
+                <div class="col-value">${amount}</div>
+                <div class="col-fees">-${fees}</div>
+            `;
+
+            tableBody.insertBefore(row, tableBody.firstChild);
+
+            // Remove oldest items if we have too many
+            const rows = tableBody.querySelectorAll('.live-table-row');
+            if (rows.length > MAX_TRADES) {
+                rows[rows.length - 1].remove();
+            }
+
+            document.getElementById('tradeCount').textContent = tradeHistory.length;
+
+            // REMOVED: Don't update volume from trade history
+            // We now use server-side session volume (in-memory only)
+            // updateVolumeStats();
+        }
+
+        // ============= WEBSOCKET TRADE MONITOR =============
+        let tradeSocket = null;
+
+        function updateWsStatus(status) {
+            const wsStatus = document.getElementById('wsStatus');
+            if (wsStatus) {
+                wsStatus.className = `ws-status ${status}`;
+            }
+        }
+
+        function connectTradeMonitor() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            let wsUrl;
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                wsUrl = `${wsProtocol}//${window.location.hostname}:3435`;
+            } else {
+                wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+            }
+
+            console.log('Connecting to trade monitor:', wsUrl);
+            updateWsStatus('connecting');
+
+            tradeSocket = new WebSocket(wsUrl);
+
+            tradeSocket.onopen = () => {
+                console.log('✅ Connected to live trade feed');
+                updateWsStatus('connected');
+            };
+
+            tradeSocket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'history') {
+                        if (tradeHistory.length === 0) {
+                            console.log(`📜 Loaded ${data.trades.length} historical trades from server`);
+                            data.trades.forEach(trade => {
+                                addTradeToHistory({
+                                    action: trade.action,
+                                    side: trade.side,
+                                    shares: trade.shares,
+                                    avgPrice: trade.avgPrice,
+                                    amount: trade.amount,
+                                    user: trade.user || 'Global',
+                                    timestamp: trade.timestamp
+                                }, false); // Don't save to localStorage - this IS the source
+                            });
+                        }
+                    } else if (data.type === 'trade') {
+                        const trade = data.trade;
+                        console.log(`📊 NEW TRADE: ${trade.action} ${trade.side} - ${trade.shares} shares @ ${trade.avgPrice}`);
+
+                        addTradeToHistory({
+                            action: trade.action,
+                            side: trade.side,
+                            shares: trade.shares,
+                            avgPrice: trade.avgPrice,
+                            amount: trade.amount,
+                            user: trade.user || 'Unknown',
+                            timestamp: trade.timestamp
+                        }, true);
+
+                        // Optimistic volume update (instant UI feedback!)
+                        updateVolumeOptimistic(trade);
+
+                        // Auto-update trading history if this is the user's trade and trading tab is active
+                        if (wallet && wallet.publicKey && trade.user) {
+                            const userWallet = wallet.publicKey.toString();
+                            if (trade.user === userWallet && currentFeedTab === 'trading') {
+                                console.log('📈 User trade detected, fetching latest trade');
+
+                                // Wait a moment for the trade to be saved to DB, then fetch it
+                                setTimeout(async () => {
+                                    try {
+                                        const userPrefix = userWallet.slice(0, 6);
+                                        const response = await fetch(`/api/trading-history/${userPrefix}`);
+                                        if (response.ok) {
+                                            const data = await response.json();
+                                            if (data.history && data.history.length > 0) {
+                                                // Get the most recent trade (first item)
+                                                const latestTrade = data.history[0];
+                                                addSingleTradeToHistory({
+                                                    action: latestTrade.action,
+                                                    side: latestTrade.side,
+                                                    shares: latestTrade.shares,
+                                                    costUsd: latestTrade.cost_usd,
+                                                    avgPrice: latestTrade.avg_price,
+                                                    pnl: latestTrade.pnl,
+                                                    timestamp: latestTrade.timestamp
+                                                });
+                                            }
+                                        }
+                                    } catch (err) {
+                                        console.error('Failed to fetch latest trade:', err);
+                                    }
+                                }, 300); // 300ms delay to ensure DB write completes
+                            }
+                        }
+                    } else if (data.type === 'chat_history') {
+                        console.log(`💬 Loaded ${data.messages.length} chat messages`);
+                        loadChatHistory(data.messages);
+                    } else if (data.type === 'chat') {
+                        console.log(`💬 NEW CHAT: ${data.message.user}: ${data.message.text}`);
+                        displayChatMessage(data.message);
+                    } else if (data.type === 'error') {
+                        console.warn(`⚠️ Server error: ${data.message}`);
+                        displayChatError(data.message);
+                    }
+                } catch (err) {
+                    console.error('Failed to parse trade message:', err);
+                }
+            };
+
+            tradeSocket.onerror = (error) => {
+                console.error('❌ Trade feed error:', error);
+                updateWsStatus('disconnected');
+            };
+
+            tradeSocket.onclose = () => {
+                console.log('Trade feed disconnected. Reconnecting in 5s...');
+                updateWsStatus('disconnected');
+                setTimeout(connectTradeMonitor, 5000);
+            };
+        }
+
+        // Start trade monitor on page load
+        window.addEventListener('load', () => {
+            loadTradeHistory();
+            setTimeout(connectTradeMonitor, 2000);
+            setupTrollboxAutoScroll(); // Initialize trollbox auto-scroll
+        });
+
+        // Trollbox functions
+        let chatMessages = [];
+        let trollboxAutoScroll = true; // Auto-scroll to newest messages
+
+        // Keep trollbox scrolled to show newest messages
+        function ensureTrollboxScrolledTop() {
+            const messagesDiv = document.getElementById('trollboxMessages');
+            if (messagesDiv && trollboxAutoScroll) {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+        }
+
+        // Set up auto-scroll observer for trollbox
+        function setupTrollboxAutoScroll() {
+            const messagesDiv = document.getElementById('trollboxMessages');
+            if (!messagesDiv) return;
+
+            // Watch for new messages being added
+            const observer = new MutationObserver(() => {
+                ensureTrollboxScrolledTop();
+            });
+
+            observer.observe(messagesDiv, {
+                childList: true, // Watch for added/removed messages
+                subtree: false
+            });
+
+            // Detect manual scrolling - if user scrolls up to read old messages, pause auto-scroll
+            let scrollTimeout;
+            messagesDiv.addEventListener('scroll', () => {
+                // Check if user is at the bottom (within 10px tolerance)
+                const isAtBottom = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight < 10;
+
+                if (!isAtBottom) {
+                    // User scrolled up away from bottom
+                    trollboxAutoScroll = false;
+                    clearTimeout(scrollTimeout);
+                    // Re-enable auto-scroll after 5 seconds of no scrolling
+                    scrollTimeout = setTimeout(() => {
+                        trollboxAutoScroll = true;
+                        ensureTrollboxScrolledTop();
+                    }, 5000);
+                } else {
+                    // User is at bottom
+                    trollboxAutoScroll = true;
+                }
+            });
+
+            console.log('Trollbox auto-scroll initialized');
+        }
+
+        // Load chat history - completely rebuild chat UI from sorted messages
+        function loadChatHistory(messages) {
+            const messagesDiv = document.getElementById('trollboxMessages');
+            if (!messagesDiv) return;
+
+            // Store messages in memory
+            chatMessages = messages.slice(-50); // Keep last 50 messages
+
+            // Sort messages by timestamp (oldest to newest) - column-reverse CSS will show newest at top
+            chatMessages.sort((a, b) => a.timestamp - b.timestamp);
+
+            // Clear the chat container completely
+            messagesDiv.innerHTML = '';
+
+            // Build the entire chat HTML in one string
+            let chatHTML = '';
+            chatMessages.forEach(msg => {
+                const timestamp = new Date(msg.timestamp).toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+
+                chatHTML += `
+                    <div class="trollbox-message">
+                        <span class="chat-time">${timestamp}</span>
+                        <span class="chat-user">${msg.user}:</span>
+                        <span class="chat-text">${escapeHtml(msg.text)}</span>
+                    </div>
+                `;
+            });
+
+            // Set all messages at once
+            messagesDiv.innerHTML = chatHTML;
+
+            // Update chat count
+            const chatCount = document.getElementById('chatCount');
+            if (chatCount) {
+                chatCount.textContent = chatMessages.length;
+            }
+
+            // Force scroll to bottom
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            trollboxAutoScroll = true;
+
+            console.log(`💬 Chat loaded: ${chatMessages.length} messages, scroll position: ${messagesDiv.scrollTop}, height: ${messagesDiv.scrollHeight}`);
+        }
+
+        function displayChatMessage(msg, shouldScroll = true) {
+            const messagesDiv = document.getElementById('trollboxMessages');
+
+            const emptyState = messagesDiv.querySelector('.trollbox-empty');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'trollbox-message';
+
+            const timestamp = new Date(msg.timestamp).toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+
+            msgDiv.innerHTML = `
+                <span class="chat-time">${timestamp}</span>
+                <span class="chat-user">${msg.user}:</span>
+                <span class="chat-text">${escapeHtml(msg.text)}</span>
+            `;
+
+            messagesDiv.appendChild(msgDiv);
+            // MutationObserver will auto-scroll if trollboxAutoScroll is true
+
+            chatMessages.push(msg);
+
+            const chatCount = document.getElementById('chatCount');
+            if (chatCount) {
+                chatCount.textContent = chatMessages.length;
+            }
+
+            const messages = messagesDiv.querySelectorAll('.trollbox-message');
+            if (messages.length > 100) {
+                messages[0].remove();
+            }
+        }
+
+        function displayChatError(message) {
+            const messagesDiv = document.getElementById('trollboxMessages');
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'trollbox-message trollbox-error';
+            msgDiv.style.color = '#ff5353';
+            msgDiv.style.fontStyle = 'italic';
+
+            const timestamp = new Date().toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+
+            msgDiv.innerHTML = `
+                <span class="chat-time">${timestamp}</span>
+                <span class="chat-text">⚠️ ${escapeHtml(message)}</span>
+            `;
+
+            messagesDiv.appendChild(msgDiv);
+            // MutationObserver will auto-scroll
+
+            setTimeout(() => {
+                if (msgDiv.parentNode) {
+                    msgDiv.remove();
+                }
+            }, 5000);
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('trollboxInput');
+            const text = input.value.trim();
+
+            if (!text) return;
+
+            if (!tradeSocket || tradeSocket.readyState !== WebSocket.OPEN) {
+                alert('Not connected to chat server');
+                return;
+            }
+
+            let username = 'Anon';
+            if (wallet && wallet.publicKey) {
+                username = wallet.publicKey.toString().slice(0, 5);
+            }
+
+            tradeSocket.send(JSON.stringify({
+                type: 'chat',
+                user: username,
+                text: text
+            }));
+
+            input.value = '';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function copySessionWallet() {
+            const addr = document.getElementById('sessionAddr').textContent;
+            if (addr && addr !== '--') {
+                navigator.clipboard.writeText(addr).then(() => {
+                    console.log('Session wallet address copied');
+                });
+            }
+        }
+
+        // Deposit Modal Functions
+        async function openDepositModal() {
+            const modal = document.getElementById('depositModal');
+            const sessionBalanceEl = document.getElementById('sessionWalletBalance');
+            const tradingWalletBalanceEl = document.getElementById('tradingWalletBalance');
+            const vaultBalanceEl = document.getElementById('currentVaultBalance');
+
+            if (wallet && wallet.publicKey && backpackWallet) {
+                // Get Backpack wallet balance (this is where funds will come from)
+                try {
+                    const backpackBalance = await connection.getBalance(backpackWallet.publicKey);
+                    sessionBalanceEl.textContent = (backpackBalance / 1e9).toFixed(4) + ' XNT';
+                } catch (err) {
+                    sessionBalanceEl.textContent = 'Error loading';
+                }
+
+                // Get session wallet (trading wallet) balance (for TX fees)
+                try {
+                    const tradingBalance = await connection.getBalance(wallet.publicKey);
+                    const tradingBalanceXNT = tradingBalance / 1e9;
+                    tradingWalletBalanceEl.textContent = tradingBalanceXNT.toFixed(4) + ' XNT';
+                } catch (err) {
+                    tradingWalletBalanceEl.textContent = 'Error loading';
+                }
+
+                // Get vault balance from Position account
+                try {
+                    const position = await fetchPositionAccount();
+                    if (position && position.vault_balance_e6 !== undefined) {
+                        vaultBalanceEl.textContent = (position.vault_balance_e6 / 1e7).toFixed(4) + ' XNT';
+                    } else {
+                        vaultBalanceEl.textContent = '0.0000 XNT';
+                    }
+                } catch (err) {
+                    vaultBalanceEl.textContent = 'Error loading';
+                }
+
+                modal.classList.remove('hidden');
+            } else {
+                showError('Please connect your Backpack wallet first');
+            }
+        }
+
+        function closeDepositModal() {
+            const modal = document.getElementById('depositModal');
+            modal.classList.add('hidden');
+            const amountInput = document.getElementById('depositAmount');
+            if (amountInput) amountInput.value = '';
+        }
+
+        function setMaxDeposit() {
+            const backpackBalanceText = document.getElementById('sessionWalletBalance').textContent;
+            const match = backpackBalanceText.match(/([0-9.]+)/);
+            if (match) {
+                const balance = parseFloat(match[1]);
+                // Reserve 0.02 XNT for transaction fees
+                const maxDeposit = Math.max(0, balance - 0.02);
+                document.getElementById('depositAmount').value = maxDeposit.toFixed(4);
+            }
+        }
+
+        async function executeDeposit() {
+            if (!wallet || !backpackWallet) {
+                showError('Wallet not connected');
+                return;
+            }
+
+            const amountInput = document.getElementById('depositAmount');
+            const amount = parseFloat(amountInput.value);
+
+            if (!amount || amount <= 0) {
+                showError('Please enter a valid amount');
+                return;
+            }
+
+            const amountLamports = Math.floor(amount * 1e9);
+
+            try {
+                // Check if position exists first, initialize if needed
+                const [ammPda] = await solanaWeb3.PublicKey.findProgramAddressSync(
+                    [stringToUint8Array(CONFIG.AMM_SEED)],
+                    new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID)
+                );
+
+                const [posPda] = await solanaWeb3.PublicKey.findProgramAddressSync(
+                    [stringToUint8Array('pos'), ammPda.toBytes(), wallet.publicKey.toBytes()],
+                    new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID)
+                );
+
+                console.log('🔍 Session wallet:', wallet.publicKey.toString());
+                console.log('🔍 Backpack wallet:', backpackWallet.publicKey.toString());
+                console.log('🔍 Position PDA:', posPda.toString());
+
+                const positionExists = await connection.getAccountInfo(posPda);
+                console.log('🔍 Position exists:', !!positionExists);
+                if (positionExists) {
+                    console.log('🔍 Position size:', positionExists.data.length, 'bytes (expected:', 8 + 89, ')');
+                }
+                if (!positionExists) {
+                    addLog('Position not initialized. Initializing...', 'info');
+                    // Call the initPosition function from app.js
+                    if (typeof window.initPosition === 'function') {
+                        const success = await window.initPosition();
+                        if (!success) {
+                            showError('Failed to initialize position');
+                            return;
+                        }
+                    } else {
+                        showError('Position not initialized. Please reconnect wallet.');
+                        return;
+                    }
+                }
+
+                addLog(`Depositing ${amount.toFixed(4)} XNT to vault...`, 'info');
+
+                // Get user_vault PDA
+                const [userVaultPda] = await solanaWeb3.PublicKey.findProgramAddressSync(
+                    [stringToUint8Array('user_vault'), posPda.toBytes()],
+                    new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID)
+                );
+
+                // Create deposit instruction
+                const discriminator = await createDiscriminator('deposit');
+
+                // Encode amount as u64 (8 bytes little-endian)
+                const amountBuffer = new ArrayBuffer(8);
+                const amountView = new DataView(amountBuffer);
+                amountView.setBigUint64(0, BigInt(amountLamports), true);
+
+                const data = new Uint8Array(discriminator.length + 8);
+                data.set(discriminator, 0);
+                data.set(new Uint8Array(amountBuffer), discriminator.length);
+
+                const keys = [
+                    { pubkey: ammPda, isSigner: false, isWritable: false },
+                    { pubkey: posPda, isSigner: false, isWritable: true },
+                    { pubkey: userVaultPda, isSigner: false, isWritable: true },
+                    { pubkey: wallet.publicKey, isSigner: true, isWritable: false },  // session wallet
+                    { pubkey: backpackWallet.publicKey, isSigner: true, isWritable: true },  // master wallet (pays for deposit)
+                    { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
+                ];
+
+                const depositIx = new solanaWeb3.TransactionInstruction({
+                    keys,
+                    programId: new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID),
+                    data,
+                });
+
+                const tx = new solanaWeb3.Transaction().add(depositIx);
+                tx.feePayer = backpackWallet.publicKey;  // Backpack pays fees
+                tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+                // Sign with session wallet (Keypair) first
+                tx.sign(wallet);
+
+                // Then sign with Backpack wallet
+                const fullySignedTx = await backpackWallet.signTransaction(tx);
+                const txid = await connection.sendRawTransaction(fullySignedTx.serialize());
+
+                addLog(`Deposit transaction sent: ${txid}`, 'success');
+                addLog('Waiting for confirmation...', 'info');
+
+                await connection.confirmTransaction(txid, 'confirmed');
+
+                addLog(`✅ Deposited ${amount.toFixed(4)} XNT to vault successfully!`, 'success');
+
+                // Wait a moment for blockchain state to settle
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                // Refresh balances in the modal (keep modal open)
+                if (typeof updateDepositModalBalances === 'function') {
+                    await updateDepositModalBalances();
+                }
+
+                // Also refresh main wallet balance display
+                if (typeof updateWalletBalance === 'function') {
+                    await updateWalletBalance();
+                }
+
+                // Clear the input field
+                amountInput.value = '';
+
+            } catch (err) {
+                console.error('Deposit error:', err);
+                addLog(`ERROR: Deposit failed - ${err.message}`, 'error');
+                showError('Deposit failed: ' + err.message);
+            }
+        }
+
+        async function fundSessionWallet() {
+            if (!wallet || !wallet.publicKey || !backpackWallet) {
+                showError('Wallet not connected');
+                return;
+            }
+
+            // Read amount from the deposit amount input field
+            const amountInput = document.getElementById('depositAmount');
+            const fundAmount = parseFloat(amountInput.value);
+
+            if (!fundAmount || fundAmount <= 0) {
+                showError('Please enter a valid amount');
+                return;
+            }
+
+            const fundLamports = Math.floor(fundAmount * 1e9);
+
+            try {
+                addLog(`Funding session wallet with ${fundAmount} XNT...`, 'info');
+
+                // Create simple SystemProgram transfer from Backpack to Session wallet
+                const fundSessionIx = solanaWeb3.SystemProgram.transfer({
+                    fromPubkey: backpackWallet.publicKey,  // Source: Backpack wallet
+                    toPubkey: wallet.publicKey,            // Destination: Session wallet
+                    lamports: fundLamports                 // Amount from input field
+                });
+
+                // Build transaction
+                const transaction = new solanaWeb3.Transaction().add(fundSessionIx);
+                transaction.feePayer = backpackWallet.publicKey;
+                transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+                // Sign with Backpack wallet
+                const signedTx = await backpackWallet.signTransaction(transaction);
+
+                // Send transaction
+                const txid = await connection.sendRawTransaction(signedTx.serialize());
+
+                addLog(`Fund transaction sent: ${txid}`, 'success');
+                addLog('Waiting for confirmation...', 'info');
+
+                await connection.confirmTransaction(txid, 'confirmed');
+
+                addLog(`✅ Funded session wallet with ${fundAmount} XNT!`, 'success');
+
+                // Wait a moment for blockchain state to settle
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                // Refresh balances in the modal (without reopening)
+                if (typeof updateDepositModalBalances === 'function') {
+                    await updateDepositModalBalances();
+                } else {
+                    await openDepositModal();
+                }
+
+            } catch (err) {
+                console.error('Fund session wallet error:', err);
+                addLog(`ERROR: Funding failed - ${err.message}`, 'error');
+                showError('Funding failed: ' + err.message);
+            }
+        }
+
+        function copyDepositAddress() {
+            const address = document.getElementById('depositAddress').textContent;
+
+            if (address && address !== 'Loading...') {
+                navigator.clipboard.writeText(address).then(() => {
+                    console.log('Session wallet address copied');
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                });
+            }
+        }
+
+        // Close modal on ESC key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeDepositModal();
+                closeTradeConfirmModal();
+                closeWithdrawModal();
+            }
+        });
+
+        // ============================================================================
+        // Collapsible Wallet Panel
+        // ============================================================================
+
+        function toggleWalletPanel() {
+            const content = document.getElementById('walletPanelContent');
+            const arrow = document.getElementById('walletCollapseArrow');
+
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                arrow.classList.add('expanded');
+            } else {
+                content.style.display = 'none';
+                arrow.classList.remove('expanded');
+            }
+        }
+
+        // ============================================================================
+        // Withdraw Modal (for top nav withdraw button)
+        // ============================================================================
+
+        function openWithdrawModal() {
+            // Open the deposit modal which now has both deposit and withdraw buttons
+            openDepositModal();
+        }
+
+        function closeWithdrawModal() {
+            closeDepositModal();
+        }
+
+        // Sidebar withdraw function (uses the sidebar input field)
+        async function withdrawToBackpackSidebar() {
+            const amountInput = document.getElementById('withdrawAmountSidebar');
+            const amount = parseFloat(amountInput.value);
+
+            if (!amount || amount <= 0) {
+                showError('Please enter a valid amount');
+                return;
+            }
+
+            // Call the main withdrawToBackpack function from app.js
+            // We'll pass the amount as a parameter
+            if (typeof window.withdrawToBackpack === 'function') {
+                // Store the amount temporarily for the function to use
+                const originalWithdraw = window.withdrawToBackpack;
+                window.withdrawToBackpack = async function() {
+                    // Set the withdraw amount in the deposit modal field
+                    document.getElementById('depositAmount').value = amount;
+                    // Call executeWithdraw directly
+                    if (typeof executeWithdraw === 'function') {
+                        await executeWithdraw();
+                        // Clear sidebar input on success
+                        amountInput.value = '';
+                    }
+                };
+                await window.withdrawToBackpack();
+                // Restore original function
+                window.withdrawToBackpack = originalWithdraw;
+            } else {
+                showError('Withdraw function not available');
+            }
+        }
+
+        // ============================================================================
+        // Rapid Fire Toggle and Trade Confirmation
+        // ============================================================================
+
+        // Global state for rapid fire mode
+        window.rapidFireMode = false;
+        window.pendingTradeData = null;
+
+        // Note: toggleRapidFire, openTradeConfirmModal, closeTradeConfirmModal, confirmTradeExecution,
+        // and executeTradeInternal are all provided by app.js and exposed to window
+
+        // ============================================================================
+        // Quote History Chart
+        // ============================================================================
+
+        let quoteChart = null;
+        let currentCycleId = null;
+        let quoteDataPoints = []; // High-resolution data for smooth scrolling
+        let currentTargetProbability = null;
+        let lastActualProbability = null;
+        let quoteUpdateTimer = null;
+
+        // Initialize quote history chart
+        function initQuoteHistoryChart() {
+            const ctx = document.getElementById('quoteChart');
+            if (!ctx) return;
+
+            quoteChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Probability',
+                            data: [],
+                            borderColor: '#00c896',
+                            backgroundColor: 'rgba(0, 200, 150, 0.1)',
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            pointHoverRadius: 6,
+                            borderDash: []
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                color: '#8b92a8',
+                                font: {
+                                    family: "'SF Mono', Monaco, monospace",
+                                    size: 11
+                                },
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                            titleColor: '#fff',
+                            bodyColor: '#8b92a8',
+                            borderColor: '#00c896',
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: true,
+                            callbacks: {
+                                title: (context) => {
+                                    return context[0].label;
+                                },
+                                label: (context) => {
+                                    const value = context.parsed.y;
+                                    return `Probability: ${(value * 100).toFixed(2)}%`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            grid: {
+                                color: 'rgba(139, 146, 168, 0.05)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#5a6178',
+                                font: {
+                                    family: "'SF Mono', Monaco, monospace",
+                                    size: 10
+                                },
+                                maxTicksLimit: 8,
+                                autoSkip: true
+                            }
+                        },
+                        y: {
+                            display: true,
+                            position: 'right',
+                            min: 0,
+                            max: 1,
+                            grid: {
+                                color: function(context) {
+                                    // Highlight the 0.5 line
+                                    if (context.tick.value === 0.5) {
+                                        return 'rgba(139, 146, 168, 0.3)';
+                                    }
+                                    return 'rgba(139, 146, 168, 0.1)';
+                                },
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: function(context) {
+                                    // Highlight the 0.5 tick (50%)
+                                    if (context.tick.value === 0.5) {
+                                        return '#8b92a8';
+                                    }
+                                    return '#5a6178';
+                                },
+                                font: {
+                                    family: "'SF Mono', Monaco, monospace",
+                                    size: 11
+                                },
+                                callback: function(value) {
+                                    return (value * 100).toFixed(0) + '%';
+                                },
+                                stepSize: 0.1,
+                                maxTicksLimit: 11
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 300
+                    }
+                }
+            });
+        }
+
+        // Load recent cycles into dropdown
+        async function loadRecentCycles() {
+            try {
+                const response = await fetch('/api/ts/recent-cycles');
+                if (!response.ok) return;
+
+                const data = await response.json();
+                const selector = document.getElementById('cycleSelector');
+                if (!selector) return;
+
+                // Clear existing options except current
+                selector.innerHTML = '<option value="">Current Market</option>';
+
+                // Add recent cycles
+                data.cycles.forEach(cycle => {
+                    const option = document.createElement('option');
+                    option.value = cycle.cycle_id;
+                    const date = new Date(cycle.cycle_start_time);
+                    option.textContent = `${date.toLocaleString()} (${cycle.cycle_id.substring(6, 16)})`;
+                    selector.appendChild(option);
+                });
+            } catch (err) {
+                console.error('Failed to load recent cycles:', err);
+            }
+        }
+
+        // Load quote history for selected cycle
+        async function loadQuoteHistory() {
+            const selector = document.getElementById('cycleSelector');
+            if (!selector) return;
+
+            const cycleId = selector.value;
+            if (!cycleId) {
+                // Load current market (we'll need to track current cycle ID)
+                if (!window.currentCycleId) return;
+                await fetchQuoteHistory(window.currentCycleId);
+            } else {
+                await fetchQuoteHistory(cycleId);
+            }
+        }
+
+        // Fetch and display quote history
+        async function fetchQuoteHistory(cycleId) {
+            try {
+                const response = await fetch(`/api/quote-history/${cycleId}`);
+                if (!response.ok) {
+                    console.error('Failed to fetch quote history');
+                    return;
+                }
+
+                const data = await response.json();
+                updateQuoteChart(data.history);
+            } catch (err) {
+                console.error('Error fetching quote history:', err);
+            }
+        }
+
+        // Expose to window for access from app.js
+        window.fetchQuoteHistory = fetchQuoteHistory;
+
+        // Start smooth update loop for probability chart
+        function startQuoteUpdateLoop() {
+            if (quoteUpdateTimer) {
+                clearInterval(quoteUpdateTimer);
+            }
+
+            const QUOTE_UPDATE_INTERVAL_MS = 55; // Same as BTC chart for smooth updates
+            const QUOTE_POINTS_PER_SECOND = 1000 / QUOTE_UPDATE_INTERVAL_MS;
+
+            quoteUpdateTimer = setInterval(() => {
+                if (!quoteChart || currentTargetProbability === null) return;
+
+                // Interpolate for smooth transitions
+                let displayProbability = currentTargetProbability;
+                if (lastActualProbability !== null && currentTargetProbability !== lastActualProbability) {
+                    const diff = currentTargetProbability - lastActualProbability;
+                    const step = diff * 0.15; // Smooth interpolation
+                    displayProbability = lastActualProbability + step;
+
+                    // Snap to target if very close
+                    if (Math.abs(displayProbability - currentTargetProbability) < 0.0001) {
+                        displayProbability = currentTargetProbability;
+                        lastActualProbability = currentTargetProbability;
+                    } else {
+                        lastActualProbability = displayProbability;
+                    }
+                }
+
+                // Add to data points
+                quoteDataPoints.push(displayProbability);
+
+                // Keep last 15 minutes of data (at ~18 points/sec)
+                const maxPoints = 15 * 60 * QUOTE_POINTS_PER_SECOND;
+                if (quoteDataPoints.length > maxPoints) {
+                    quoteDataPoints.shift();
+                }
+
+                // Update chart
+                const displayPoints = quoteDataPoints.slice(-900); // Show last 900 points
+                const labels = [];
+                const now = Date.now();
+                const msPerPoint = QUOTE_UPDATE_INTERVAL_MS;
+
+                for (let i = 0; i < displayPoints.length; i++) {
+                    const timestamp = now - (displayPoints.length - i) * msPerPoint;
+                    const date = new Date(timestamp);
+                    const timeStr = date.toLocaleTimeString('en-US', {
+                        hour12: false,
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+                    labels.push(timeStr);
+                }
+
+                quoteChart.data.labels = labels;
+                quoteChart.data.datasets[0].data = displayPoints;
+                quoteChart.update('none');
+            }, QUOTE_UPDATE_INTERVAL_MS);
+        }
+
+        // Update quote chart with history data
+        function updateQuoteChart(history) {
+            if (!quoteChart || !history || history.length === 0) {
+                if (quoteChart) {
+                    quoteChart.data.labels = [];
+                    quoteChart.data.datasets[0].data = [];
+                    quoteChart.update('none');
+                }
+                return;
+            }
+
+            // Get the latest probability and set as target for interpolation
+            const latestEntry = history[history.length - 1];
+            if (latestEntry && latestEntry.up_price !== undefined) {
+                currentTargetProbability = latestEntry.up_price;
+
+                // Initialize if first time
+                if (lastActualProbability === null) {
+                    lastActualProbability = currentTargetProbability;
+
+                    // Rebuild data points from history
+                    quoteDataPoints = [];
+                    history.forEach(entry => {
+                        quoteDataPoints.push(entry.up_price);
+                    });
+                }
+            }
+        }
+
+        // Initialize quote chart on page load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                initQuoteHistoryChart();
+                loadRecentCycles();
+                // Reload cycles every 30 seconds
+                setInterval(loadRecentCycles, 30000);
+
+                // Auto-refresh current market quote history every 5 seconds
+                setInterval(() => {
+                    const selector = document.getElementById('cycleSelector');
+                    if (selector && selector.value === '' && window.currentCycleId) {
+                        fetchQuoteHistory(window.currentCycleId);
+                    }
+                }, 5000);
+
+                // Start smooth interpolation loop for probability chart
+                startQuoteUpdateLoop();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

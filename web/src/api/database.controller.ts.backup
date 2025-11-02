@@ -1,0 +1,439 @@
+/**
+ * Database Controller
+ *
+ * Provides type-safe API handlers for database operations:
+ * - Price history
+ * - Volume tracking
+ * - Settlement history
+ * - Trading history
+ * - Quote snapshots
+ */
+
+import type Database from 'better-sqlite3';
+import { DatabaseService } from '../database/database.service';
+import { PriceHistoryRepository } from '../database/price-history.repository';
+import { VolumeRepository } from '../database/volume.repository';
+import { HistoryRepository } from '../database/history.repository';
+import { QuoteHistoryRepository } from '../database/quote-history.repository';
+
+import type {
+  PriceHistoryRequest,
+  PriceHistoryResponse,
+  CurrentPriceResponse,
+  AddPriceRequest,
+  VolumeResponse,
+  VolumeUpdateRequest,
+  SettlementHistoryResponse,
+  AddSettlementRequest,
+  TradingHistoryResponse,
+  AddTradingRequest,
+  QuoteSnapshotRequest,
+  QuoteHistoryResponse,
+  RecentCyclesResponse,
+  SuccessResponse
+} from '../types/api.types';
+
+/**
+ * Database Controller Configuration
+ */
+export interface DatabaseControllerConfig {
+  dbPath: string;
+  enableLogging?: boolean;
+}
+
+/**
+ * Database Controller
+ *
+ * Manages all database-related API operations with full type safety
+ */
+export class DatabaseController {
+  private db: DatabaseService;
+  private priceRepo: PriceHistoryRepository;
+  private volumeRepo: VolumeRepository;
+  private historyRepo: HistoryRepository;
+  private quoteRepo: QuoteHistoryRepository;
+
+  constructor(config: DatabaseControllerConfig) {
+    this.db = new DatabaseService({ dbFile: config.dbPath });
+
+    // Initialize repositories
+    this.priceRepo = new PriceHistoryRepository(this.db.getDatabase());
+    this.volumeRepo = new VolumeRepository(this.db.getDatabase());
+    this.historyRepo = new HistoryRepository(this.db.getDatabase());
+    this.quoteRepo = new QuoteHistoryRepository(this.db.getDatabase());
+  }
+
+  // ========================================================================
+  // Price History Operations
+  // ========================================================================
+
+  /**
+   * Get price history for a time range
+   */
+  async getPriceHistory(request: PriceHistoryRequest): Promise<PriceHistoryResponse> {
+    try {
+      const seconds = request.seconds || 3600; // Default: 1 hour
+      const prices = this.priceRepo.find({ seconds });
+
+      return {
+        prices,
+        totalPoints: prices.length,
+        lastUpdate: prices.length > 0 ? prices[prices.length - 1].timestamp : 0
+      };
+    } catch (error) {
+      console.error('Error getting price history:', error);
+      return {
+        prices: [],
+        totalPoints: 0,
+        lastUpdate: 0
+      };
+    }
+  }
+
+  /**
+   * Add a new price record
+   */
+  async addPrice(request: AddPriceRequest): Promise<SuccessResponse> {
+    try {
+      const timestamp = Date.now();
+      this.priceRepo.insert(request.price, timestamp);
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error adding price:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Get current price (most recent)
+   */
+  async getCurrentPrice(): Promise<CurrentPriceResponse> {
+    try {
+      const latest = this.priceRepo.getLatest();
+
+      if (!latest) {
+        return {
+          price: null,
+          lastUpdate: null
+        };
+      }
+
+      return {
+        price: latest.price,
+        lastUpdate: latest.timestamp
+      };
+    } catch (error) {
+      console.error('Error getting current price:', error);
+      return {
+        price: null,
+        lastUpdate: null
+      };
+    }
+  }
+
+  /**
+   * Cleanup old price records
+   */
+  async cleanupOldPrices(retentionHours: number = 24): Promise<number> {
+    try {
+      return this.priceRepo.cleanup(retentionHours);
+    } catch (error) {
+      console.error('Error cleaning up prices:', error);
+      return 0;
+    }
+  }
+
+  // ========================================================================
+  // Volume Operations
+  // ========================================================================
+
+  /**
+   * Get cumulative volume for active cycle
+   */
+  async getVolume(cycleId?: string): Promise<VolumeResponse> {
+    try {
+      const activeCycleId = cycleId || this.volumeRepo.getActiveCycleId();
+
+      if (!activeCycleId) {
+        return {
+          success: false,
+          error: 'No active cycle'
+        };
+      }
+
+      const volume = this.volumeRepo.getVolume(activeCycleId);
+
+      return {
+        success: true,
+        volume
+      };
+    } catch (error) {
+      console.error('Error getting volume:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Add volume to active cycle
+   */
+  async addVolume(request: VolumeUpdateRequest): Promise<SuccessResponse> {
+    try {
+      const cycleId = this.volumeRepo.getActiveCycleId();
+
+      if (!cycleId) {
+        return {
+          success: false,
+          error: 'No active cycle'
+        };
+      }
+
+      this.volumeRepo.addVolume(cycleId, request.side, request.amount, request.shares);
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error adding volume:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Reset volume for a cycle
+   */
+  async resetVolume(cycleId: string): Promise<SuccessResponse> {
+    try {
+      this.volumeRepo.resetVolume(cycleId);
+      return { success: true };
+    } catch (error) {
+      console.error('Error resetting volume:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Initialize a new cycle
+   */
+  async initializeCycle(cycleId: string): Promise<SuccessResponse> {
+    try {
+      this.volumeRepo.initializeCycle(cycleId);
+      return { success: true };
+    } catch (error) {
+      console.error('Error initializing cycle:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  // ========================================================================
+  // Settlement History Operations
+  // ========================================================================
+
+  /**
+   * Get settlement history
+   */
+  async getSettlementHistory(limit: number = 50): Promise<SettlementHistoryResponse> {
+    try {
+      const history = this.historyRepo.getSettlementHistory(limit);
+
+      return { history };
+    } catch (error) {
+      console.error('Error getting settlement history:', error);
+      return { history: [] };
+    }
+  }
+
+  /**
+   * Add settlement record
+   */
+  async addSettlement(request: AddSettlementRequest): Promise<SuccessResponse> {
+    try {
+      this.historyRepo.addSettlement(
+        request.userPrefix,
+        request.result,
+        request.amount,
+        request.side,
+        request.snapshotPrice,
+        request.settlePrice
+      );
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error adding settlement:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  // ========================================================================
+  // Trading History Operations
+  // ========================================================================
+
+  /**
+   * Get trading history for a user
+   */
+  async getTradingHistory(userPrefix: string, limit: number = 50): Promise<TradingHistoryResponse> {
+    try {
+      const history = this.historyRepo.getTradingHistory(userPrefix, limit);
+
+      return { history };
+    } catch (error) {
+      console.error('Error getting trading history:', error);
+      return { history: [] };
+    }
+  }
+
+  /**
+   * Add trading record
+   */
+  async addTrade(request: AddTradingRequest): Promise<SuccessResponse> {
+    try {
+      this.historyRepo.addTrade(
+        request.userPrefix,
+        request.action,
+        request.side,
+        request.shares,
+        request.costUsd,
+        request.avgPrice,
+        request.pnl
+      );
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error adding trade:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  // ========================================================================
+  // Quote Snapshot Operations
+  // ========================================================================
+
+  /**
+   * Add quote snapshot
+   */
+  async addQuoteSnapshot(request: QuoteSnapshotRequest): Promise<SuccessResponse> {
+    try {
+      this.quoteRepo.insertSnapshot(
+        request.cycleId,
+        request.upPrice,
+        request.downPrice
+      );
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error adding quote snapshot:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  /**
+   * Get quote history for a cycle
+   */
+  async getQuoteHistory(cycleId: string, limit: number = 100): Promise<QuoteHistoryResponse> {
+    try {
+      const history = this.quoteRepo.getHistory(cycleId, limit);
+
+      return {
+        cycleId,
+        history
+      };
+    } catch (error) {
+      console.error('Error getting quote history:', error);
+      return {
+        cycleId,
+        history: []
+      };
+    }
+  }
+
+  // ========================================================================
+  // Cycle Management Operations
+  // ========================================================================
+
+  /**
+   * Get recent cycles
+   */
+  async getRecentCycles(limit: number = 10): Promise<RecentCyclesResponse> {
+    try {
+      const cycles = this.volumeRepo.getRecentCycles(limit);
+
+      return { cycles };
+    } catch (error) {
+      console.error('Error getting recent cycles:', error);
+      return { cycles: [] };
+    }
+  }
+
+  /**
+   * Get active cycle ID
+   */
+  getActiveCycleId(): string | null {
+    return this.volumeRepo.getActiveCycleId();
+  }
+
+  // ========================================================================
+  // Database Management
+  // ========================================================================
+
+  /**
+   * Get database statistics
+   */
+  async getDatabaseStats() {
+    try {
+      const db = this.db.getDb();
+
+      const priceCount = db.prepare('SELECT COUNT(*) as count FROM price_history').get() as { count: number };
+      const settlementCount = db.prepare('SELECT COUNT(*) as count FROM settlement_history').get() as { count: number };
+      const tradingCount = db.prepare('SELECT COUNT(*) as count FROM trading_history').get() as { count: number };
+      const quoteCount = db.prepare('SELECT COUNT(*) as count FROM quote_history').get() as { count: number };
+      const cycleCount = db.prepare('SELECT COUNT(*) as count FROM cumulative_volume').get() as { count: number };
+
+      return {
+        priceRecords: priceCount.count,
+        settlements: settlementCount.count,
+        trades: tradingCount.count,
+        quoteSnapshots: quoteCount.count,
+        cycles: cycleCount.count
+      };
+    } catch (error) {
+      console.error('Error getting database stats:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Close database connection
+   */
+  close(): void {
+    this.db.close();
+  }
+
+  /**
+   * Get raw database instance (for advanced operations)
+   */
+  getDatabase(): Database {
+    return this.db.getDb();
+  }
+}

@@ -7,12 +7,12 @@
  * Oracle price data with triplet structure
  */
 export interface OracleTriplet {
-  param1: bigint;
-  param2: bigint;
-  param3: bigint;
-  timestamp1: bigint;
-  timestamp2: bigint;
-  timestamp3: bigint;
+  param1: number;
+  param2: number;
+  param3: number;
+  ts1: number;
+  ts2: number;
+  ts3: number;
 }
 
 /**
@@ -25,6 +25,8 @@ export interface OraclePrice {
   age: number;
   /** Timestamp when this price was fetched (ms) */
   timestamp: number;
+  /** Raw triplet data from oracle */
+  triplet: OracleTriplet;
 }
 
 /**
@@ -49,12 +51,10 @@ export interface OracleAccountData {
  * Oracle configuration
  */
 export interface OracleConfig {
-  /** RPC endpoint URL */
-  rpcUrl: string;
-  /** Oracle state account public key */
-  oracleState: string;
   /** Polling interval in milliseconds */
   pollInterval: number;
   /** Maximum age for valid price data (seconds) */
   maxAge: number;
+  /** Enable console logging */
+  enableLogging: boolean;
 }

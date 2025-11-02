@@ -48,7 +48,7 @@ export interface AmmState {
   /** Quantity of NO shares outstanding (scaled by 1e6) */
   qNo: number;
   /** Accumulated fees (scaled by 1e6) */
-  fees: number;
+  feesCollected: number;
   /** Vault balance in XNT (scaled by LAMPORTS_PER_E6 = 100) */
   vault: number;
   /** Market status (0=Open, 1=Stopped, 2=Settled) */
@@ -59,8 +59,14 @@ export interface AmmState {
   winningTotal: number;
   /** Price per share for settlement (scaled by 1e6) */
   pricePerShare: number;
+  /** Fee destination public key */
+  feeDest: import('@solana/web3.js').PublicKey;
+  /** Vault SOL PDA bump seed */
+  vaultSolBump: number;
   /** Start price snapshot from oracle (scaled by 1e6) */
   startPrice: number;
+  /** Market end time (unix timestamp, optional) */
+  marketEndTime?: number;
   /** Timestamp when data was fetched (ms) */
   timestamp: number;
 }
@@ -70,8 +76,12 @@ export interface AmmState {
  */
 export interface LMSRPrices {
   /** Probability for YES side (0-1) */
-  yesPrice: number;
+  probYes: number;
   /** Probability for NO side (0-1) */
+  probNo: number;
+  /** Price for YES side (0-1) */
+  yesPrice: number;
+  /** Price for NO side (0-1) */
   noPrice: number;
 }
 
@@ -93,12 +103,14 @@ export interface Position {
  * Market configuration
  */
 export interface MarketConfig {
-  /** Solana program ID */
-  programId: string;
   /** AMM PDA seed */
   ammSeed: string;
   /** Market polling interval in milliseconds */
   pollInterval: number;
+  /** Lamports per e6 unit conversion factor */
+  lamportsPerE6: number;
+  /** Enable console logging */
+  enableLogging: boolean;
 }
 
 /**
