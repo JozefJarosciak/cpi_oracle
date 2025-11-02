@@ -379,6 +379,24 @@ window.addEventListener('load', async () => {
     setupBackpackAccountListener();
 });
 
+// Handle page visibility changes - reload chart data when tab becomes active
+document.addEventListener('visibilitychange', async () => {
+    if (!document.hidden) {
+        // Tab became visible - user returned to page
+        console.log('[VISIBILITY] Tab became visible - reloading price history to refresh chart');
+
+        // Reload price history with current time range to get fresh data
+        const timeRangeToLoad = currentTimeRange || 3600; // Default to 1 hour if not set
+        await loadPriceHistory(timeRangeToLoad);
+
+        // Rebuild chart with fresh data
+        if (priceHistory.length > 0) {
+            rebuildChartFromHistory();
+            console.log('[VISIBILITY] Chart refreshed with', priceHistory.length, 'seconds of data');
+        }
+    }
+});
+
 // ============= SESSION MANAGEMENT =============
 
 const WALLET_CACHE_KEY = 'backpack_wallet_cached';
