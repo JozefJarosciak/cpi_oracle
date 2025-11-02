@@ -30,6 +30,25 @@ pub struct Triplet {
 }
 
 // ===========================
+// Guarded Transaction Config (for limit orders, slippage protection, etc.)
+// ===========================
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug)]
+pub struct GuardConfig {
+    pub price_limit_e6: i64,  // Max price for BUY, min price for SELL (0 = no limit)
+}
+
+impl GuardConfig {
+    pub fn none() -> Self {
+        Self { price_limit_e6: 0 }
+    }
+
+    pub fn has_limit(&self) -> bool {
+        self.price_limit_e6 > 0
+    }
+}
+
+// ===========================
 // Market (single) with LMSR + coverage + settlement
 // ===========================
 
@@ -911,6 +930,193 @@ pub mod cpi_oracle {
         Ok(())
     }
 
+    // ---------- TRADE WITH GUARDS (limit orders, etc.) ----------
+    pub fn trade_guarded(
+        ctx: Context<Trade>,
+        side: u8,
+        action: u8,
+        amount: i64,
+        guard: GuardConfig
+    ) -> Result<()> {
+        let amm  = &mut ctx.accounts.amm;
+        let pos  = &mut ctx.accounts.pos;
+        let sys  = &ctx.accounts.system_program;
+
+        require!(amount > 0, ReaderError::BadParam);
+        let status = amm.status();
+        require!(status == MarketStatus::Premarket || status == MarketStatus::Open, ReaderError::MarketClosed);
+
+        // Check trading lockout (same as regular trade)
+        if amm.market_end_time > 0 {
+            let (_, oracle_ts_ms) = read_btc_price_e6(&ctx.accounts.oracle_state)?;
+            let oracle_ts = oracle_ts_ms / 1000;
+            let lockout_start_time = amm.market_end_time - TRADING_LOCKOUT_SECONDS;
+
+            if oracle_ts >= lockout_start_time {
+                msg!("LOCKED: ts={} lockout={} end={}", oracle_ts, lockout_start_time, amm.market_end_time);
+                return err!(ReaderError::TradingLocked);
+            }
+        }
+
+        // For BUY: Calculate price per share BEFORE execution, check against limit
+        // For SELL: Calculate price per share BEFORE execution, check against limit
+        match (side, action) {
+            (1, 1) => { // BUY YES with limit
+                require!(amount >= MIN_SELL_E6 && amount <= DQ_MAX_E6, ReaderError::BadParam);
+
+                let desired_shares_e6 = amount;
+                let spend_e6 = lmsr_buy_yes_for_shares(amm, desired_shares_e6)?;
+
+                // Calculate price per share (before fees)
+                let price_per_share_e6 = (spend_e6 * 1_000_000) / desired_shares_e6;
+
+                // Check price limit if guard is set
+                if guard.has_limit() {
+                    msg!("🛡️ LIMIT CHECK BUY YES: price_per_share={:.6} limit={:.6}",
+                         price_per_share_e6 as f64 / 1e6, guard.price_limit_e6 as f64 / 1e6);
+                    require!(price_per_share_e6 <= guard.price_limit_e6, ReaderError::PriceLimitExceeded);
+                }
+
+                // Execute trade (same logic as regular trade)
+                require!(pos.vault_balance_e6 >= spend_e6, ReaderError::InsufficientBalance);
+
+                let fee_e6 = ((spend_e6 as i128) * (amm.fee_bps as i128) / 10_000) as i64;
+                let net_e6 = spend_e6.saturating_sub(fee_e6);
+
+                amm.fees = amm.fees.saturating_add(fee_e6);
+                amm.q_yes = amm.q_yes.saturating_add(desired_shares_e6);
+                amm.vault_e6 = amm.vault_e6.saturating_add(net_e6);
+                pos.yes_shares_e6 = pos.yes_shares_e6.saturating_add(desired_shares_e6);
+
+                let avg_h = (net_e6 as f64) / (desired_shares_e6 as f64);
+
+                let pos_key = pos.key();
+                let seeds: &[&[u8]] = &[
+                    b"user_vault",
+                    pos_key.as_ref(),
+                    core::slice::from_ref(&pos.vault_bump),
+                ];
+                transfer_sol_signed(sys, &ctx.accounts.user_vault.to_account_info(), &ctx.accounts.vault_sol.to_account_info(), e6_to_lamports(spend_e6), &[seeds])?;
+
+                pos.vault_balance_e6 = pos.vault_balance_e6.saturating_sub(spend_e6);
+
+                msg!("✅ GUARDED BUY YES: shares={} spend={} price={:.6} qY={} qN={} vault={}",
+                     desired_shares_e6, spend_e6, avg_h, amm.q_yes, amm.q_no, amm.vault_e6);
+                emit_trade(amm, 1, 1, spend_e6, desired_shares_e6, avg_h);
+            }
+            (2, 1) => { // BUY NO with limit
+                require!(amount >= MIN_SELL_E6 && amount <= DQ_MAX_E6, ReaderError::BadParam);
+
+                let desired_shares_e6 = amount;
+                let spend_e6 = lmsr_buy_no_for_shares(amm, desired_shares_e6)?;
+
+                let price_per_share_e6 = (spend_e6 * 1_000_000) / desired_shares_e6;
+
+                if guard.has_limit() {
+                    msg!("🛡️ LIMIT CHECK BUY NO: price_per_share={:.6} limit={:.6}",
+                         price_per_share_e6 as f64 / 1e6, guard.price_limit_e6 as f64 / 1e6);
+                    require!(price_per_share_e6 <= guard.price_limit_e6, ReaderError::PriceLimitExceeded);
+                }
+
+                require!(pos.vault_balance_e6 >= spend_e6, ReaderError::InsufficientBalance);
+
+                let fee_e6 = ((spend_e6 as i128) * (amm.fee_bps as i128) / 10_000) as i64;
+                let net_e6 = spend_e6.saturating_sub(fee_e6);
+
+                amm.fees = amm.fees.saturating_add(fee_e6);
+                amm.q_no = amm.q_no.saturating_add(desired_shares_e6);
+                amm.vault_e6 = amm.vault_e6.saturating_add(net_e6);
+                pos.no_shares_e6 = pos.no_shares_e6.saturating_add(desired_shares_e6);
+
+                let avg_h = (net_e6 as f64) / (desired_shares_e6 as f64);
+
+                let pos_key = pos.key();
+                let seeds: &[&[u8]] = &[
+                    b"user_vault",
+                    pos_key.as_ref(),
+                    core::slice::from_ref(&pos.vault_bump),
+                ];
+                transfer_sol_signed(sys, &ctx.accounts.user_vault.to_account_info(), &ctx.accounts.vault_sol.to_account_info(), e6_to_lamports(spend_e6), &[seeds])?;
+
+                pos.vault_balance_e6 = pos.vault_balance_e6.saturating_sub(spend_e6);
+
+                msg!("✅ GUARDED BUY NO: shares={} spend={} price={:.6} qY={} qN={} vault={}",
+                     desired_shares_e6, spend_e6, avg_h, amm.q_yes, amm.q_no, amm.vault_e6);
+                emit_trade(amm, 2, 1, spend_e6, desired_shares_e6, avg_h);
+            }
+            (1, 2) => { // SELL YES with limit
+                let sell_e6 = amount;
+                require!(sell_e6 >= MIN_SELL_E6 && sell_e6 <= DQ_MAX_E6, ReaderError::BadParam);
+                require!(pos.yes_shares_e6 >= sell_e6, ReaderError::InsufficientShares);
+
+                let (proceeds_e6, avg_h, sold_e6) = lmsr_sell_yes(amm, sell_e6)?;
+
+                let price_per_share_e6 = (proceeds_e6 * 1_000_000) / sold_e6.round() as i64;
+
+                if guard.has_limit() {
+                    msg!("🛡️ LIMIT CHECK SELL YES: price_per_share={:.6} limit={:.6}",
+                         price_per_share_e6 as f64 / 1e6, guard.price_limit_e6 as f64 / 1e6);
+                    require!(price_per_share_e6 >= guard.price_limit_e6, ReaderError::PriceLimitNotMet);
+                }
+
+                let vault_sol_actual_lamports = ctx.accounts.vault_sol.lamports();
+                let vault_sol_actual_e6 = lamports_to_e6(vault_sol_actual_lamports);
+                require!(vault_sol_actual_e6 >= proceeds_e6, ReaderError::NoCoverage);
+
+                let amm_key = amm.key();
+                let seeds: &[&[u8]] = &[
+                    Amm::VAULT_SOL_SEED,
+                    amm_key.as_ref(),
+                    core::slice::from_ref(&amm.vault_sol_bump),
+                ];
+                transfer_sol_signed(sys, &ctx.accounts.vault_sol.to_account_info(), &ctx.accounts.user_vault.to_account_info(), e6_to_lamports(proceeds_e6), &[seeds])?;
+
+                pos.vault_balance_e6 += proceeds_e6;
+                pos.yes_shares_e6 = pos.yes_shares_e6.saturating_sub(sold_e6.round() as i64);
+
+                msg!("✅ GUARDED SELL YES: proceeds={} sold={} price={:.6} qY={} qN={} vault={}",
+                     proceeds_e6, sold_e6.round() as i64, avg_h, amm.q_yes, amm.q_no, amm.vault_e6);
+                emit_trade(amm, 1, 2, proceeds_e6, sold_e6.round() as i64, avg_h);
+            }
+            (2, 2) => { // SELL NO with limit
+                let sell_e6 = amount;
+                require!(sell_e6 >= MIN_SELL_E6 && sell_e6 <= DQ_MAX_E6, ReaderError::BadParam);
+                require!(pos.no_shares_e6 >= sell_e6, ReaderError::InsufficientShares);
+
+                let (proceeds_e6, avg_h, sold_e6) = lmsr_sell_no(amm, sell_e6)?;
+
+                let price_per_share_e6 = (proceeds_e6 * 1_000_000) / sold_e6.round() as i64;
+
+                if guard.has_limit() {
+                    msg!("🛡️ LIMIT CHECK SELL NO: price_per_share={:.6} limit={:.6}",
+                         price_per_share_e6 as f64 / 1e6, guard.price_limit_e6 as f64 / 1e6);
+                    require!(price_per_share_e6 >= guard.price_limit_e6, ReaderError::PriceLimitNotMet);
+                }
+
+                let vault_sol_actual_lamports = ctx.accounts.vault_sol.lamports();
+                let vault_sol_actual_e6 = lamports_to_e6(vault_sol_actual_lamports);
+                require!(vault_sol_actual_e6 >= proceeds_e6, ReaderError::NoCoverage);
+
+                let amm_key = amm.key();
+                let seeds: &[&[u8]] = &[
+                    Amm::VAULT_SOL_SEED,
+                    amm_key.as_ref(),
+                    core::slice::from_ref(&amm.vault_sol_bump),
+                ];
+                transfer_sol_signed(sys, &ctx.accounts.vault_sol.to_account_info(), &ctx.accounts.user_vault.to_account_info(), e6_to_lamports(proceeds_e6), &[seeds])?;
+
+                pos.vault_balance_e6 += proceeds_e6;
+                pos.no_shares_e6 = pos.no_shares_e6.saturating_sub(sold_e6.round() as i64);
+
+                msg!("✅ GUARDED SELL NO: proceeds={} sold={} price={:.6} qY={} qN={} vault={}",
+                     proceeds_e6, sold_e6.round() as i64, avg_h, amm.q_yes, amm.q_no, amm.vault_e6);
+                emit_trade(amm, 2, 2, proceeds_e6, sold_e6.round() as i64, avg_h);
+            }
+            _ => return err!(ReaderError::BadParam),
+        }
+        Ok(())
+    }
+
     // ---------- CLOSE POSITION (sell all YES and NO shares) ----------
     pub fn close_position(ctx: Context<Trade>) -> Result<()> {
         let amm = &mut ctx.accounts.amm;
@@ -1728,5 +1934,9 @@ pub enum ReaderError {
     #[msg("unauthorized access")]                 Unauthorized,
     #[msg("insufficient vault balance")]          InsufficientBalance,
     #[msg("trading locked before market close")]  TradingLocked,
+
+    // Guarded transactions
+    #[msg("price exceeds limit for BUY")]         PriceLimitExceeded,
+    #[msg("price below limit for SELL")]          PriceLimitNotMet,
 }
 
