@@ -385,12 +385,80 @@ If a pure TypeScript entry point is desired, create `src/server.ts`:
 - Switch when ready
 - See `PHASE7_ANALYSIS.md` for implementation plan
 
-## Next Steps (Future Phases)
+## Phase 8: Frontend Migration (PLANNED - OPTIONAL)
 
-### Phase 8: Frontend Client (Optional)
-- `src/client/` - Type-safe frontend modules
-- Chart management, API client, state
-- **Note**: Frontend migration is optional - current JavaScript frontend is working fine
+**Status**: 📋 PLANNED (Not started)
+**Documentation**: See `PHASE8_PLAN.md` for detailed implementation plan
+**Effort Estimate**: 20-30 hours
+**Priority**: OPTIONAL
+**Recommendation**: SKIP (backend migration is sufficient)
+
+### Overview
+
+Phase 8 would migrate the client-side JavaScript to TypeScript:
+
+| File | Lines | Priority |
+|------|-------|----------|
+| `public/app.js` | 6,822 | HIGH (if proceeding) |
+| `test/market.test.js` | 675 | MEDIUM |
+| `test/ui-state.test.js` | 476 | MEDIUM |
+| Other utilities | ~1,000 | LOW/SKIP |
+
+### Three Approaches
+
+1. **Full Migration** (20-30 hours)
+   - Complete TypeScript frontend
+   - Setup Vite/Webpack build tooling
+   - Modular architecture
+   - See `PHASE8_PLAN.md` for details
+
+2. **Incremental Migration** (Recommended if proceeding)
+   - Start with chart module (highest complexity)
+   - Then wallet manager
+   - Then API client
+   - Keep JavaScript fallback
+
+3. **Skip Phase 8** (Recommended)
+   - Backend is 100% type-safe ✅
+   - Frontend is stable and working ✅
+   - Better ROI on new features
+   - Lower risk
+
+### Why Skip is Recommended
+
+- ✅ Backend migration covers all business logic (100% type-safe)
+- ✅ Frontend is stable and rarely changes
+- ⚠️ 6,822 lines is significant effort (20-30 hours)
+- ⚠️ Risk of breaking working UI
+- ⚠️ Better to invest time in new features
+
+### If You Proceed
+
+See `PHASE8_PLAN.md` for:
+- Step-by-step migration guide
+- Build tooling setup (Vite/Webpack/esbuild)
+- Type definitions for frontend
+- Modular architecture design
+- Testing & rollback strategies
+- Risk assessment
+
+### Next Steps (Future Phases)
+
+**Option A: Stop Here (Recommended)**
+- Backend migration complete ✅
+- Focus on new features
+- Maintain JavaScript frontend
+
+**Option B: Incremental Frontend**
+- Migrate chart module only
+- Keep rest as JavaScript
+- Low risk, high value
+
+**Option C: Full Frontend Migration**
+- Follow `PHASE8_PLAN.md`
+- 20-30 hour effort
+- Requires build tooling
+- Higher risk
 
 ## Testing Compilation
 
