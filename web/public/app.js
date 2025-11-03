@@ -1820,9 +1820,6 @@ function initBTCChart() {
     const minMaxPlugin = {
         id: 'minMaxLabels',
         afterDatasetsDraw(chart) {
-            // Only show on 15m and longer time scales
-            if (currentTimeRange < 900) return; // 900 seconds = 15 minutes
-
             const ctx = chart.ctx;
             const dataset = chart.data.datasets[0];
             const dataValues = dataset.data;
