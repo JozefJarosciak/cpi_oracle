@@ -223,14 +223,14 @@ pub struct Position {
     pub master_wallet: Pubkey,   // Backpack wallet that authorized this session wallet
     pub vault_balance_e6: i64,   // User's SOL balance in vault (1e6 scale)
     pub vault_bump: u8,          // Bump for user_vault PDA
-    pub used_nonces: Vec<u64>,   // Track used nonces for limit order replay protection (rolling window of last 1000)
+    pub used_nonces: Vec<u64>,   // Track used nonces for limit order replay protection (rolling window of last 100)
 }
 impl Position {
     pub const SEED: &'static [u8] = b"pos";
     pub const USER_VAULT_SEED: &'static [u8] = b"user_vault";
-    // Note: SPACE is now dynamic due to Vec<u64>. Initial size + room for 1000 nonces
-    pub const SPACE: usize = 32 + 8 + 8 + 32 + 8 + 1 + 4 + (8 * 1000);  // owner + yes + no + master_wallet + vault_balance + vault_bump + vec_len + (nonces)
-    pub const MAX_NONCES: usize = 1000; // Keep rolling window of last 1000 nonces
+    // Note: SPACE is now dynamic due to Vec<u64>. Initial size + room for 100 nonces
+    pub const SPACE: usize = 32 + 8 + 8 + 32 + 8 + 1 + 4 + (8 * 100);  // owner + yes + no + master_wallet + vault_balance + vault_bump + vec_len + (nonces)
+    pub const MAX_NONCES: usize = 100; // Keep rolling window of last 100 nonces
 }
 
 // ---- Limits (all scaled 1e6) ----
@@ -2250,13 +2250,12 @@ pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
 
         // === CLEANUP PHASE ===
 
-        // Mark nonce as used
-        position.used_nonces.push(order.nonce);
-
-        // Keep only last MAX_NONCES (prevent unbounded growth)
-        if position.used_nonces.len() > Position::MAX_NONCES {
+        // Mark nonce as used (replay protection with rolling window)
+        // Remove oldest nonce BEFORE adding new one to stay at or below MAX_NONCES
+        if position.used_nonces.len() >= Position::MAX_NONCES {
             position.used_nonces.remove(0);
         }
+        position.used_nonces.push(order.nonce);
 
         // Emit event
         emit!(LimitOrderExecuted {
@@ -2289,11 +2288,11 @@ pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
             ReaderError::NonceAlreadyUsed
         );
 
-        position.used_nonces.push(nonce);
-
-        if position.used_nonces.len() > Position::MAX_NONCES {
+        // Add nonce with rolling window cleanup
+        if position.used_nonces.len() >= Position::MAX_NONCES {
             position.used_nonces.remove(0);
         }
+        position.used_nonces.push(nonce);
 
         emit!(OrderNonceCancelled {
             user: position.owner,

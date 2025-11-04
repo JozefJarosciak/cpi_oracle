@@ -2,16 +2,40 @@
 // app/keeper.ts — Keeper bot for executing dark pool limit orders
 
 import * as fs from 'fs';
+import * as path from 'path';
 import * as anchor from '@coral-xyz/anchor';
 import { Connection, PublicKey, Keypair, SystemProgram, Transaction, ComputeBudgetProgram, SYSVAR_INSTRUCTIONS_PUBKEY, TransactionInstruction } from '@solana/web3.js';
 import axios from 'axios';
 import * as borsh from '@coral-xyz/borsh';
 
 /* ==================== CONFIG ==================== */
-const RPC = process.env.ANCHOR_PROVIDER_URL || 'http://127.0.0.1:8899';
-const KEEPER_WALLET = process.env.KEEPER_WALLET || process.env.ANCHOR_WALLET || `${process.env.HOME}/.config/solana/id.json`;
-const ORDER_BOOK_API = process.env.ORDER_BOOK_API || 'http://localhost:3000';
-const CHECK_INTERVAL = parseInt(process.env.KEEPER_CHECK_INTERVAL || '2000'); // ms
+// Load config from file if it exists, otherwise use defaults
+interface KeeperConfig {
+  rpc?: string;
+  orderbookApi?: string;
+  keeperWallet?: string;
+  pollIntervalMs?: number;
+  keeperFeeBps?: number;
+}
+
+function loadConfig(): KeeperConfig {
+  const configPath = path.join(__dirname, '..', 'keeper.config.json');
+  try {
+    if (fs.existsSync(configPath)) {
+      const configData = fs.readFileSync(configPath, 'utf8');
+      return JSON.parse(configData);
+    }
+  } catch (err) {
+    console.warn('⚠️  Failed to load keeper.config.json, using defaults');
+  }
+  return {};
+}
+
+const config = loadConfig();
+const RPC = process.env.ANCHOR_PROVIDER_URL || config.rpc || 'http://127.0.0.1:8899';
+const KEEPER_WALLET = process.env.KEEPER_WALLET || process.env.ANCHOR_WALLET || config.keeperWallet || `${process.env.HOME}/.config/solana/id.json`;
+const ORDER_BOOK_API = process.env.ORDER_BOOK_API || config.orderbookApi || 'http://localhost:3000';
+const CHECK_INTERVAL = parseInt(process.env.KEEPER_CHECK_INTERVAL || String(config.pollIntervalMs || 2000)); // ms
 const MIN_PROFIT_LAMPORTS = parseInt(process.env.KEEPER_MIN_PROFIT || '100000'); // 0.0001 SOL
 
 // Program IDs
@@ -183,9 +207,10 @@ function calculateLmsrCost(amm: AmmAccount, qYes: number, qNo: number): number {
 }
 
 function calculateCurrentPrice(amm: AmmAccount, action: number, side: number, shares: number): number {
-  // Calculate price for buying/selling shares
-  const currentQYes = amm.qYes.toNumber() / 1e6;
-  const currentQNo = amm.qNo.toNumber() / 1e6;
+  // Calculate price for buying/selling shares (shares in regular units, not e6)
+  // Q values are in e6 on-chain, so divide by 1e6 to get regular units
+  const currentQYes = amm.qYes.toNumber() / 10_000_000;  // Match app.js: 10M = 1 share
+  const currentQNo = amm.qNo.toNumber() / 10_000_000;
 
   const baseCost = calculateLmsrCost(amm, currentQYes, currentQNo);
 
@@ -212,8 +237,8 @@ function calculateCurrentPrice(amm: AmmAccount, action: number, side: number, sh
     ? netCost / (1 - feeBps / 10000)
     : netCost * (1 - feeBps / 10000);
 
-  // Average price per share
-  const avgPrice = (grossCost / shares) * 1e6; // Convert to e6 scale
+  // Average price per share in e6 scale
+  const avgPrice = (grossCost / shares) * 1e6; // Price in USD with e6 scaling
 
   return Math.floor(avgPrice);
 }
@@ -251,11 +276,17 @@ async function checkIfExecutable(
     // Calculate current price for 1 share to check condition
     const currentPrice = calculateCurrentPrice(amm, order.action, order.side, 1);
 
+    console.log(`   Current price: $${(currentPrice / 1e6).toFixed(6)} | Limit: $${(order.limit_price_e6 / 1e6).toFixed(6)}`);
+
     // Check price condition
     if (order.action === 1) { // BUY
-      return currentPrice <= order.limit_price_e6;
+      const executable = currentPrice <= order.limit_price_e6;
+      console.log(`   BUY condition: ${currentPrice} <= ${order.limit_price_e6} = ${executable}`);
+      return executable;
     } else { // SELL
-      return currentPrice >= order.limit_price_e6;
+      const executable = currentPrice >= order.limit_price_e6;
+      console.log(`   SELL condition: ${currentPrice} >= ${order.limit_price_e6} = ${executable}`);
+      return executable;
     }
   } catch (err: any) {
     console.error(`❌ Error checking executability:`, err.message);

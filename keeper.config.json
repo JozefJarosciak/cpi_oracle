@@ -1,0 +1,7 @@
+{
+  "rpc": "https://rpc.testnet.x1.xyz",
+  "orderbookApi": "http://localhost:3000",
+  "keeperWallet": "",
+  "pollIntervalMs": 2000,
+  "keeperFeeBps": 50
+}
