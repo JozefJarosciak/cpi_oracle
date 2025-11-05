@@ -462,24 +462,29 @@
             <!-- Right: Trade Panel -->
             <div class="grid-trade">
                 <div class="trade-panel">
-                    <div class="panel-header">TRADE</div>
+                    <!-- Trade Header with Order Type Selector -->
+                    <div class="panel-header" style="display: flex; align-items: center; justify-content: space-between;">
+                        <span>TRADE</span>
+                        <div style="display: flex; gap: 16px; font-size: 13px; font-weight: 400;">
+                            <span id="marketOrderText" onclick="switchOrderType('market')"
+                                  onmouseover="if(currentOrderType !== 'market') this.style.color='rgba(255,255,255,0.7)'"
+                                  onmouseout="if(currentOrderType !== 'market') this.style.color='rgba(255,255,255,0.4)'"
+                                  style="cursor: pointer; color: #fff; border-bottom: 2px solid #5b9eff; padding-bottom: 2px; transition: all 0.2s;">
+                                Market
+                            </span>
+                            <span id="limitOrderText" onclick="switchOrderType('limit')"
+                                  onmouseover="if(currentOrderType !== 'limit') this.style.color='rgba(255,255,255,0.7)'"
+                                  onmouseout="if(currentOrderType !== 'limit') this.style.color='rgba(255,255,255,0.4)'"
+                                  style="cursor: pointer; color: rgba(255,255,255,0.4); border-bottom: 2px solid transparent; padding-bottom: 2px; transition: all 0.2s;">
+                                Limit
+                            </span>
+                        </div>
+                    </div>
 
                     <!-- Buy/Sell Tabs -->
                     <div class="trade-tabs">
                         <button class="tab-btn active" id="buyTab" onclick="switchTab('buy')">BUY</button>
                         <button class="tab-btn" id="sellTab" onclick="switchTab('sell')">SELL</button>
-                    </div>
-
-                    <!-- Order Type Switch (Market/Limit) -->
-                    <div class="order-type-switch" style="display: flex; gap: 4px; padding: 8px 12px; background: rgba(0,0,0,0.2); border-radius: 6px; margin: 12px 0;">
-                        <button class="order-type-btn active" id="marketOrderBtn" onclick="switchOrderType('market')"
-                                style="flex: 1; padding: 8px 16px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: #fff; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s;">
-                            Market
-                        </button>
-                        <button class="order-type-btn" id="limitOrderBtn" onclick="switchOrderType('limit')"
-                                style="flex: 1; padding: 8px 16px; background: transparent; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: rgba(255,255,255,0.5); cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s;">
-                            Limit
-                        </button>
                     </div>
 
                     <!-- Limit Price Input (hidden by default) -->
@@ -746,26 +751,26 @@
         function switchOrderType(type) {
             currentOrderType = type;
 
-            // Update button styles
-            const marketBtn = document.getElementById('marketOrderBtn');
-            const limitBtn = document.getElementById('limitOrderBtn');
+            // Update text styles with subtle underline
+            const marketText = document.getElementById('marketOrderText');
+            const limitText = document.getElementById('limitOrderText');
             const limitSection = document.getElementById('limitPriceSection');
 
             if (type === 'market') {
-                marketBtn.classList.add('active');
-                limitBtn.classList.remove('active');
-                marketBtn.style.background = 'rgba(255,255,255,0.1)';
-                marketBtn.style.color = '#fff';
-                limitBtn.style.background = 'transparent';
-                limitBtn.style.color = 'rgba(255,255,255,0.5)';
+                // Market selected: white with blue underline
+                marketText.style.color = '#fff';
+                marketText.style.borderBottom = '2px solid #5b9eff';
+                // Limit unselected: dimmed with no underline
+                limitText.style.color = 'rgba(255,255,255,0.4)';
+                limitText.style.borderBottom = '2px solid transparent';
                 limitSection.style.display = 'none';
             } else {
-                limitBtn.classList.add('active');
-                marketBtn.classList.remove('active');
-                limitBtn.style.background = 'rgba(255,255,255,0.1)';
-                limitBtn.style.color = '#fff';
-                marketBtn.style.background = 'transparent';
-                marketBtn.style.color = 'rgba(255,255,255,0.5)';
+                // Limit selected: white with blue underline
+                limitText.style.color = '#fff';
+                limitText.style.borderBottom = '2px solid #5b9eff';
+                // Market unselected: dimmed with no underline
+                marketText.style.color = 'rgba(255,255,255,0.4)';
+                marketText.style.borderBottom = '2px solid transparent';
                 limitSection.style.display = 'block';
 
                 // Set initial limit price to current market price
