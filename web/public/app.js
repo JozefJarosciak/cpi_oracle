@@ -6395,15 +6395,15 @@ function displayFilledOrders(orders) {
 
     // Add header with increased widths
     table.innerHTML = `
-        <div class="trading-table-header">
-            <div class="col-id" style="width: 60px; flex-shrink: 0;">#</div>
-            <div class="col-type" style="width: 60px; flex-shrink: 0;">TYPE</div>
-            <div class="col-direction" style="width: 60px; flex-shrink: 0;">SIDE</div>
-            <div class="col-size" style="width: 80px; flex-shrink: 0;">SIZE</div>
-            <div class="col-price" style="width: 90px; flex-shrink: 0;">EXEC</div>
-            <div class="col-value" style="width: 100px; flex-shrink: 0;">COST</div>
-            <div class="col-time" style="width: 80px; flex-shrink: 0;">FILLED</div>
-            <div class="col-tx" style="flex: 1; text-align: right; min-width: 120px;">TX</div>
+        <div class="trading-table-header" style="display: flex; flex-wrap: nowrap; align-items: center;">
+            <div class="col-id" style="width: 60px; flex-shrink: 0; white-space: nowrap;">#</div>
+            <div class="col-type" style="width: 60px; flex-shrink: 0; white-space: nowrap;">TYPE</div>
+            <div class="col-direction" style="width: 60px; flex-shrink: 0; white-space: nowrap;">SIDE</div>
+            <div class="col-size" style="width: 80px; flex-shrink: 0; white-space: nowrap;">SIZE</div>
+            <div class="col-price" style="width: 90px; flex-shrink: 0; white-space: nowrap;">EXEC</div>
+            <div class="col-value" style="width: 100px; flex-shrink: 0; white-space: nowrap;">COST</div>
+            <div class="col-time" style="width: 80px; flex-shrink: 0; white-space: nowrap;">FILLED</div>
+            <div class="col-tx" style="flex: 1; text-align: right; min-width: 0; white-space: nowrap;">TX</div>
         </div>
     `;
 
@@ -6438,18 +6438,21 @@ function displayFilledOrders(orders) {
         const row = document.createElement('div');
         row.className = 'trading-table-row';
         row.style.color = isBuy ? '#10b981' : '#ef4444';
+        row.style.display = 'flex';
+        row.style.flexWrap = 'nowrap';
+        row.style.alignItems = 'center';
 
         row.innerHTML = `
-            <div class="col-id" style="width: 60px; flex-shrink: 0; font-weight: 600; font-size: 11px;">#${orderData.order_id}</div>
-            <div class="col-type" style="width: 60px; flex-shrink: 0; font-size: 11px;">${isBuy ? 'BUY' : 'SELL'}</div>
-            <div class="col-direction" style="width: 60px; flex-shrink: 0;">
-                <span class="badge ${order.side === 1 ? 'badge-yes' : 'badge-no'}" style="font-size: 10px; padding: 2px 6px;">${sideText}</span>
+            <div class="col-id" style="width: 60px; flex-shrink: 0; font-weight: 600; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">#${orderData.order_id}</div>
+            <div class="col-type" style="width: 60px; flex-shrink: 0; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${isBuy ? 'BUY' : 'SELL'}</div>
+            <div class="col-direction" style="width: 60px; flex-shrink: 0; white-space: nowrap; overflow: hidden;">
+                <span class="badge ${order.side === 1 ? 'badge-yes' : 'badge-no'}" style="font-size: 10px; padding: 2px 6px; white-space: nowrap;">${sideText}</span>
             </div>
-            <div class="col-size" style="width: 80px; flex-shrink: 0; color: #fff; font-size: 11px;">${shares}</div>
-            <div class="col-price" style="width: 90px; flex-shrink: 0; color: #10b981; font-size: 11px;">$${execPrice}</div>
-            <div class="col-value" style="width: 100px; flex-shrink: 0; color: #a855f7; font-weight: 600; font-size: 11px;">$${totalCost}</div>
-            <div class="col-time" style="width: 80px; flex-shrink: 0; color: #6b7280; font-size: 10px;">${timeStr}</div>
-            <div class="col-tx" style="flex: 1; min-width: 120px; font-size: 10px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <div class="col-size" style="width: 80px; flex-shrink: 0; color: #fff; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${shares}</div>
+            <div class="col-price" style="width: 90px; flex-shrink: 0; color: #10b981; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">$${execPrice}</div>
+            <div class="col-value" style="width: 100px; flex-shrink: 0; color: #a855f7; font-weight: 600; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">$${totalCost}</div>
+            <div class="col-time" style="width: 80px; flex-shrink: 0; color: #6b7280; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${timeStr}</div>
+            <div class="col-tx" style="flex: 1; min-width: 0; font-size: 10px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                 ${orderData.filled_tx ? `<a href="${txLink}" target="_blank" style="color: #5b9eff; text-decoration: none; font-family: monospace;">${txShort}</a>` : '-'}
             </div>
         `;
