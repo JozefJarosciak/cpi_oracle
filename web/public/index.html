@@ -1330,19 +1330,20 @@
                     const data = JSON.parse(event.data);
                     console.log('✅ Order filled:', data.order);
 
-                    // Check if this is the current user's order
+                    // Always reload order lists when ANY order is filled
+                    // This ensures the UI stays in sync for all users
+                    loadOpenOrders();
+                    loadFilledOrders();
+
+                    // Check if this is the current user's order for toast notification
                     if (wallet && wallet.publicKey && data.order && data.order.order) {
                         const userAddress = wallet.publicKey.toString();
                         const orderUser = data.order.order.user;
 
                         if (orderUser === userAddress) {
-                            console.log('💰 Your order was filled! Refreshing order lists...');
+                            console.log('💰 Your order was filled!');
 
-                            // Always reload both tabs for user's orders, regardless of current tab
-                            loadOpenOrders();
-                            loadFilledOrders();
-
-                            // Show notification toast
+                            // Show notification toast for user's own orders
                             const action = data.order.order.action === 1 ? 'BUY' : 'SELL';
                             const side = data.order.order.side === 1 ? 'YES' : 'NO';
                             const shares = data.order.filled_shares || 0;
