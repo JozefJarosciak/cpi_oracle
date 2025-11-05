@@ -548,10 +548,81 @@ function addTradingHistory(userPrefix, action, side, shares, costUsd, avgPrice, 
     }
 }
 
-function getTradingHistory(userPrefix, limit = 100) {
+function getMarketStatus() {
     try {
-        const stmt = db.prepare('SELECT * FROM trading_history WHERE user_prefix = ? ORDER BY timestamp DESC LIMIT ?');
-        return stmt.all(userPrefix, limit);
+        const data = fs.readFileSync(STATUS_FILE, 'utf8');
+        return JSON.parse(data);
+    } catch (err) {
+        console.error('Failed to read market status:', err.message);
+        return null;
+    }
+}
+
+async function getOnChainPosition(walletPubkeyStr) {
+    try {
+        const programId = new PublicKey('EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF');
+        const walletPubkey = new PublicKey(walletPubkeyStr);
+
+        // Derive AMM PDA
+        const ammSeed = Buffer.from('amm_btc_v6', 'utf8');
+        const [ammPda] = PublicKey.findProgramAddressSync([ammSeed], programId);
+
+        // Derive position PDA
+        const posSeed = Buffer.from('pos', 'utf8');
+        const [positionPda] = PublicKey.findProgramAddressSync(
+            [posSeed, ammPda.toBuffer(), walletPubkey.toBuffer()],
+            programId
+        );
+
+        // Fetch position account
+        const positionAccount = await connection.getAccountInfo(positionPda);
+
+        if (!positionAccount) {
+            return {
+                exists: false,
+                yesShares: 0,
+                noShares: 0,
+                accountBalance: 0,
+                positionPda: positionPda.toString()
+            };
+        }
+
+        // Parse position data
+        // Position layout: discriminator(8) + owner(32) + yes_shares(8) + no_shares(8) + master_wallet(32) + vault_balance(8)
+        const data = positionAccount.data;
+        const yesSharesE6 = Number(data.readBigInt64LE(40));
+        const noSharesE6 = Number(data.readBigInt64LE(48));
+        const accountBalanceE6 = Number(data.readBigInt64LE(88));
+
+        return {
+            exists: true,
+            yesShares: yesSharesE6 / 10_000_000,
+            noShares: noSharesE6 / 10_000_000,
+            accountBalance: accountBalanceE6 / 10_000_000,  // User's trading account balance (collateral)
+            yesSharesE6: yesSharesE6,
+            noSharesE6: noSharesE6,
+            accountBalanceE6: accountBalanceE6,
+            positionPda: positionPda.toString()
+        };
+    } catch (err) {
+        console.error('Error fetching on-chain position:', err);
+        throw err;
+    }
+}
+
+function getTradingHistory(userPrefix, limit = 100, currentMarketOnly = false) {
+    try {
+        // Use LIKE to support partial prefix matching (e.g., "D5nZJ" will match "D5nZJG")
+        if (currentMarketOnly) {
+            // Filter by current market cycle time
+            const marketStatus = getMarketStatus();
+            const cycleStartTime = marketStatus?.cycleStartTime || 0;
+            const stmt = db.prepare('SELECT * FROM trading_history WHERE user_prefix LIKE ? AND timestamp >= ? ORDER BY timestamp DESC LIMIT ?');
+            return stmt.all(userPrefix + '%', cycleStartTime, limit);
+        } else {
+            const stmt = db.prepare('SELECT * FROM trading_history WHERE user_prefix LIKE ? ORDER BY timestamp DESC LIMIT ?');
+            return stmt.all(userPrefix + '%', limit);
+        }
     } catch (err) {
         console.error('Failed to get trading history:', err.message);
         return [];
@@ -1459,9 +1530,14 @@ const server = http.createServer((req, res) => {
 
     // API: Get trading history for a user
     if (req.url.startsWith('/api/trading-history/') && req.method === 'GET') {
-        const userPrefix = req.url.split('/api/trading-history/')[1];
-        if (userPrefix && userPrefix.length >= 6) {
-            const history = getTradingHistory(userPrefix, 100);
+        const urlParts = req.url.split('/api/trading-history/')[1].split('?');
+        const userPrefix = urlParts[0];
+        const queryString = urlParts[1] || '';
+        const params = new URLSearchParams(queryString);
+        const currentMarketOnly = params.get('currentMarket') === 'true';
+
+        if (userPrefix && userPrefix.length >= 5) {
+            const history = getTradingHistory(userPrefix, 100, currentMarketOnly);
             res.writeHead(200, {
                 'Content-Type': 'application/json',
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -1473,8 +1549,42 @@ const server = http.createServer((req, res) => {
                 'Content-Type': 'application/json',
                 ...SECURITY_HEADERS
             });
-            res.end(JSON.stringify({ error: 'Invalid user prefix' }));
+            res.end(JSON.stringify({ error: 'Invalid user prefix (minimum 5 characters)' }));
         }
+        return;
+    }
+
+    // API: Get on-chain position for a wallet
+    if (req.url.startsWith('/api/position/') && req.method === 'GET') {
+        const walletPubkey = req.url.split('/api/position/')[1];
+
+        if (!walletPubkey || walletPubkey.length < 32) {
+            res.writeHead(400, {
+                'Content-Type': 'application/json',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify({ error: 'Invalid wallet public key' }));
+            return;
+        }
+
+        (async () => {
+            try {
+                const position = await getOnChainPosition(walletPubkey);
+                res.writeHead(200, {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify(position));
+            } catch (err) {
+                console.error('Failed to fetch position:', err);
+                res.writeHead(500, {
+                    'Content-Type': 'application/json',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify({ error: err.message }));
+            }
+        })();
         return;
     }
 

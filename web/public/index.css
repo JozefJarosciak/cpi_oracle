@@ -3898,3 +3898,103 @@ button.disabled {
 .trading-table-row .col-fees {
     color: var(--red);
 }
+
+/* ============= POSITIONS TABLE ============= */
+.positions-header {
+    display: grid;
+    grid-template-columns: 60px 70px 95px 95px 95px 95px 140px;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border-bottom: 2px solid var(--border-color);
+    font-weight: 700;
+    color: var(--text-dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.positions-header > div {
+    display: flex;
+    align-items: center;
+}
+
+.positions-header .pos-shares,
+.positions-header .pos-entry,
+.positions-header .pos-mark,
+.positions-header .pos-value,
+.positions-header .pos-cost,
+.positions-header .pos-pnl {
+    justify-content: flex-end;
+}
+
+.position-row {
+    display: grid;
+    grid-template-columns: 60px 70px 95px 95px 95px 95px 140px;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    transition: background 0.2s;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    align-items: center;
+}
+
+.position-row:hover {
+    background: var(--bg-hover);
+}
+
+.position-row .pos-side {
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.position-row .pos-side.type-up {
+    color: #00ff88;
+}
+
+.position-row .pos-side.type-down {
+    color: #ff4444;
+}
+
+.position-row .pos-shares,
+.position-row .pos-entry,
+.position-row .pos-mark,
+.position-row .pos-value,
+.position-row .pos-cost {
+    font-size: 12px;
+    color: var(--text-primary);
+    text-align: right;
+}
+
+.position-row .pos-pnl {
+    font-size: 12px;
+    font-weight: 600;
+    text-align: right;
+}
+
+.position-row .pos-pnl.pnl-positive {
+    color: #00ff88;
+}
+
+.position-row .pos-pnl.pnl-negative {
+    color: #ff4444;
+}
+
+.position-row .pnl-percent {
+    font-size: 10px;
+    opacity: 0.7;
+    margin-left: 4px;
+}
+
+.positions-footer {
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    text-align: center;
+}
+
+.positions-footer .vault-balance {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+}

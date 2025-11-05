@@ -3942,11 +3942,15 @@ async function executeTradeInternal(tradeData) {
             showStatus(`Trade success: ${signature.substring(0, 16)}... [${timestamp}]`);
 
             // Show toast notification
+            const estimatedPrice = numShares > 0 ? Math.abs(estimatedCost) / numShares : 0;
             const actionText = action.toUpperCase();
             const sideText = side === 'yes' ? 'UP' : 'DOWN';
             const toastTitle = `${actionText} ${sideText} Success`;
-            const toastMessage = `${numShares.toFixed(2)} shares @ $${sharePrice.toFixed(4)}`;
+            const toastMessage = `${numShares.toFixed(2)} shares @ ~$${estimatedPrice.toFixed(4)}`;
             showToast('success', toastTitle, toastMessage);
+
+            // Note: Position will be updated via SSE with ACTUAL avgPrice from on-chain logs
+            // SSE provides accurate execution prices - we don't use client-side estimates
 
             // Volume is updated by trade_monitor.js (reads from on-chain logs)
             // Don't update here to avoid double-counting
@@ -4882,6 +4886,11 @@ async function restartMarket() {
             fetchMarketData();
             fetchPositionData();
             updateWalletBalance();
+
+            // If positions tab is active, reload it immediately
+            if (currentFeedTab === 'positions') {
+                loadPositions();
+            }
         }, 1000);
 
     } catch (err) {
@@ -5878,25 +5887,40 @@ function clearLog() {
 // ============= SETTLEMENT HISTORY =============
 
 async function loadSettlementHistory() {
+    console.log('[Settlement] Loading settlement history...');
+    console.log('[Settlement] API endpoint:', `${CONFIG.API_PREFIX}/settlement-history`);
+
     try {
         const response = await fetch(`${CONFIG.API_PREFIX}/settlement-history`);
+        console.log('[Settlement] Response status:', response.status);
+
         if (!response.ok) {
-            console.warn('Failed to load settlement history:', response.status);
+            console.warn('[Settlement] Failed to load settlement history:', response.status);
             return;
         }
 
         const data = await response.json();
+        console.log('[Settlement] Raw response data:', data);
+        console.log('[Settlement] Number of settlements:', data.history?.length || 0);
+
         if (data.history && Array.isArray(data.history)) {
             displaySettlementHistory(data.history);
+        } else {
+            console.warn('[Settlement] No history array in response');
         }
     } catch (err) {
-        console.warn('Failed to load settlement history:', err);
+        console.error('[Settlement] Error loading settlement history:', err);
     }
 }
 
 function displaySettlementHistory(history) {
+    console.log('[Settlement Display] Processing', history.length, 'settlement records');
+
     const settlementFeed = document.getElementById('settlementFeed');
-    if (!settlementFeed) return;
+    if (!settlementFeed) {
+        console.error('[Settlement Display] settlementFeed element not found');
+        return;
+    }
 
     settlementFeed.innerHTML = '';
 
@@ -5904,9 +5928,12 @@ function displaySettlementHistory(history) {
     const allSettlements = history;
 
     if (allSettlements.length === 0) {
+        console.log('[Settlement Display] No settlements to display');
         settlementFeed.innerHTML = '<div class="trade-feed-empty"><span class="empty-icon">📜</span><span class="empty-text">No settlements</span></div>';
         return;
     }
+
+    console.log('[Settlement Display] First settlement record:', allSettlements[0]);
 
     // Create table structure
     const table = document.createElement('div');
@@ -5928,7 +5955,18 @@ function displaySettlementHistory(history) {
     const tbody = document.createElement('div');
     tbody.className = 'settlement-table-body';
 
-    allSettlements.forEach(item => {
+    allSettlements.forEach((item, index) => {
+        console.log(`[Settlement ${index + 1}] Processing settlement for user ${item.user_prefix}`);
+        console.log(`  Raw data:`, {
+            result: item.result,
+            side: item.side,
+            amount: item.amount,
+            net_spent: item.net_spent,
+            snapshot_price: item.snapshot_price,
+            settle_price: item.settle_price,
+            timestamp: item.timestamp
+        });
+
         const isWin = item.result === 'WIN';
         const sideDisplay = item.side === 'YES' ? 'UP' : 'DOWN';
         const payout = parseFloat(item.amount).toFixed(4);
@@ -5936,6 +5974,14 @@ function displaySettlementHistory(history) {
         // Get financial data
         const netSpent = parseFloat(item.net_spent || 0);
         const profit = payout - netSpent;
+
+        console.log(`  Calculations:`, {
+            isWin,
+            sideDisplay,
+            payout,
+            netSpent,
+            profit: profit.toFixed(4)
+        });
 
         const time = new Date(item.timestamp);
         const dateStr = time.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
@@ -5953,6 +5999,13 @@ function displaySettlementHistory(history) {
             const snapshotPrice = parseFloat(item.snapshot_price);
             const settlePrice = parseFloat(item.settle_price);
             const priceDiff = settlePrice - snapshotPrice;
+
+            console.log(`  BTC Price Movement:`, {
+                snapshotPrice,
+                settlePrice,
+                priceDiff,
+                direction: priceDiff > 0 ? 'UP' : priceDiff < 0 ? 'DOWN' : 'FLAT'
+            });
 
             // Format prices with K suffix for compact display
             const formatPrice = (price) => {
@@ -5988,6 +6041,18 @@ function displaySettlementHistory(history) {
         } else if (profit < -0.001) {
             profitClass = 'profit-negative';
         }
+
+        console.log(`  Display values:`, {
+            dateStr,
+            timeStr,
+            user_prefix: item.user_prefix,
+            btcMove,
+            btcMoveClass,
+            netSpent: netSpent.toFixed(4),
+            payout,
+            profitDisplay,
+            profitClass
+        });
 
         const row = document.createElement('div');
         row.className = 'settlement-table-row';
@@ -6466,13 +6531,598 @@ function displayFilledOrders(orders) {
 
 // ============= END FILLED ORDERS =============
 
+// ============= POSITIONS =============
+
+// Positions refresh interval
+let positionsRefreshInterval = null;
+
+// ============= TRADE LOG PARSING =============
+// Parse trade data from on-chain logs (browser version of trade_monitor.js logic)
+function parseTradeFromLogs(logs, signature) {
+    // Look for "Program data: " log which contains base64 encoded event
+    for (const log of logs) {
+        if (log.startsWith('Program data: ')) {
+            try {
+                const base64Data = log.substring('Program data: '.length);
+                const binaryString = atob(base64Data);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+
+                // TradeSnapshot event structure (after 8-byte discriminator):
+                // side: u8, action: u8, net_e6: i64, dq_e6: i64, avg_price_e6: i64, ...
+                if (bytes.length < 8 + 1 + 1 + 8 + 8 + 8) continue;
+
+                const view = new DataView(bytes.buffer);
+                let offset = 8; // Skip discriminator
+                const side = view.getUint8(offset); offset += 1;
+                const action = view.getUint8(offset); offset += 1;
+                const net_e6 = Number(view.getBigInt64(offset, true)); offset += 8;
+                const dq_e6 = Number(view.getBigInt64(offset, true)); offset += 8;
+                const avg_price_e6 = Number(view.getBigInt64(offset, true)); offset += 8;
+
+                return {
+                    side: side === 1 ? 'YES' : 'NO',
+                    action: action === 1 ? 'BUY' : 'SELL',
+                    amount: parseFloat((net_e6 / 10_000_000).toFixed(4)),
+                    shares: parseFloat((dq_e6 / 10_000_000).toFixed(2)),
+                    avgPrice: parseFloat((avg_price_e6 / 1_000_000).toFixed(4)),
+                    signature,
+                    timestamp: Date.now()
+                };
+            } catch (err) {
+                console.error('[POSITIONS] Failed to parse trade data:', err);
+            }
+        }
+    }
+    return null;
+}
+
+// ============= LIVE POSITION TRACKING =============
+// This tracks positions using live trade execution prices
+// Format: { UP: { shares, totalCost, entries: [{ shares, price }] }, DOWN: { ... } }
+// IMPORTANT: Initialize with numeric 0, not null, to prevent string concatenation bugs
+let livePositions = {
+    UP: { shares: 0, totalCost: 0, entries: [] },
+    DOWN: { shares: 0, totalCost: 0, entries: [] }
+};
+
+// Track pending trades that were added optimistically but not yet confirmed by SSE
+// Format: Map<signature, {side, action, shares, estimatedPrice, timestamp}>
+let pendingTrades = new Map();
+
+// Load positions from localStorage on page load
+function loadLivePositionsFromStorage() {
+    try {
+        const stored = localStorage.getItem('livePositions');
+        if (stored) {
+            const parsed = JSON.parse(stored);
+
+            // Validate and repair data - ensure numeric values
+            livePositions = {
+                UP: {
+                    shares: Number(parsed.UP?.shares) || 0,
+                    totalCost: Number(parsed.UP?.totalCost) || 0,
+                    entries: Array.isArray(parsed.UP?.entries) ? parsed.UP.entries : []
+                },
+                DOWN: {
+                    shares: Number(parsed.DOWN?.shares) || 0,
+                    totalCost: Number(parsed.DOWN?.totalCost) || 0,
+                    entries: Array.isArray(parsed.DOWN?.entries) ? parsed.DOWN.entries : []
+                }
+            };
+
+            console.log('[Live Positions] Loaded and validated from storage:', livePositions);
+        }
+    } catch (err) {
+        console.error('[Live Positions] Failed to load from storage:', err);
+        // Reset to defaults on error
+        livePositions = {
+            UP: { shares: 0, totalCost: 0, entries: [] },
+            DOWN: { shares: 0, totalCost: 0, entries: [] }
+        };
+    }
+}
+
+// Save positions to localStorage
+function saveLivePositionsToStorage() {
+    try {
+        localStorage.setItem('livePositions', JSON.stringify(livePositions));
+    } catch (err) {
+        console.error('[Live Positions] Failed to save to storage:', err);
+    }
+}
+
+// Update position with a new trade (uses live execution price from SSE)
+function updateLivePosition(side, action, shares, avgPrice) {
+    const positionSide = side === 'YES' ? 'UP' : 'DOWN';
+    const position = livePositions[positionSide];
+
+    console.log(`[POSITION-MONITOR] ========================================`);
+    console.log(`[POSITION-MONITOR] 🔄 updateLivePosition() called:`);
+    console.log(`[POSITION-MONITOR]   📥 Input Parameters:`);
+    console.log(`[POSITION-MONITOR]      side: "${side}" → positionSide: "${positionSide}"`);
+    console.log(`[POSITION-MONITOR]      action: "${action}"`);
+    console.log(`[POSITION-MONITOR]      shares: ${shares} (type: ${typeof shares})`);
+    console.log(`[POSITION-MONITOR]      avgPrice: ${avgPrice} (type: ${typeof avgPrice})`);
+    console.log('[POSITION-MONITOR]');
+    console.log('[POSITION-MONITOR]   📊 FULL STATE BEFORE UPDATE:');
+    console.log('[POSITION-MONITOR]      livePositions.UP.shares:', livePositions.UP.shares);
+    console.log('[POSITION-MONITOR]      livePositions.UP.totalCost:', livePositions.UP.totalCost);
+    console.log('[POSITION-MONITOR]      livePositions.UP.entries:', JSON.stringify(livePositions.UP.entries));
+    console.log('[POSITION-MONITOR]      livePositions.DOWN.shares:', livePositions.DOWN.shares);
+    console.log('[POSITION-MONITOR]      livePositions.DOWN.totalCost:', livePositions.DOWN.totalCost);
+    console.log('[POSITION-MONITOR]      livePositions.DOWN.entries:', JSON.stringify(livePositions.DOWN.entries));
+    console.log('[POSITION-MONITOR]');
+    console.log(`[POSITION-MONITOR]   🎯 Target Position (${positionSide}) Before:`);
+    console.log('[POSITION-MONITOR]      totalShares:', position.shares);
+    console.log('[POSITION-MONITOR]      totalCost:', position.totalCost);
+    console.log('[POSITION-MONITOR]      entries:', JSON.parse(JSON.stringify(position.entries)));
+
+    if (action === 'BUY') {
+        // Add to position using FIFO queue
+        // Ensure numeric types to prevent string concatenation bugs
+        const numericShares = Number(shares);
+        const numericAvgPrice = Number(avgPrice);
+        const costOfTrade = numericShares * numericAvgPrice;
+
+        console.log('[POSITION-MONITOR]');
+        console.log('[POSITION-MONITOR]   ✅ BUY Action - Executing:');
+        console.log('[POSITION-MONITOR]      numericShares:', numericShares, '(converted from', shares, ')');
+        console.log('[POSITION-MONITOR]      numericAvgPrice:', numericAvgPrice, '(converted from', avgPrice, ')');
+        console.log('[POSITION-MONITOR]      costOfTrade:', costOfTrade, '(shares * avgPrice)');
+
+        position.shares = Number(position.shares) + numericShares;
+        position.totalCost = Number(position.totalCost) + costOfTrade;
+        position.entries.push({ shares: numericShares, price: numericAvgPrice });
+
+        console.log(`[POSITION-MONITOR]      NEW position.shares: ${Number(position.shares)} (was ${Number(position.shares) - numericShares})`);
+        console.log(`[POSITION-MONITOR]      NEW position.totalCost: ${Number(position.totalCost)} (was ${Number(position.totalCost) - costOfTrade})`);
+        console.log(`[POSITION-MONITOR]      PUSHED entry: { shares: ${numericShares}, price: ${numericAvgPrice} }`);
+    } else if (action === 'SELL') {
+        // Remove from position using FIFO
+        let remainingToSell = shares;
+
+        console.log('[POSITION-MONITOR]');
+        console.log('[POSITION-MONITOR]   ❌ SELL Action - Executing:');
+        console.log('[POSITION-MONITOR]      remainingToSell:', remainingToSell);
+
+        while (remainingToSell > 0 && position.entries.length > 0) {
+            const entry = position.entries[0];
+            console.log(`[POSITION-MONITOR]      Processing entry: { shares: ${entry.shares}, price: ${entry.price} }`);
+
+            if (entry.shares <= remainingToSell) {
+                // Consume entire entry
+                console.log(`[POSITION-MONITOR]      → Consuming ENTIRE entry (${entry.shares} shares)`);
+                remainingToSell -= entry.shares;
+                position.shares -= entry.shares;
+                position.totalCost -= entry.shares * entry.price;
+                position.entries.shift();
+                console.log(`[POSITION-MONITOR]      → Removed entry, remainingToSell: ${remainingToSell}`);
+            } else {
+                // Partial consume
+                console.log(`[POSITION-MONITOR]      → PARTIAL consume (${remainingToSell} of ${entry.shares} shares)`);
+                entry.shares -= remainingToSell;
+                position.shares -= remainingToSell;
+                position.totalCost -= remainingToSell * entry.price;
+                console.log(`[POSITION-MONITOR]      → Entry reduced to ${entry.shares} shares`);
+                remainingToSell = 0;
+            }
+        }
+
+        // If we sold more than we had, zero out
+        if (position.shares < 0) {
+            console.log(`[POSITION-MONITOR]      ⚠️  OVERSOLD! position.shares was ${position.shares}, zeroing out`);
+            position.shares = 0;
+            position.totalCost = 0;
+            position.entries = [];
+        }
+    }
+
+    console.log('[POSITION-MONITOR]');
+    console.log('[POSITION-MONITOR]   📊 FULL STATE AFTER UPDATE:');
+    console.log('[POSITION-MONITOR]      livePositions.UP.shares:', livePositions.UP.shares);
+    console.log('[POSITION-MONITOR]      livePositions.UP.totalCost:', livePositions.UP.totalCost);
+    console.log('[POSITION-MONITOR]      livePositions.UP.entries:', JSON.stringify(livePositions.UP.entries));
+    console.log('[POSITION-MONITOR]      livePositions.DOWN.shares:', livePositions.DOWN.shares);
+    console.log('[POSITION-MONITOR]      livePositions.DOWN.totalCost:', livePositions.DOWN.totalCost);
+    console.log('[POSITION-MONITOR]      livePositions.DOWN.entries:', JSON.stringify(livePositions.DOWN.entries));
+    console.log('[POSITION-MONITOR]');
+    console.log(`[POSITION-MONITOR]   🎯 Target Position (${positionSide}) After:`);
+    console.log('[POSITION-MONITOR]      totalShares:', position.shares);
+    console.log('[POSITION-MONITOR]      totalCost:', position.totalCost);
+    console.log('[POSITION-MONITOR]      avgEntryPrice:', position.shares > 0 ? position.totalCost / position.shares : 0);
+    console.log('[POSITION-MONITOR]      entries:', JSON.parse(JSON.stringify(position.entries)));
+    console.log(`[POSITION-MONITOR] ========================================`);
+    saveLivePositionsToStorage();
+}
+
+// Get average entry price for a side
+function getLiveEntryPrice(side) {
+    const position = livePositions[side];
+    if (position.shares === 0) return 0;
+    return position.totalCost / position.shares;
+}
+
+// Clear positions (for resets or to fix corrupted data)
+function clearLivePositions() {
+    livePositions = {
+        UP: { shares: 0, totalCost: 0, entries: [] },
+        DOWN: { shares: 0, totalCost: 0, entries: [] }
+    };
+    localStorage.removeItem('livePositions');
+    saveLivePositionsToStorage();
+    console.log('[POSITIONS] ✅ Cleared all live position data');
+}
+
+// Expose to window for debugging
+window.clearLivePositions = clearLivePositions;
+
+// Initialize on page load
+loadLivePositionsFromStorage();
+
+// Function to get current quotes from global state
+// Note: currentYesPrice and currentNoPrice are defined at line ~2819 and updated by SSE
+function getCurrentQuotes() {
+    // Use the global price variables that are updated by the market data stream
+    const yesQuote = currentYesPrice || 0.5;
+    const noQuote = currentNoPrice || 0.5;
+    console.log('[Quotes] Using global prices - YES:', yesQuote, 'NO:', noQuote);
+    return { yesQuote, noQuote };
+}
+
+// Update positions display directly from livePositions (NO blockchain lookup!)
+// This is the equivalent of addTradeToHistory() for positions - instant DOM update
+function updatePositionsDisplay() {
+    console.log('[POSITION-MONITOR] 💨 updatePositionsDisplay() called');
+    const positionsFeed = document.getElementById('positionsFeed');
+    if (!positionsFeed) {
+        console.log('[POSITION-MONITOR] ⚠️  positionsFeed element not found, exiting');
+        return;
+    }
+
+    const { yesQuote, noQuote } = getCurrentQuotes();
+    console.log('[POSITION-MONITOR]   📈 Current Quotes: YES:', yesQuote, 'NO:', noQuote);
+    const positions = [];
+
+    console.log('[POSITION-MONITOR]   🔍 Checking UP position...');
+    console.log('[POSITION-MONITOR]      livePositions.UP.shares:', livePositions.UP.shares, '(type:', typeof livePositions.UP.shares, ')');
+
+    // Build positions from livePositions data
+    if (livePositions.UP.shares > 0) {
+        console.log('[POSITION-MONITOR]      ✅ UP position has shares, building display data...');
+        const entryPrice = livePositions.UP.totalCost / livePositions.UP.shares;
+        const shares = livePositions.UP.shares;
+        const cost = livePositions.UP.totalCost;
+        const currentValue = shares * yesQuote;
+        const pnl = currentValue - cost;
+        const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
+
+        const upPosition = {
+            side: 'UP',
+            shares: shares,
+            entryPrice: entryPrice,
+            markPrice: yesQuote,
+            value: currentValue,
+            cost: cost,
+            pnl: pnl,
+            pnlPercent: pnlPercent
+        };
+        console.log('[POSITION-MONITOR]      UP position data:', JSON.stringify(upPosition, null, 2));
+        positions.push(upPosition);
+    } else {
+        console.log('[POSITION-MONITOR]      ⏭️  UP position has 0 shares, skipping');
+    }
+
+    console.log('[POSITION-MONITOR]   🔍 Checking DOWN position...');
+    console.log('[POSITION-MONITOR]      livePositions.DOWN.shares:', livePositions.DOWN.shares, '(type:', typeof livePositions.DOWN.shares, ')');
+
+    if (livePositions.DOWN.shares > 0) {
+        console.log('[POSITION-MONITOR]      ✅ DOWN position has shares, building display data...');
+        const entryPrice = livePositions.DOWN.totalCost / livePositions.DOWN.shares;
+        const shares = livePositions.DOWN.shares;
+        const cost = livePositions.DOWN.totalCost;
+        const currentValue = shares * noQuote;
+        const pnl = currentValue - cost;
+        const pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
+
+        const downPosition = {
+            side: 'DOWN',
+            shares: shares,
+            entryPrice: entryPrice,
+            markPrice: noQuote,
+            value: currentValue,
+            cost: cost,
+            pnl: pnl,
+            pnlPercent: pnlPercent
+        };
+        console.log('[POSITION-MONITOR]      DOWN position data:', JSON.stringify(downPosition, null, 2));
+        positions.push(downPosition);
+    } else {
+        console.log('[POSITION-MONITOR]      ⏭️  DOWN position has 0 shares, skipping');
+    }
+
+    console.log('[POSITION-MONITOR]   📊 Total positions to display:', positions.length);
+
+    // Render positions
+    if (positions.length === 0) {
+        console.log('[POSITION-MONITOR]   ℹ️  No positions to display, showing empty state');
+        positionsFeed.innerHTML = `
+            <div class="trade-feed-empty">
+                <span class="empty-icon">💼</span>
+                <span class="empty-text">No open positions</span>
+            </div>
+        `;
+        return;
+    }
+
+    let html = `
+        <div class="positions-header">
+            <div class="pos-side">SIDE</div>
+            <div class="pos-shares">SHARES</div>
+            <div class="pos-entry">ENTRY</div>
+            <div class="pos-mark">MARK</div>
+            <div class="pos-value">VALUE</div>
+            <div class="pos-cost">COST</div>
+            <div class="pos-pnl">PNL</div>
+        </div>
+    `;
+
+    for (const pos of positions) {
+        const sideClass = pos.side === 'UP' ? 'type-up' : 'type-down';
+        const pnlClass = pos.pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+        const pnlSign = pos.pnl >= 0 ? '+' : '';
+
+        html += `
+            <div class="position-row">
+                <div class="pos-side ${sideClass}">${pos.side}</div>
+                <div class="pos-shares">${pos.shares.toFixed(2)}</div>
+                <div class="pos-entry">${pos.entryPrice.toFixed(4)}</div>
+                <div class="pos-mark">${pos.markPrice.toFixed(4)}</div>
+                <div class="pos-value">${pos.value.toFixed(2)}</div>
+                <div class="pos-cost">${pos.cost.toFixed(2)}</div>
+                <div class="pos-pnl ${pnlClass}">
+                    ${pnlSign}${pos.pnl.toFixed(2)}
+                    <span class="pnl-percent">(${pnlSign}${pos.pnlPercent.toFixed(1)}%)</span>
+                </div>
+            </div>
+        `;
+    }
+
+    positionsFeed.innerHTML = html;
+    console.log('[POSITION-MONITOR]   ✅ DOM updated! Rendered', positions.length, 'position(s)');
+    console.log('[POSITION-MONITOR] ========================================');
+}
+
+// Expose to window
+window.updatePositionsDisplay = updatePositionsDisplay;
+
+async function loadPositions() {
+    const positionsFeed = document.getElementById('positionsFeed');
+
+    if (!wallet || !wallet.publicKey) {
+        positionsFeed.innerHTML = `
+            <div class="trade-feed-empty">
+                <span class="empty-icon">💼</span>
+                <span class="empty-text">Connect wallet to view your positions</span>
+            </div>
+        `;
+        return;
+    }
+
+    const walletPubkey = wallet.publicKey.toString();
+    console.log('[POSITIONS] 🔄 Loading positions for wallet:', walletPubkey);
+
+    try {
+        // Fetch ONLY from position API - single source of truth
+        const positionUrl = `https://vero.testnet.x1.xyz/api/position/${walletPubkey}`;
+        console.log('[POSITIONS] 📡 Fetching:', positionUrl);
+
+        const positionResponse = await fetch(positionUrl);
+        if (!positionResponse.ok) {
+            throw new Error(`Position API returned ${positionResponse.status}`);
+        }
+
+        const positionData = await positionResponse.json();
+        console.log('[POSITIONS] 🔗 Position data:', positionData);
+
+        // Get current market quotes for mark-to-market
+        const { yesQuote, noQuote } = getCurrentQuotes();
+        console.log('[POSITIONS] 💹 Market quotes - YES:', yesQuote, 'NO:', noQuote);
+
+        // Build positions array from API data only
+        const positions = [];
+
+        // Build UP position if exists
+        if (positionData.yesShares > 0) {
+            // For now, use current quote as entry price (breakeven)
+            // TODO: Add entry price tracking to position API if needed
+            const entryPrice = yesQuote;
+            const currentValue = positionData.yesShares * yesQuote;
+            const cost = positionData.yesShares * entryPrice;
+            const pnl = currentValue - cost;
+            const pnlPercent = 0; // Breakeven since entry = mark
+
+            positions.push({
+                side: 'UP',
+                shares: positionData.yesShares,
+                entryPrice: entryPrice,
+                markPrice: yesQuote,
+                value: currentValue,
+                cost: cost,
+                pnl: pnl,
+                pnlPercent: pnlPercent
+            });
+
+            console.log('[POSITIONS] ✅ UP Position:', {
+                shares: positionData.yesShares,
+                entry: entryPrice.toFixed(4),
+                mark: yesQuote.toFixed(4),
+                value: currentValue.toFixed(2)
+            });
+        }
+
+        // Build DOWN position if exists
+        if (positionData.noShares > 0) {
+            // For now, use current quote as entry price (breakeven)
+            // TODO: Add entry price tracking to position API if needed
+            const entryPrice = noQuote;
+            const currentValue = positionData.noShares * noQuote;
+            const cost = positionData.noShares * entryPrice;
+            const pnl = currentValue - cost;
+            const pnlPercent = 0; // Breakeven since entry = mark
+
+            positions.push({
+                side: 'DOWN',
+                shares: positionData.noShares,
+                entryPrice: entryPrice,
+                markPrice: noQuote,
+                value: currentValue,
+                cost: cost,
+                pnl: pnl,
+                pnlPercent: pnlPercent
+            });
+
+            console.log('[POSITIONS] ✅ DOWN Position:', {
+                shares: positionData.noShares,
+                entry: entryPrice.toFixed(4),
+                mark: noQuote.toFixed(4),
+                value: currentValue.toFixed(2)
+            });
+        }
+
+        // Render positions
+        if (positions.length === 0) {
+            positionsFeed.innerHTML = `
+                <div class="trade-feed-empty">
+                    <span class="empty-icon">💼</span>
+                    <span class="empty-text">No open positions</span>
+                </div>
+            `;
+        } else {
+            let html = `
+                <div class="positions-header">
+                    <div class="pos-side">SIDE</div>
+                    <div class="pos-shares">SHARES</div>
+                    <div class="pos-entry">ENTRY</div>
+                    <div class="pos-mark">MARK</div>
+                    <div class="pos-value">VALUE</div>
+                    <div class="pos-cost">COST</div>
+                    <div class="pos-pnl">PNL</div>
+                </div>
+            `;
+
+            for (const pos of positions) {
+                const sideClass = pos.side === 'UP' ? 'type-up' : 'type-down';
+                const pnlClass = pos.pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+                const pnlSign = pos.pnl >= 0 ? '+' : '';
+
+                html += `
+                    <div class="position-row">
+                        <div class="pos-side ${sideClass}">${pos.side}</div>
+                        <div class="pos-shares">${pos.shares.toFixed(2)}</div>
+                        <div class="pos-entry">${pos.entryPrice.toFixed(4)}</div>
+                        <div class="pos-mark">${pos.markPrice.toFixed(4)}</div>
+                        <div class="pos-value">${pos.value.toFixed(2)}</div>
+                        <div class="pos-cost">${pos.cost.toFixed(2)}</div>
+                        <div class="pos-pnl ${pnlClass}">
+                            ${pnlSign}${pos.pnl.toFixed(2)}
+                            <span class="pnl-percent">(${pnlSign}${pos.pnlPercent.toFixed(1)}%)</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            positionsFeed.innerHTML = html;
+        }
+    } catch (err) {
+        console.error('Failed to load positions:', err);
+        positionsFeed.innerHTML = `
+            <div class="trade-feed-empty">
+                <span class="empty-icon">❌</span>
+                <span class="empty-text">Failed to load positions: ${err.message}</span>
+            </div>
+        `;
+    }
+}
+
+// Helper function to get cost basis and entry price from trading history
+// This calculates the cost basis for the CURRENT position using FIFO accounting
+// Returns { costBasis, entryPrice } where entryPrice is the weighted average
+async function getCostBasisAndEntry(userPrefix, side) {
+    try {
+        // Always use /api endpoint for trading history
+        const response = await fetch(`/api/trading-history/${userPrefix}`);
+        if (!response.ok) return { costBasis: 0, entryPrice: 0 };
+
+        const data = await response.json();
+
+        console.log(`[Cost Basis] Calculating for ${side}, found ${data.history?.length || 0} trades`);
+
+        // FIFO queue: each entry is { shares, costPerShare }
+        const fifoQueue = [];
+
+        for (const trade of data.history) {
+            if (trade.side === side) {
+                if (trade.action === 'BUY') {
+                    // Add to FIFO queue
+                    const cost = Math.abs(trade.cost_usd);
+                    const costPerShare = cost / trade.shares;
+                    fifoQueue.push({ shares: trade.shares, costPerShare });
+                    console.log(`  BUY: +${trade.shares} shares @ $${costPerShare.toFixed(4)}/share (total cost: $${cost.toFixed(2)})`);
+                } else if (trade.action === 'SELL') {
+                    // Remove from FIFO queue
+                    let sharesToSell = trade.shares;
+                    console.log(`  SELL: -${trade.shares} shares`);
+
+                    while (sharesToSell > 0 && fifoQueue.length > 0) {
+                        const oldest = fifoQueue[0];
+                        if (oldest.shares <= sharesToSell) {
+                            // Consume entire lot
+                            sharesToSell -= oldest.shares;
+                            console.log(`    Consumed lot: ${oldest.shares} shares @ $${oldest.costPerShare.toFixed(4)}/share`);
+                            fifoQueue.shift();
+                        } else {
+                            // Partial consumption
+                            oldest.shares -= sharesToSell;
+                            console.log(`    Partial lot: ${sharesToSell} shares @ $${oldest.costPerShare.toFixed(4)}/share (${oldest.shares} remaining)`);
+                            sharesToSell = 0;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Calculate total cost basis and weighted average entry price from remaining lots
+        let totalCost = 0;
+        let totalShares = 0;
+        for (const lot of fifoQueue) {
+            totalCost += lot.shares * lot.costPerShare;
+            totalShares += lot.shares;
+        }
+
+        const entryPrice = totalShares > 0 ? totalCost / totalShares : 0;
+
+        console.log(`[Cost Basis] Final: ${totalShares.toFixed(2)} shares, total cost: $${totalCost.toFixed(2)}, avg entry: $${entryPrice.toFixed(4)}/share`);
+        return { costBasis: totalCost, entryPrice };
+    } catch (err) {
+        console.error('Failed to get cost basis:', err);
+        return { costBasis: 0, entryPrice: 0 };
+    }
+}
+
+// ============= END POSITIONS =============
+
 function switchFeedTab(tab) {
     const liveFeedTab = document.getElementById('liveFeedTab');
+    const positionsFeedTab = document.getElementById('positionsFeedTab');
     const settlementFeedTab = document.getElementById('settlementFeedTab');
     const tradingFeedTab = document.getElementById('tradingFeedTab');
     const ordersFeedTab = document.getElementById('ordersFeedTab');
     const filledFeedTab = document.getElementById('filledFeedTab');
     const tradeFeed = document.getElementById('tradeFeed');
+    const positionsFeed = document.getElementById('positionsFeed');
     const settlementFeed = document.getElementById('settlementFeed');
     const tradingFeed = document.getElementById('tradingFeed');
     const ordersFeed = document.getElementById('ordersFeed');
@@ -6480,11 +7130,13 @@ function switchFeedTab(tab) {
 
     // Reset all tabs
     liveFeedTab.classList.remove('active');
+    positionsFeedTab.classList.remove('active');
     settlementFeedTab.classList.remove('active');
     tradingFeedTab.classList.remove('active');
     ordersFeedTab.classList.remove('active');
     filledFeedTab.classList.remove('active');
     tradeFeed.classList.add('hidden');
+    positionsFeed.classList.add('hidden');
     settlementFeed.classList.add('hidden');
     tradingFeed.classList.add('hidden');
     ordersFeed.classList.add('hidden');
@@ -6493,9 +7145,26 @@ function switchFeedTab(tab) {
     // Update current tab tracker
     currentFeedTab = tab;
 
+    // Clear positions refresh interval when switching away
+    if (positionsRefreshInterval) {
+        clearInterval(positionsRefreshInterval);
+        positionsRefreshInterval = null;
+    }
+
     if (tab === 'live') {
         liveFeedTab.classList.add('active');
         tradeFeed.classList.remove('hidden');
+    } else if (tab === 'positions') {
+        positionsFeedTab.classList.add('active');
+        positionsFeed.classList.remove('hidden');
+        loadPositions();
+
+        // Auto-refresh positions every 3 seconds
+        positionsRefreshInterval = setInterval(() => {
+            if (currentFeedTab === 'positions') {
+                loadPositions();
+            }
+        }, 3000);
     } else if (tab === 'settlement') {
         settlementFeedTab.classList.add('active');
         settlementFeed.classList.remove('hidden');

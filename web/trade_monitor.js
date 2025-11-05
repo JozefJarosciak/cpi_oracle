@@ -447,8 +447,12 @@ async function startMonitoring() {
                 }
 
                 // Update user position and track P&L
-                if (trade.user && trade.user !== 'Unknown') {
+                // Skip recording for deployer/keeper wallet (they execute trades on behalf of others)
+                const DEPLOYER_WALLET = 'AivknDqDUqnvyYVmDViiB2bEHKyUK5HcX91gWL2zgTZ4';
+                if (trade.user && trade.user !== 'Unknown' && trade.user !== DEPLOYER_WALLET) {
                     updateUserPosition(trade);
+                } else if (trade.user === DEPLOYER_WALLET) {
+                    console.log(`⚠️  Skipping trade recording for deployer/keeper wallet`);
                 }
 
                 // Broadcast to clients
