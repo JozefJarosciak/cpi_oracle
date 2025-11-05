@@ -6,13 +6,47 @@ const crypto = require('crypto');
 const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3436;
 const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, 'orders.db');
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(express.json());
+
+// SSE clients for keeper log streaming
+const keeperLogClients = new Set();
+const keeperLogBuffer = [];
+const MAX_LOG_BUFFER = 100;
+
+// Helper function to broadcast keeper logs to all SSE clients
+function broadcastKeeperLog(message, level = 'info') {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    message,
+    level
+  };
+
+  // Add to buffer
+  keeperLogBuffer.push(logEntry);
+  if (keeperLogBuffer.length > MAX_LOG_BUFFER) {
+    keeperLogBuffer.shift();
+  }
+
+  // Broadcast to all connected clients
+  const data = JSON.stringify(logEntry);
+  keeperLogClients.forEach(client => {
+    try {
+      client.write(`data: ${data}\n\n`);
+    } catch (err) {
+      console.error('Error broadcasting to SSE client:', err);
+      keeperLogClients.delete(client);
+    }
+  });
+}
+
+// Expose broadcastKeeperLog globally so keeper can use it
+global.broadcastKeeperLog = broadcastKeeperLog;
 
 // Database connection
 const db = new sqlite3.Database(DB_PATH, (err) => {
@@ -220,6 +254,59 @@ app.get('/api/orders/pending', (req, res) => {
   });
 });
 
+// GET /api/orders/filled - Get all filled orders (for history view)
+app.get('/api/orders/filled', (req, res) => {
+  const { market, limit } = req.query;
+
+  let sql = 'SELECT * FROM orders WHERE status = ?';
+  const params = ['filled'];
+
+  if (market) {
+    sql += ' AND market = ?';
+    params.push(market);
+  }
+
+  sql += ' ORDER BY filled_at DESC';
+
+  if (limit) {
+    sql += ' LIMIT ?';
+    params.push(parseInt(limit));
+  } else {
+    sql += ' LIMIT 100'; // Default limit
+  }
+
+  db.all(sql, params, (err, rows) => {
+    if (err) {
+      console.error('Error fetching filled orders:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    const orders = rows.map(row => {
+      const order = JSON.parse(row.order_json);
+      // Calculate total cost and effective price
+      const shares = row.filled_shares_e6 / 10_000_000; // Convert from 10M scale
+      const effectivePrice = row.execution_price_e6 / 1e6; // Convert from 1e6 scale
+      const totalCost = shares * effectivePrice;
+
+      return {
+        order_id: row.id,
+        order_hash: row.order_hash,
+        order: order,
+        signature: row.signature,
+        submitted_at: new Date(row.submitted_at * 1000).toISOString(),
+        filled_at: new Date(row.filled_at * 1000).toISOString(),
+        filled_tx: row.filled_tx,
+        filled_shares: shares,
+        execution_price: effectivePrice,
+        total_cost: totalCost,
+        keeper_pubkey: row.keeper_pubkey
+      };
+    });
+
+    res.json({ orders });
+  });
+});
+
 // GET /api/orders/user/:pubkey - Get orders for specific user
 app.get('/api/orders/user/:pubkey', (req, res) => {
   const { pubkey } = req.params;
@@ -300,30 +387,49 @@ app.post('/api/orders/:order_id/fill', (req, res) => {
     return res.status(400).json({ error: 'Missing tx_signature' });
   }
 
-  const sql = `
-    UPDATE orders
-    SET status = 'filled',
-        filled_tx = ?,
-        filled_at = strftime('%s', 'now'),
-        filled_shares_e6 = ?,
-        execution_price_e6 = ?,
-        keeper_pubkey = ?
-    WHERE id = ? AND status = 'pending'
-  `;
-
-  db.run(sql, [tx_signature, shares_filled, execution_price, keeper_pubkey, order_id], function(err) {
-    if (err) {
-      console.error('Error marking order as filled:', err);
-      return res.status(500).json({ error: 'Database error' });
+  // First, get order details for logging
+  db.get('SELECT * FROM orders WHERE id = ?', [order_id], (err, order) => {
+    if (err || !order) {
+      console.error('Error fetching order for fill:', err);
+      return res.status(404).json({ error: 'Order not found' });
     }
 
-    if (this.changes === 0) {
-      return res.status(404).json({ error: 'Order not found or already processed' });
-    }
+    const orderData = JSON.parse(order.order_json);
+    const action = orderData.action === 1 ? 'BUY' : 'SELL';
+    const side = orderData.side === 1 ? 'YES' : 'NO';
+    const shares = (shares_filled / 10_000_000).toFixed(2);
+    const price = (execution_price / 1e6).toFixed(6);
+    const txShort = tx_signature.slice(0, 8);
 
-    console.log(`✅ Order ${order_id} marked as filled: ${tx_signature.slice(0, 16)}...`);
+    const sql = `
+      UPDATE orders
+      SET status = 'filled',
+          filled_tx = ?,
+          filled_at = strftime('%s', 'now'),
+          filled_shares_e6 = ?,
+          execution_price_e6 = ?,
+          keeper_pubkey = ?
+      WHERE id = ? AND status = 'pending'
+    `;
 
-    res.json({ success: true, order_id: parseInt(order_id) });
+    db.run(sql, [tx_signature, shares_filled, execution_price, keeper_pubkey, order_id], function(err) {
+      if (err) {
+        console.error('Error marking order as filled:', err);
+        broadcastKeeperLog(`❌ Failed to mark order #${order_id} as filled: ${err.message}`, 'error');
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Order not found or already processed' });
+      }
+
+      const logMsg = `✅ Order #${order_id} filled: ${action} ${shares} ${side} @ $${price}`;
+      console.log(logMsg);
+      broadcastKeeperLog(logMsg, 'success');
+      broadcastKeeperLog(`TX: ${tx_signature}`, 'tx');
+
+      res.json({ success: true, order_id: parseInt(order_id) });
+    });
   });
 });
 
@@ -377,6 +483,85 @@ app.post('/api/orders/expire', (req, res) => {
       success: true,
       expired_count: this.changes
     });
+  });
+});
+
+// POST /api/orders/cancel-all - Cancel all pending orders
+app.post('/api/orders/cancel-all', (req, res) => {
+  const sql = `
+    UPDATE orders
+    SET status = 'cancelled'
+    WHERE status = 'pending'
+  `;
+
+  db.run(sql, [], function(err) {
+    if (err) {
+      console.error('Error cancelling all orders:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    console.log(`🚫 Cancelled ${this.changes} pending orders`);
+
+    res.json({
+      success: true,
+      cancelled_count: this.changes
+    });
+  });
+});
+
+// DELETE /api/orders/clear-history - Clear all filled, cancelled, and expired orders
+app.delete('/api/orders/clear-history', (req, res) => {
+  const sql = `
+    DELETE FROM orders
+    WHERE status IN ('filled', 'cancelled', 'expired')
+  `;
+
+  db.run(sql, [], function(err) {
+    if (err) {
+      console.error('Error clearing history:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    console.log(`🗑️  Cleared ${this.changes} historical orders`);
+
+    res.json({
+      success: true,
+      deleted_count: this.changes
+    });
+  });
+});
+
+// ===========================
+// Keeper Log Streaming (SSE)
+// ===========================
+
+app.get('/api/keeper-logs', (req, res) => {
+  // Set headers for SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  // Send initial connection message
+  res.write(`data: ${JSON.stringify({
+    timestamp: new Date().toISOString(),
+    message: '🔗 Connected to keeper log stream',
+    level: 'info'
+  })}\n\n`);
+
+  // Send buffered logs
+  keeperLogBuffer.forEach(entry => {
+    res.write(`data: ${JSON.stringify(entry)}\n\n`);
+  });
+
+  // Add client to set
+  keeperLogClients.add(res);
+  console.log(`📡 New SSE client connected. Total clients: ${keeperLogClients.size}`);
+
+  // Remove client on disconnect
+  req.on('close', () => {
+    keeperLogClients.delete(res);
+    console.log(`📡 SSE client disconnected. Total clients: ${keeperLogClients.size}`);
   });
 });
 

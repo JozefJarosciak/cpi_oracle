@@ -4,6 +4,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as anchor from '@coral-xyz/anchor';
+import BN from 'bn.js';
 import { Connection, PublicKey, Keypair, SystemProgram, Transaction, ComputeBudgetProgram, SYSVAR_INSTRUCTIONS_PUBKEY, TransactionInstruction } from '@solana/web3.js';
 import axios from 'axios';
 import * as borsh from '@coral-xyz/borsh';
@@ -19,7 +20,7 @@ interface KeeperConfig {
 }
 
 function loadConfig(): KeeperConfig {
-  const configPath = path.join(__dirname, '..', 'keeper.config.json');
+  const configPath = path.resolve(process.cwd(), 'keeper.config.json');
   try {
     if (fs.existsSync(configPath)) {
       const configData = fs.readFileSync(configPath, 'utf8');
@@ -34,7 +35,7 @@ function loadConfig(): KeeperConfig {
 const config = loadConfig();
 const RPC = process.env.ANCHOR_PROVIDER_URL || config.rpc || 'http://127.0.0.1:8899';
 const KEEPER_WALLET = process.env.KEEPER_WALLET || process.env.ANCHOR_WALLET || config.keeperWallet || `${process.env.HOME}/.config/solana/id.json`;
-const ORDER_BOOK_API = process.env.ORDER_BOOK_API || config.orderbookApi || 'http://localhost:3000';
+const ORDER_BOOK_API = process.env.ORDER_BOOK_API || config.orderbookApi || 'http://localhost:3436';
 const CHECK_INTERVAL = parseInt(process.env.KEEPER_CHECK_INTERVAL || String(config.pollIntervalMs || 2000)); // ms
 const MIN_PROFIT_LAMPORTS = parseInt(process.env.KEEPER_MIN_PROFIT || '100000'); // 0.0001 SOL
 
@@ -197,7 +198,8 @@ function serializeOrder(order: any): Buffer {
 
 /* ==================== PRICE CALCULATION ==================== */
 function calculateLmsrCost(amm: AmmAccount, qYes: number, qNo: number): number {
-  const b = amm.b.toNumber() / 1e6;
+  // b uses same 10M scaling as Q values (matches app.js)
+  const b = amm.b.toNumber() / 10_000_000;
   const a = qYes / b;
   const c = qNo / b;
   const m = Math.max(a, c);
@@ -208,24 +210,24 @@ function calculateLmsrCost(amm: AmmAccount, qYes: number, qNo: number): number {
 
 function calculateCurrentPrice(amm: AmmAccount, action: number, side: number, shares: number): number {
   // Calculate price for buying/selling shares (shares in regular units, not e6)
-  // Q values are in e6 on-chain, so divide by 1e6 to get regular units
-  const currentQYes = amm.qYes.toNumber() / 10_000_000;  // Match app.js: 10M = 1 share
-  const currentQNo = amm.qNo.toNumber() / 10_000_000;
+  // Q values use 10M scaling on-chain (10_000_000 = 1 share) - matches app.js
+  const currentQYesShares = amm.qYes.toNumber() / 10_000_000;
+  const currentQNoShares = amm.qNo.toNumber() / 10_000_000;
 
-  const baseCost = calculateLmsrCost(amm, currentQYes, currentQNo);
+  const baseCost = calculateLmsrCost(amm, currentQYesShares, currentQNoShares);
 
   let targetCost: number;
   if (action === 1) { // BUY
     if (side === 1) { // YES
-      targetCost = calculateLmsrCost(amm, currentQYes + shares, currentQNo - shares);
+      targetCost = calculateLmsrCost(amm, currentQYesShares + shares, currentQNoShares);
     } else { // NO
-      targetCost = calculateLmsrCost(amm, currentQYes, currentQNo + shares);
+      targetCost = calculateLmsrCost(amm, currentQYesShares, currentQNoShares + shares);
     }
   } else { // SELL
     if (side === 1) { // YES
-      targetCost = calculateLmsrCost(amm, currentQYes - shares, currentQNo + shares);
+      targetCost = calculateLmsrCost(amm, currentQYesShares - shares, currentQNoShares);
     } else { // NO
-      targetCost = calculateLmsrCost(amm, currentQYes, currentQNo - shares);
+      targetCost = calculateLmsrCost(amm, currentQYesShares, currentQNoShares - shares);
     }
   }
 
@@ -273,19 +275,86 @@ async function checkIfExecutable(
       return false;
     }
 
-    // Calculate current price for 1 share to check condition
+    // For SELL orders, check if user has enough shares outstanding
+    if (order.action === 2) { // SELL
+      const qShares = order.side === 1 ? amm.qYes.toNumber() : amm.qNo.toNumber();
+      if (qShares < order.shares_e6) {
+        console.log(`   ⚠️  Insufficient shares outstanding (need ${order.shares_e6}, have ${qShares})`);
+        return false;
+      }
+    }
+
+    // Calculate current price for ONE share to check executability
+    // Order shares are in e6 (1_000_000 = 1 share) but LMSR calc needs "share units" (10M = 1 share)
     const currentPrice = calculateCurrentPrice(amm, order.action, order.side, 1);
+
+    // Account for slippage tolerance - use conservative 0.5% to match UI default
+    // This ensures keeper only executes orders that have good chance of filling
+    const SLIPPAGE_BPS = 50; // 0.5% conservative buffer
+    const slippageFactor = SLIPPAGE_BPS / 10000;
 
     console.log(`   Current price: $${(currentPrice / 1e6).toFixed(6)} | Limit: $${(order.limit_price_e6 / 1e6).toFixed(6)}`);
 
-    // Check price condition
+    // For large orders, also check if execution price will pass on-chain tolerance check
+    // On-chain uses 0.2% tolerance, so exec price must be within that of limit
+    const orderShares = order.shares_e6 / 10_000_000; // Convert from 10M scale to regular share units
+    const execPrice = calculateCurrentPrice(amm, order.action, order.side, orderShares);
+    const onChainTolerance = 0.002; // 0.2% on-chain PRICE_SLIPPAGE_TOLERANCE_BPS
+
+    console.log(`   Order size: ${orderShares.toFixed(2)} shares | Exec price: $${(execPrice / 1e6).toFixed(6)}`);
+
+    // Check price condition with slippage buffer
     if (order.action === 1) { // BUY
-      const executable = currentPrice <= order.limit_price_e6;
-      console.log(`   BUY condition: ${currentPrice} <= ${order.limit_price_e6} = ${executable}`);
+      // For BUY: price must be below limit, accounting for slippage making it worse
+      const maxAcceptable = order.limit_price_e6 * (1 - slippageFactor);
+      const executable = currentPrice <= maxAcceptable;
+      console.log(`   BUY condition: ${currentPrice} <= ${Math.floor(maxAcceptable)} (limit=${order.limit_price_e6} - ${slippageFactor*100}%) = ${executable}`);
+
+      // Also check if execution price passes on-chain check
+      const maxAllowedOnChain = order.limit_price_e6 * (1 + onChainTolerance);
+      if (executable && execPrice > maxAllowedOnChain) {
+        console.log(`   ⚠️  Would fail on-chain: exec ${execPrice} > ${Math.floor(maxAllowedOnChain)} (limit + 0.2%)`);
+
+        // For partial fill orders (min_fill_bps = 0), still try - on-chain will find max executable
+        if (order.min_fill_bps === 0) {
+          console.log(`   🔄 Partial fill enabled - will attempt execution (on-chain will find max amount)`);
+          return true;
+        }
+        return false;
+      }
+
+      // Even if conservative check failed, try partial fill orders - let on-chain decide
+      if (!executable && order.min_fill_bps === 0 && currentPrice <= order.limit_price_e6) {
+        console.log(`   🔄 Partial fill enabled - attempting despite conservative buffer (current ${currentPrice} <= limit ${order.limit_price_e6})`);
+        return true;
+      }
+
       return executable;
     } else { // SELL
-      const executable = currentPrice >= order.limit_price_e6;
-      console.log(`   SELL condition: ${currentPrice} >= ${order.limit_price_e6} = ${executable}`);
+      // For SELL: price must be above limit, accounting for slippage making it worse
+      const minAcceptable = order.limit_price_e6 * (1 + slippageFactor);
+      const executable = currentPrice >= minAcceptable;
+      console.log(`   SELL condition: ${currentPrice} >= ${Math.floor(minAcceptable)} (limit=${order.limit_price_e6} + ${slippageFactor*100}%) = ${executable}`);
+
+      // Also check if execution price passes on-chain check
+      const minAllowedOnChain = order.limit_price_e6 * (1 - onChainTolerance);
+      if (executable && execPrice < minAllowedOnChain) {
+        console.log(`   ⚠️  Would fail on-chain: exec ${execPrice} < ${Math.floor(minAllowedOnChain)} (limit - 0.2%)`);
+
+        // For partial fill orders (min_fill_bps = 0), still try - on-chain will find max executable
+        if (order.min_fill_bps === 0) {
+          console.log(`   🔄 Partial fill enabled - will attempt execution (on-chain will find max amount)`);
+          return true;
+        }
+        return false;
+      }
+
+      // Even if conservative check failed, try partial fill orders - let on-chain decide
+      if (!executable && order.min_fill_bps === 0 && currentPrice >= order.limit_price_e6) {
+        console.log(`   🔄 Partial fill enabled - attempting despite conservative buffer (current ${currentPrice} >= limit ${order.limit_price_e6})`);
+        return true;
+      }
+
       return executable;
     }
   } catch (err: any) {
@@ -312,7 +381,7 @@ async function executeOrder(
     console.log(`\n🔧 Building transaction for order ${orderId}...`);
     console.log(`   User: ${order.user}`);
     console.log(`   Action: ${order.action === 1 ? 'BUY' : 'SELL'} ${order.side === 1 ? 'YES' : 'NO'}`);
-    console.log(`   Shares: ${order.shares_e6 / 1e6}`);
+    console.log(`   Shares: ${order.shares_e6 / 10_000_000}`);
     console.log(`   Limit Price: $${(order.limit_price_e6 / 1e6).toFixed(6)}`);
 
     // Load IDL and create program
@@ -339,12 +408,12 @@ async function executeOrder(
       user: userPubkey,
       action: order.action,
       side: order.side,
-      sharesE6: new anchor.BN(order.shares_e6),
-      limitPriceE6: new anchor.BN(order.limit_price_e6),
-      maxCostE6: new anchor.BN(order.max_cost_e6),
-      minProceedsE6: new anchor.BN(order.min_proceeds_e6),
-      expiryTs: new anchor.BN(order.expiry_ts),
-      nonce: new anchor.BN(order.nonce),
+      sharesE6: new BN(order.shares_e6),
+      limitPriceE6: new BN(order.limit_price_e6),
+      maxCostE6: new BN(order.max_cost_e6),
+      minProceedsE6: new BN(order.min_proceeds_e6),
+      expiryTs: new BN(order.expiry_ts),
+      nonce: new BN(order.nonce),
       keeperFeeBps: order.keeper_fee_bps,
       minFillBps: order.min_fill_bps,
     };
@@ -406,7 +475,7 @@ async function executeOrder(
 
     // Create compute budget instruction to increase CU limit
     const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
-      units: 400_000, // Increase from default 200K to 400K
+      units: 1_400_000, // Increased for binary search in partial fills
     });
 
     console.log(`   Executing on-chain with Anchor...`);
@@ -513,29 +582,41 @@ async function keeperLoop() {
           continue;
         }
 
-        // Deserialize AMM account (simplified - would use Anchor IDL in production)
-        // For now, we'll skip actual deserialization and use mock data
+        // Deserialize AMM account from on-chain data
+        const d = ammAccountInfo.data;
+        let o = 8; // Skip discriminator
+
+        const bump = d.readUInt8(o); o += 1;
+        const decimals = d.readUInt8(o); o += 1;
+        const bRaw = d.readBigInt64LE(o); o += 8;
+        const feeBps = d.readUInt16LE(o); o += 2;
+        const qYesRaw = d.readBigInt64LE(o); o += 8;
+        const qNoRaw = d.readBigInt64LE(o); o += 8;
+        const feesRaw = d.readBigInt64LE(o); o += 8;
+        const vaultE6Raw = d.readBigInt64LE(o); o += 8;
+        const status = d.readUInt8(o); o += 1;
+
         const amm: AmmAccount = {
-          bump: 0,
-          decimals: 6,
-          b: new anchor.BN(500_000_000), // b = 500
-          feeBps: 25,
-          qYes: new anchor.BN(0),
-          qNo: new anchor.BN(0),
-          fees: new anchor.BN(0),
-          vaultE6: new anchor.BN(0),
-          status: 1, // Open
+          bump,
+          decimals,
+          b: new BN(bRaw.toString()),
+          feeBps,
+          qYes: new BN(qYesRaw.toString()),
+          qNo: new BN(qNoRaw.toString()),
+          fees: new BN(feesRaw.toString()),
+          vaultE6: new BN(vaultE6Raw.toString()),
+          status,
           winner: 0,
-          wTotalE6: new anchor.BN(0),
-          ppsE6: new anchor.BN(0),
+          wTotalE6: new BN(0),
+          ppsE6: new BN(0),
           feeDest: keeper.publicKey,
           vaultSolBump: 0,
-          startPriceE6: new anchor.BN(0),
-          startTs: new anchor.BN(0),
-          settlePriceE6: new anchor.BN(0),
-          settleTs: new anchor.BN(0),
-          marketEndSlot: new anchor.BN(0),
-          marketEndTime: new anchor.BN(0),
+          startPriceE6: new BN(0),
+          startTs: new BN(0),
+          settlePriceE6: new BN(0),
+          settleTs: new BN(0),
+          marketEndSlot: new BN(0),
+          marketEndTime: new BN(0),
         };
 
         console.log(`📊 AMM State: qYes=${amm.qYes.toNumber() / 1e6}, qNo=${amm.qNo.toNumber() / 1e6}, status=${amm.status}`);
@@ -545,7 +626,7 @@ async function keeperLoop() {
           const { order, signature, order_id } = orderData;
 
           console.log(`\n🔍 Checking order ${order_id}:`);
-          console.log(`   ${order.action === 1 ? 'BUY' : 'SELL'} ${order.shares_e6 / 1e6} ${order.side === 1 ? 'YES' : 'NO'} @ limit $${(order.limit_price_e6 / 1e6).toFixed(6)}`);
+          console.log(`   ${order.action === 1 ? 'BUY' : 'SELL'} ${order.shares_e6 / 10_000_000} ${order.side === 1 ? 'YES' : 'NO'} @ limit $${(order.limit_price_e6 / 1e6).toFixed(6)}`);
 
           const executable = await checkIfExecutable(connection, amm, order);
 

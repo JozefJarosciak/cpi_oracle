@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dark Pool Orderbook | CPI Oracle</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0e27;
+            color: #e0e0e0;
+            overflow-x: hidden;
+        }
+
+        .header {
+            background: #0f1429;
+            border-bottom: 1px solid #1a1f3a;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stats {
+            display: flex;
+            gap: 24px;
+            font-size: 13px;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .stat-label {
+            color: #6b7280;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            color: #e0e0e0;
+            font-weight: 600;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 1px;
+            background: #1a1f3a;
+            max-width: 1800px;
+            margin: 0 auto;
+            min-height: calc(100vh - 61px);
+        }
+
+        .main-panel {
+            background: #0f1429;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .orderbook-panel {
+            background: #0f1429;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #1a1f3a;
+        }
+
+        .order-form {
+            padding: 20px;
+            background: #0a0e27;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            color: #9ca3af;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        input, select {
+            width: 100%;
+            background: #0f1429;
+            border: 1px solid #1a1f3a;
+            border-radius: 6px;
+            padding: 10px 12px;
+            color: #e0e0e0;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            background: #111628;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-buy {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-buy:hover {
+            background: #059669;
+        }
+
+        .btn-sell {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-sell:hover {
+            background: #dc2626;
+        }
+
+        .btn-connect {
+            background: #667eea;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .btn-connect:hover {
+            background: #5568d3;
+        }
+
+        .orderbook-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .orderbook-table th {
+            text-align: left;
+            padding: 8px 12px;
+            color: #6b7280;
+            font-weight: 500;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #1a1f3a;
+        }
+
+        .orderbook-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #0a0e27;
+        }
+
+        .orderbook-table tr:hover {
+            background: #0a0e27;
+        }
+
+        .side-buy {
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        .side-sell {
+            color: #ef4444;
+            font-weight: 600;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-pending {
+            background: #fbbf2433;
+            color: #fbbf24;
+        }
+
+        .badge-filled {
+            background: #10b98133;
+            color: #10b981;
+        }
+
+        .badge-yes {
+            background: #3b82f633;
+            color: #3b82f6;
+        }
+
+        .badge-no {
+            background: #f9731633;
+            color: #f97316;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6b7280;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .wallet-info {
+            background: #0a0e27;
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .wallet-address {
+            font-family: 'Courier New', monospace;
+            color: #667eea;
+        }
+
+        .refresh-btn {
+            background: transparent;
+            border: 1px solid #1a1f3a;
+            color: #9ca3af;
+            padding: 6px 12px;
+            font-size: 12px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .refresh-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .price-display {
+            font-size: 24px;
+            font-weight: 700;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .loading {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .connection-banner {
+            background: #1a1f3a;
+            padding: 12px 24px;
+            text-align: center;
+            font-size: 13px;
+            border-bottom: 1px solid #0a0e27;
+        }
+
+        .connection-banner.connected {
+            background: #10b98133;
+            color: #10b981;
+        }
+
+        .connection-banner.disconnected {
+            background: #ef444433;
+            color: #ef4444;
+        }
+
+        /* Activity Log Styles */
+        .activity-panel {
+            background: #0a0e27;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: #0f1429;
+            border-bottom: 1px solid #1a1f3a;
+            font-size: 12px;
+            font-weight: 600;
+            color: #9ca3af;
+        }
+
+        .btn-clear {
+            background: transparent;
+            border: 1px solid #1a1f3a;
+            color: #6b7280;
+            font-size: 11px;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .btn-clear:hover {
+            background: #0a0e27;
+            color: #9ca3af;
+        }
+
+        .activity-log {
+            max-height: 250px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column-reverse;
+            padding: 8px;
+        }
+
+        .log-entry {
+            padding: 8px 0;
+            border-bottom: 1px solid #1a1f3a;
+            font-size: 11px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .log-entry:first-child {
+            border-bottom: none;
+        }
+
+        .log-time {
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            color: #6b7280;
+            flex-shrink: 0;
+        }
+
+        .log-message {
+            color: #9ca3af;
+            flex: 1;
+        }
+
+        .log-success .log-message {
+            color: #10b981;
+        }
+
+        .log-error .log-message {
+            color: #ef4444;
+        }
+
+        .log-tx a {
+            color: #10b981;
+            text-decoration: underline;
+        }
+
+        .log-tx a:hover {
+            color: #059669;
+        }
+
+        /* Scrollbar styling */
+        .activity-log::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .activity-log::-webkit-scrollbar-track {
+            background: #0a0e27;
+        }
+
+        .activity-log::-webkit-scrollbar-thumb {
+            background: #1a1f3a;
+            border-radius: 3px;
+        }
+
+        .activity-log::-webkit-scrollbar-thumb:hover {
+            background: #2a2f4a;
+        }
+    </style>
+</head>
+<body>
+    <div class="connection-banner" id="connection-banner">
+        🔌 Connecting to orderbook API...
+    </div>
+    <div class="header">
+        <div class="logo">🎯 Dark Pool Orderbook</div>
+        <div class="stats">
+            <div class="stat-item">
+                <span class="stat-label">Total Orders</span>
+                <span class="stat-value" id="total-orders">-</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Pending</span>
+                <span class="stat-value" id="pending-orders">-</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Filled</span>
+                <span class="stat-value" id="filled-orders">-</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">API</span>
+                <span class="stat-value" id="api-status">●</span>
+            </div>
+        </div>
+        <button class="btn-connect" id="connect-wallet">Connect Wallet</button>
+    </div>
+
+    <div class="container">
+        <div class="main-panel">
+            <div style="padding: 20px;">
+                <div class="section-title">📊 Live Orderbook</div>
+
+                <div style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap;">
+                    <button class="refresh-btn" onclick="loadPendingOrders()">⏳ Pending</button>
+                    <button class="refresh-btn" onclick="loadFilledOrders()">✅ Filled History</button>
+                    <button class="refresh-btn" onclick="loadPendingOrders()">🔄 Refresh</button>
+                    <button class="refresh-btn" style="border-color: #ef4444; color: #ef4444;" onclick="cancelAllOrders()">🚫 Cancel All</button>
+                    <button class="refresh-btn" style="border-color: #f97316; color: #f97316;" onclick="clearHistory()">🗑️ Clear History</button>
+                </div>
+
+                <div id="orderbook-container">
+                    <table class="orderbook-table">
+                        <thead id="orderbook-header">
+                            <tr>
+                                <th>ID</th>
+                                <th>Action</th>
+                                <th>Side</th>
+                                <th>Shares</th>
+                                <th>Limit Price</th>
+                                <th>Status</th>
+                                <th>Submitted</th>
+                            </tr>
+                        </thead>
+                        <tbody id="orderbook-body">
+                            <tr>
+                                <td colspan="7">
+                                    <div class="empty-state loading">
+                                        <div class="empty-state-icon">📋</div>
+                                        <div>Loading orders...</div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="orderbook-panel">
+            <div class="section-title">📝 Submit Limit Order</div>
+
+            <div class="wallet-info" id="wallet-info" style="display: none;">
+                <div style="width: 100%;">
+                    <div style="color: #6b7280; margin-bottom: 4px; font-size: 11px;">Session Wallet (Derived from Backpack)</div>
+                    <div class="wallet-address" id="wallet-address" style="font-family: 'Courier New', monospace; font-size: 13px; color: #10b981; word-break: break-all;">-</div>
+                </div>
+            </div>
+
+            <div class="order-form">
+                <div class="form-group">
+                    <label>Action</label>
+                    <select id="action">
+                        <option value="1">BUY</option>
+                        <option value="2">SELL</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Side</label>
+                    <select id="side">
+                        <option value="1">YES</option>
+                        <option value="2">NO</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Shares</label>
+                    <input type="number" id="shares" placeholder="100" min="0.1" step="0.1" />
+                </div>
+
+                <div class="form-group">
+                    <label>Limit Price ($)</label>
+                    <input type="number" id="limit-price" placeholder="0.50" min="0" max="1" step="0.01" />
+                </div>
+
+                <div class="form-group">
+                    <label>Max Cost ($) - Optional</label>
+                    <input type="number" id="max-cost" placeholder="Leave empty for no limit" step="0.01" />
+                </div>
+
+                <div class="form-group">
+                    <label>TTL (seconds)</label>
+                    <input type="number" id="ttl" value="86400" min="60" step="60" />
+                </div>
+
+                <div class="form-group">
+                    <label>Keeper Fee (bps)</label>
+                    <input type="number" id="keeper-fee" value="10" min="1" max="100" />
+                </div>
+
+                <div class="form-group">
+                    <label>Slippage Tolerance (%)</label>
+                    <input type="number" id="slippage-tolerance" value="0.5" min="0.1" max="5" step="0.1" />
+                    <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">
+                        Buffer for price movement. Higher = more likely to execute, but worse price.
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Fill Strategy</label>
+                    <select id="fill-strategy">
+                        <option value="partial">Partial Fill (Accept any amount)</option>
+                        <option value="all-or-none">All-or-None (Must fill complete order)</option>
+                    </select>
+                    <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">
+                        <strong>Partial:</strong> Order can be filled with any amount of shares<br>
+                        <strong>All-or-None:</strong> Order must be completely filled or not at all
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-buy" onclick="submitOrder(1)">Place BUY Order</button>
+                    <button class="btn-sell" onclick="submitOrder(2)">Place SELL Order</button>
+                </div>
+            </div>
+
+            <div class="section-title" style="margin-top: 30px;">💡 Quick Actions</div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <button class="refresh-btn" onclick="loadStats()">📊 Refresh Stats</button>
+                <button class="refresh-btn" onclick="exportOrders()">💾 Export Orders JSON</button>
+                <button class="refresh-btn" onclick="clearForm()">🗑️ Clear Form</button>
+            </div>
+
+            <!-- Activity Log -->
+            <div class="activity-panel" style="margin-top: 30px;">
+                <div class="panel-header">
+                    <span>KEEPER ACTIVITY</span>
+                    <button class="btn-clear" onclick="clearLog()">CLEAR</button>
+                </div>
+                <div class="activity-log" id="logContent">
+                    <div class="log-entry log-info">
+                        <span class="log-time">--:--:--</span>
+                        <span class="log-message">Waiting for keeper events...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+    <script>
+        // Use proxied API path (web server forwards to port 3000)
+        const API_BASE = `${window.location.protocol}//${window.location.host}/orderbook-api`;
+
+        const PROGRAM_ID = 'EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF';
+        const AMM_SEED = 'amm_btc_v6';
+
+        // Wallet state (Backpack + derived session wallet)
+        let wallet = null; // Session wallet (Keypair)
+        let backpackWallet = null; // Backpack wallet provider
+        let currentView = 'pending';
+
+        // Derive deterministic session wallet from Backpack signature
+        async function deriveSessionWallet(backpackWallet) {
+            const message = new TextEncoder().encode('x1-markets-deterministic-session-wallet-v1');
+            const signedMessage = await backpackWallet.signMessage(message);
+
+            // Use first 32 bytes of signature as seed
+            const seed = signedMessage.signature.slice(0, 32);
+            return solanaWeb3.Keypair.fromSeed(seed);
+        }
+
+        console.log('🔌 Orderbook API URL:', API_BASE);
+
+        // Load stats on page load
+        async function loadStats() {
+            try {
+                console.log('📊 Fetching stats from:', `${API_BASE}/api/stats`);
+                const response = await fetch(`${API_BASE}/api/stats`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const stats = await response.json();
+                console.log('✅ Stats loaded:', stats);
+
+                document.getElementById('total-orders').textContent = stats.total || 0;
+                document.getElementById('pending-orders').textContent = stats.pending || 0;
+                document.getElementById('filled-orders').textContent = stats.filled || 0;
+                document.getElementById('api-status').style.color = '#10b981';
+
+                // Update connection banner
+                const banner = document.getElementById('connection-banner');
+                banner.textContent = `✅ Connected to ${API_BASE}`;
+                banner.className = 'connection-banner connected';
+            } catch (err) {
+                console.error('❌ Error loading stats:', err);
+                document.getElementById('api-status').style.color = '#ef4444';
+
+                // Update connection banner
+                const banner = document.getElementById('connection-banner');
+                banner.textContent = `❌ Cannot connect to ${API_BASE} - ${err.message}`;
+                banner.className = 'connection-banner disconnected';
+            }
+        }
+
+        // Load pending orders
+        async function loadPendingOrders() {
+            currentView = 'pending';
+            try {
+                console.log('📋 Fetching pending orders from:', `${API_BASE}/api/orders/pending?limit=100`);
+                const response = await fetch(`${API_BASE}/api/orders/pending?limit=100`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                console.log('✅ Orders loaded:', data.orders.length, 'orders');
+                displayPendingOrders(data.orders);
+            } catch (err) {
+                console.error('❌ Error loading pending orders:', err);
+                showError(`Failed to load orders: ${err.message}`);
+            }
+        }
+
+        // Load filled orders
+        async function loadFilledOrders() {
+            currentView = 'filled';
+            try {
+                console.log('📋 Fetching filled orders from:', `${API_BASE}/api/orders/filled?limit=100`);
+                const response = await fetch(`${API_BASE}/api/orders/filled?limit=100`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                console.log('✅ Filled orders loaded:', data.orders.length, 'orders');
+                displayFilledOrders(data.orders);
+            } catch (err) {
+                console.error('❌ Error loading filled orders:', err);
+                showError(`Failed to load filled orders: ${err.message}`);
+            }
+        }
+
+        // Display pending orders in table
+        function displayPendingOrders(orders) {
+            const thead = document.getElementById('orderbook-header');
+            const tbody = document.getElementById('orderbook-body');
+
+            // Update table header for pending orders
+            thead.innerHTML = `
+                <tr>
+                    <th>ID</th>
+                    <th>Action</th>
+                    <th>Side</th>
+                    <th>Shares</th>
+                    <th>Limit Price</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                </tr>
+            `;
+
+            if (!orders || orders.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📭</div>
+                                <div>No pending orders found</div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = orders.map(orderData => {
+                const order = orderData.order;
+                const actionClass = order.action === 1 ? 'side-buy' : 'side-sell';
+                const actionText = order.action === 1 ? 'BUY' : 'SELL';
+                const sideClass = order.side === 1 ? 'badge-yes' : 'badge-no';
+                const sideText = order.side === 1 ? 'YES' : 'NO';
+                const shares = (order.shares_e6 / 10_000_000).toFixed(2);  // Shares use 10M scaling
+                const price = (order.limit_price_e6 / 1e6).toFixed(6);  // Price uses standard 1e6 scaling
+                const date = new Date(orderData.submitted_at).toLocaleString();
+
+                return `
+                    <tr>
+                        <td><strong>#${orderData.order_id}</strong></td>
+                        <td class="${actionClass}">${actionText}</td>
+                        <td><span class="badge ${sideClass}">${sideText}</span></td>
+                        <td>${shares}</td>
+                        <td>$${price}</td>
+                        <td><span class="badge badge-pending">PENDING</span></td>
+                        <td style="color: #6b7280; font-size: 11px;">${date}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Display filled orders in table
+        function displayFilledOrders(orders) {
+            const thead = document.getElementById('orderbook-header');
+            const tbody = document.getElementById('orderbook-body');
+
+            // Update table header for filled orders
+            thead.innerHTML = `
+                <tr>
+                    <th>ID</th>
+                    <th>Action</th>
+                    <th>Side</th>
+                    <th>Shares</th>
+                    <th>Exec Price</th>
+                    <th>Total Cost</th>
+                    <th>Filled At</th>
+                    <th>TX</th>
+                </tr>
+            `;
+
+            if (!orders || orders.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📭</div>
+                                <div>No filled orders found</div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = orders.map(orderData => {
+                const order = orderData.order;
+                const actionClass = order.action === 1 ? 'side-buy' : 'side-sell';
+                const actionText = order.action === 1 ? 'BUY' : 'SELL';
+                const sideClass = order.side === 1 ? 'badge-yes' : 'badge-no';
+                const sideText = order.side === 1 ? 'YES' : 'NO';
+                const shares = orderData.filled_shares.toFixed(2);
+                const execPrice = orderData.execution_price.toFixed(6);
+                const totalCost = orderData.total_cost.toFixed(6);
+                const date = new Date(orderData.filled_at).toLocaleString();
+                const txShort = orderData.filled_tx ? orderData.filled_tx.slice(0, 8) + '...' : '-';
+                const txLink = orderData.filled_tx
+                    ? `https://explorer.testnet.x1.xyz/tx/${orderData.filled_tx}`
+                    : '#';
+
+                return `
+                    <tr>
+                        <td><strong>#${orderData.order_id}</strong></td>
+                        <td class="${actionClass}">${actionText}</td>
+                        <td><span class="badge ${sideClass}">${sideText}</span></td>
+                        <td>${shares}</td>
+                        <td style="color: #10b981;">$${execPrice}</td>
+                        <td style="color: #667eea; font-weight: 600;">$${totalCost}</td>
+                        <td style="color: #6b7280; font-size: 11px;">${date}</td>
+                        <td><a href="${txLink}" target="_blank" style="color: #667eea; text-decoration: none; font-family: monospace; font-size: 11px;">${txShort}</a></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Connect wallet - use Backpack
+        document.getElementById('connect-wallet').addEventListener('click', async () => {
+            try {
+                if (!window.backpack) {
+                    showNotification('Backpack wallet not found! Please open in Backpack browser', 'error');
+                    return;
+                }
+
+                showNotification('Connecting to Backpack...', 'info');
+
+                // Connect Backpack
+                await window.backpack.connect();
+                backpackWallet = window.backpack;
+
+                console.log('✅ Backpack connected:', backpackWallet.publicKey.toString());
+
+                // Derive deterministic session wallet from Backpack signature
+                showNotification('Deriving session wallet...', 'info');
+                wallet = await deriveSessionWallet(backpackWallet);
+
+                const sessionAddress = wallet.publicKey.toString();
+                console.log('✅ Session wallet derived:', sessionAddress);
+                console.log('📝 This wallet is deterministically derived from your Backpack signature');
+
+                // Update UI after connection
+                document.getElementById('wallet-info').style.display = 'block';
+                document.getElementById('wallet-address').textContent = sessionAddress;
+                document.getElementById('connect-wallet').textContent = 'Wallet Connected ✓';
+                document.getElementById('connect-wallet').style.background = '#10b981';
+
+                showNotification('Wallet connected! Session: ' + sessionAddress.slice(0, 16) + '...', 'success');
+            } catch (err) {
+                console.error('Error connecting wallet:', err);
+                showNotification('Failed to connect wallet: ' + err.message, 'error');
+            }
+        });
+
+        // Submit order - actually sign and submit to API
+        async function submitOrder(actionOverride) {
+            if (!wallet || !wallet.publicKey) {
+                showNotification('Please connect wallet first', 'error');
+                return;
+            }
+
+            const action = parseInt(actionOverride || document.getElementById('action').value);
+            const side = parseInt(document.getElementById('side').value);
+            const shares = parseFloat(document.getElementById('shares').value);
+            const limitPrice = parseFloat(document.getElementById('limit-price').value);
+            const slippagePct = parseFloat(document.getElementById('slippage-tolerance').value);
+            const maxCost = document.getElementById('max-cost').value ? parseFloat(document.getElementById('max-cost').value) : null;
+            const ttl = parseInt(document.getElementById('ttl').value);
+            const keeperFee = parseInt(document.getElementById('keeper-fee').value);
+            const fillStrategy = document.getElementById('fill-strategy').value;
+
+            if (!shares || !limitPrice) {
+                showNotification('Please fill in Shares and Limit Price', 'error');
+                return;
+            }
+
+            // Adjust limit price for slippage tolerance
+            // For BUY: willing to pay up to (limit + slippage%)
+            // For SELL: willing to accept down to (limit - slippage%)
+            const slippageFactor = slippagePct / 100;
+            const adjustedLimitPrice = action === 1
+                ? limitPrice * (1 + slippageFactor)  // BUY: increase limit
+                : limitPrice * (1 - slippageFactor); // SELL: decrease limit
+
+            console.log(`📊 Slippage adjustment: ${limitPrice.toFixed(4)} → ${adjustedLimitPrice.toFixed(4)} (${slippagePct}%)`);
+            console.log(`   ${action === 1 ? 'BUY' : 'SELL'}: User wants ${limitPrice.toFixed(4)}, will accept up to ${adjustedLimitPrice.toFixed(4)}`);
+
+            try {
+                showNotification('Signing order...', 'info');
+
+                // Get market PDA
+                const programId = new solanaWeb3.PublicKey(PROGRAM_ID);
+                const ammSeedBytes = new TextEncoder().encode(AMM_SEED);
+                const [marketPda] = await solanaWeb3.PublicKey.findProgramAddress(
+                    [ammSeedBytes],
+                    programId
+                );
+
+                // Create order
+                const now = Math.floor(Date.now() / 1000);
+                const expiryTs = now + ttl;
+                const nonce = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+
+                // Calculate min_fill_bps based on fill strategy
+                // Partial: 0 bps (accept any amount)
+                // All-or-None: 10000 bps (100% = must fill completely)
+                const minFillBps = fillStrategy === 'all-or-none' ? 10000 : 0;
+
+                const order = {
+                    market: marketPda.toString(),
+                    user: wallet.publicKey.toString(),  // Use session wallet from app.js
+                    action: action,
+                    side: side,
+                    shares_e6: Math.floor(shares * 10_000_000),  // Match app.js scaling: 10M = 1 share
+                    limit_price_e6: Math.floor(adjustedLimitPrice * 1e6),  // Use slippage-adjusted price
+                    max_cost_e6: maxCost ? Math.floor(maxCost * 10_000_000) : Number.MAX_SAFE_INTEGER,
+                    min_proceeds_e6: 0,
+                    expiry_ts: expiryTs,
+                    nonce: nonce,
+                    keeper_fee_bps: keeperFee,
+                    min_fill_bps: minFillBps
+                };
+
+                // Serialize order (Borsh encoding)
+                const messageBytes = serializeOrder(order, marketPda, wallet.publicKey);
+
+                // Sign with Ed25519 using session wallet from app.js
+                const signature = nacl.sign.detached(messageBytes, wallet.secretKey);
+                const signatureHex = Array.from(signature).map(b => b.toString(16).padStart(2, '0')).join('');
+
+                showNotification('Submitting order to orderbook...', 'info');
+
+                // Submit to API
+                const response = await fetch(`${API_BASE}/api/orders/submit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order, signature: signatureHex })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    const actionText = action === 1 ? 'BUY' : 'SELL';
+                    const sideText = side === 1 ? 'YES' : 'NO';
+                    const priceInfo = adjustedLimitPrice !== limitPrice
+                        ? `$${limitPrice.toFixed(4)} (adjusted to $${adjustedLimitPrice.toFixed(4)} with ${slippagePct}% slippage)`
+                        : `$${limitPrice.toFixed(4)}`;
+                    const strategyText = fillStrategy === 'all-or-none' ? ' [All-or-None]' : ' [Partial OK]';
+                    showNotification(`✅ Order #${data.order_id} submitted: ${actionText} ${shares} ${sideText} @ ${priceInfo}${strategyText}`, 'success');
+                    clearForm();
+                    loadStats();
+                    loadPendingOrders();
+                } else {
+                    showNotification(`Failed: ${data.error}`, 'error');
+                }
+            } catch (err) {
+                console.error('Error submitting order:', err);
+                showNotification(`Error: ${err.message}`, 'error');
+            }
+        }
+
+        // Serialize order to bytes (Borsh format)
+        function serializeOrder(order, marketPubkey, userPubkey) {
+            const buffers = [];
+
+            // Helper functions
+            function writeU8(value) {
+                return new Uint8Array([value]);
+            }
+
+            function writeI64LE(value) {
+                const buf = new ArrayBuffer(8);
+                const view = new DataView(buf);
+                view.setBigInt64(0, BigInt(value), true);
+                return new Uint8Array(buf);
+            }
+
+            function writeU64LE(value) {
+                const buf = new ArrayBuffer(8);
+                const view = new DataView(buf);
+                view.setBigUint64(0, BigInt(value), true);
+                return new Uint8Array(buf);
+            }
+
+            function writeU16LE(value) {
+                const buf = new ArrayBuffer(2);
+                const view = new DataView(buf);
+                view.setUint16(0, value, true);
+                return new Uint8Array(buf);
+            }
+
+            // Serialize in order
+            buffers.push(marketPubkey.toBytes());
+            buffers.push(userPubkey.toBytes());
+            buffers.push(writeU8(order.action));
+            buffers.push(writeU8(order.side));
+            buffers.push(writeI64LE(order.shares_e6));
+            buffers.push(writeI64LE(order.limit_price_e6));
+            buffers.push(writeI64LE(order.max_cost_e6));
+            buffers.push(writeI64LE(order.min_proceeds_e6));
+            buffers.push(writeI64LE(order.expiry_ts));
+            buffers.push(writeU64LE(order.nonce));
+            buffers.push(writeU16LE(order.keeper_fee_bps));
+            buffers.push(writeU16LE(order.min_fill_bps));
+
+            // Concatenate all buffers
+            const totalLength = buffers.reduce((sum, buf) => sum + buf.length, 0);
+            const result = new Uint8Array(totalLength);
+            let offset = 0;
+            for (const buf of buffers) {
+                result.set(buf, offset);
+                offset += buf.length;
+            }
+
+            return result;
+        }
+
+        // Export orders
+        function exportOrders() {
+            fetch(`${API_BASE}/api/orders/pending?limit=1000`)
+                .then(r => r.json())
+                .then(data => {
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `orders-${Date.now()}.json`;
+                    a.click();
+                });
+        }
+
+        // Clear form
+        function clearForm() {
+            document.getElementById('shares').value = '';
+            document.getElementById('limit-price').value = '';
+            document.getElementById('max-cost').value = '';
+            document.getElementById('ttl').value = '86400';
+            document.getElementById('keeper-fee').value = '10';
+        }
+
+        // Cancel all pending orders
+        async function cancelAllOrders() {
+            if (!confirm('⚠️ Are you sure you want to cancel ALL pending orders? This cannot be undone.')) {
+                return;
+            }
+
+            try {
+                showNotification('Cancelling all pending orders...', 'info');
+                const response = await fetch(`${API_BASE}/api/orders/cancel-all`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showNotification(`✅ Cancelled ${data.cancelled_count} pending order(s)`, 'success');
+                    loadStats();
+                    loadPendingOrders();
+                } else {
+                    showNotification(`Failed: ${data.error}`, 'error');
+                }
+            } catch (err) {
+                console.error('Error cancelling orders:', err);
+                showNotification(`Error: ${err.message}`, 'error');
+            }
+        }
+
+        // Clear order history (filled, cancelled, expired)
+        async function clearHistory() {
+            if (!confirm('⚠️ Are you sure you want to DELETE all order history (filled, cancelled, expired)? This cannot be undone.')) {
+                return;
+            }
+
+            try {
+                showNotification('Clearing order history...', 'info');
+                const response = await fetch(`${API_BASE}/api/orders/clear-history`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showNotification(`✅ Deleted ${data.deleted_count} historical order(s)`, 'success');
+                    loadStats();
+                    if (currentView === 'filled') {
+                        loadFilledOrders();
+                    }
+                } else {
+                    showNotification(`Failed: ${data.error}`, 'error');
+                }
+            } catch (err) {
+                console.error('Error clearing history:', err);
+                showNotification(`Error: ${err.message}`, 'error');
+            }
+        }
+
+        // Show notification (no popup)
+        function showNotification(message, type = 'info') {
+            const banner = document.getElementById('connection-banner');
+            const colors = {
+                success: { bg: '#10b98133', color: '#10b981' },
+                error: { bg: '#ef444433', color: '#ef4444' },
+                info: { bg: '#3b82f633', color: '#3b82f6' }
+            };
+            banner.style.background = colors[type].bg;
+            banner.style.color = colors[type].color;
+            banner.textContent = message;
+            console.log(`[${type.toUpperCase()}]`, message);
+        }
+
+        // Show error
+        function showError(message) {
+            const tbody = document.getElementById('orderbook-body');
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7">
+                        <div class="empty-state">
+                            <div class="empty-state-icon" style="color: #ef4444;">⚠️</div>
+                            <div style="color: #ef4444;">${message}</div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        // Auto-refresh every 5 seconds
+        setInterval(() => {
+            loadStats();
+            if (currentView === 'pending') {
+                loadPendingOrders();
+            } else if (currentView === 'filled') {
+                loadFilledOrders();
+            }
+        }, 5000);
+
+        // Initial load
+        loadStats();
+        loadPendingOrders();
+
+        // ============= ACTIVITY LOG FUNCTIONS =============
+
+        function addLog(message, type = 'info') {
+            const logContent = document.getElementById('logContent');
+            if (!logContent) return;
+
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+
+            const time = document.createElement('span');
+            time.className = 'log-time';
+            const now = new Date();
+            time.textContent = now.toLocaleTimeString('en-US', { hour12: false });
+
+            const msg = document.createElement('span');
+            msg.className = 'log-message';
+
+            // Detect transaction signatures and make them clickable
+            if (type === 'tx' && message.startsWith('TX: ')) {
+                const signature = message.substring(4); // Remove 'TX: ' prefix
+                const link = document.createElement('a');
+                link.href = `https://explorer.testnet.x1.xyz/tx/${signature}`;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = message;
+                msg.appendChild(link);
+            } else {
+                msg.textContent = message;
+            }
+
+            entry.appendChild(time);
+            entry.appendChild(msg);
+
+            // Prepend to show newest on top
+            if (logContent.firstChild) {
+                logContent.insertBefore(entry, logContent.firstChild);
+            } else {
+                logContent.appendChild(entry);
+            }
+
+            // Auto-scroll to top to show newest entry
+            logContent.scrollTop = 0;
+
+            // Keep only last 100 entries
+            while (logContent.children.length > 100) {
+                logContent.removeChild(logContent.lastChild);
+            }
+        }
+
+        function clearLog() {
+            const logContent = document.getElementById('logContent');
+            if (!logContent) return;
+            logContent.innerHTML = '';
+            addLog('Log cleared', 'info');
+        }
+
+        // Connect to keeper log stream (SSE)
+        let keeperLogStream = null;
+
+        function connectKeeperLogs() {
+            if (keeperLogStream) {
+                keeperLogStream.close();
+            }
+
+            // Try to connect to keeper log stream endpoint
+            try {
+                keeperLogStream = new EventSource(`${API_BASE}/api/keeper-logs`);
+
+                keeperLogStream.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        const logType = data.level || 'info';
+                        addLog(data.message, logType);
+                    } catch (err) {
+                        console.error('Failed to parse keeper log:', err);
+                    }
+                };
+
+                keeperLogStream.onerror = (error) => {
+                    console.warn('Keeper log stream error:', error);
+                    addLog('⚠️ Keeper log stream disconnected', 'error');
+                    // Reconnect after 5 seconds
+                    setTimeout(connectKeeperLogs, 5000);
+                };
+
+                addLog('✅ Connected to keeper log stream', 'success');
+            } catch (err) {
+                console.error('Failed to connect to keeper logs:', err);
+                addLog('❌ Failed to connect to keeper logs', 'error');
+            }
+        }
+
+        // Start keeper log stream connection
+        setTimeout(() => {
+            connectKeeperLogs();
+        }, 2000);
+    </script>
+</body>
+</html>

@@ -45,7 +45,7 @@ var axios_1 = require("axios");
 /* ==================== CONFIG ==================== */
 var RPC = process.env.ANCHOR_PROVIDER_URL || 'http://127.0.0.1:8899';
 var KEEPER_WALLET = process.env.KEEPER_WALLET || process.env.ANCHOR_WALLET || "".concat(process.env.HOME, "/.config/solana/id.json");
-var ORDER_BOOK_API = process.env.ORDER_BOOK_API || 'http://localhost:3000';
+var ORDER_BOOK_API = process.env.ORDER_BOOK_API || 'http://localhost:3436';
 var CHECK_INTERVAL = parseInt(process.env.KEEPER_CHECK_INTERVAL || '2000'); // ms
 var MIN_PROFIT_LAMPORTS = parseInt(process.env.KEEPER_MIN_PROFIT || '100000'); // 0.0001 SOL
 // Program IDs
