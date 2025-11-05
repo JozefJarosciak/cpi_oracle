@@ -3545,7 +3545,10 @@ async function submitLimitOrder(tradeData) {
         const ttl = 86400; // 24 hours default
         const keeperFeeBps = 10; // 0.1% default
         const slippagePct = 0.5; // 0.5% default slippage
-        const minFillBps = 0; // Partial fill allowed by default
+
+        // Get fill strategy from UI (default: all-or-none)
+        const selectedFillStrategy = typeof window.fillStrategy !== 'undefined' ? window.fillStrategy : 'all-or-none';
+        const minFillBps = selectedFillStrategy === 'all-or-none' ? 10000 : 0; // 10000 = 100% (must fill completely), 0 = partial OK
 
         // Adjust limit price for slippage tolerance
         const slippageFactor = slippagePct / 100;
@@ -3592,8 +3595,9 @@ async function submitLimitOrder(tradeData) {
             const priceInfo = adjustedLimitPrice !== limitPrice
                 ? `$${limitPrice.toFixed(4)} (adjusted to $${adjustedLimitPrice.toFixed(4)} with ${slippagePct}% slippage)`
                 : `$${limitPrice.toFixed(4)}`;
-            addLog(`✅ Order #${data.order_id} submitted: ${action.toUpperCase()} ${numShares} ${side.toUpperCase()} @ ${priceInfo}`, 'success');
-            showToast('success', '📋 Order Submitted', `Limit order #${data.order_id} placed successfully`);
+            const strategyText = selectedFillStrategy === 'all-or-none' ? ' [All-or-None]' : ' [Partial OK]';
+            addLog(`✅ Order #${data.order_id} submitted: ${action.toUpperCase()} ${numShares} ${side.toUpperCase()} @ ${priceInfo}${strategyText}`, 'success');
+            showToast('success', '📋 Order Submitted', `Limit order #${data.order_id} placed successfully${strategyText}`);
 
             // Reload open orders if the function exists
             if (typeof loadOpenOrders === 'function') {

@@ -514,6 +514,24 @@
                             <button onclick="setLimitPrice(0.55)" style="flex: 1; min-width: 60px; padding: 6px 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: rgba(255,255,255,0.7); cursor: pointer; font-size: 12px;">0.55</button>
                             <button onclick="setMarketPrice()" style="flex: 1; min-width: 60px; padding: 6px 10px; background: rgba(91, 158, 255, 0.1); border: 1px solid rgba(91, 158, 255, 0.3); border-radius: 4px; color: #5b9eff; cursor: pointer; font-size: 12px;">Market</button>
                         </div>
+
+                        <!-- Fill Strategy Selector -->
+                        <div style="margin-top: 12px;">
+                            <label class="input-label" style="margin-bottom: 8px;">FILL STRATEGY</label>
+                            <div style="display: flex; gap: 8px;">
+                                <button id="fillStrategyAON" onclick="setFillStrategy('all-or-none')"
+                                    style="flex: 1; padding: 8px 12px; background: rgba(91, 158, 255, 0.2); border: 1px solid rgba(91, 158, 255, 0.5); border-radius: 6px; color: #5b9eff; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s;">
+                                    All or Nothing
+                                </button>
+                                <button id="fillStrategyPartial" onclick="setFillStrategy('partial')"
+                                    style="flex: 1; padding: 8px 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s;">
+                                    Partial Fill
+                                </button>
+                            </div>
+                            <div style="margin-top: 6px; font-size: 11px; color: rgba(255,255,255,0.5); line-height: 1.4;">
+                                <span id="fillStrategyDesc">Order must be completely filled or not at all</span>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Direction Toggle -->
@@ -762,6 +780,7 @@
         // Order Type Management (Market/Limit)
         let currentOrderType = 'market'; // 'market' or 'limit'
         let limitPrice = 0.50;
+        let fillStrategy = 'all-or-none'; // 'all-or-none' or 'partial' (default: all-or-none)
 
         function switchOrderType(type) {
             currentOrderType = type;
@@ -833,6 +852,44 @@
                 limitPrice = 0.0001;
             }
         }
+
+        function setFillStrategy(strategy) {
+            fillStrategy = strategy;
+            window.fillStrategy = strategy; // Expose to app.js
+
+            const aonBtn = document.getElementById('fillStrategyAON');
+            const partialBtn = document.getElementById('fillStrategyPartial');
+            const descText = document.getElementById('fillStrategyDesc');
+
+            if (strategy === 'all-or-none') {
+                // All or Nothing: highlighted
+                aonBtn.style.background = 'rgba(91, 158, 255, 0.2)';
+                aonBtn.style.borderColor = 'rgba(91, 158, 255, 0.5)';
+                aonBtn.style.color = '#5b9eff';
+                // Partial: dimmed
+                partialBtn.style.background = 'rgba(255,255,255,0.05)';
+                partialBtn.style.borderColor = 'rgba(255,255,255,0.1)';
+                partialBtn.style.color = 'rgba(255,255,255,0.6)';
+                // Description
+                descText.textContent = 'Order must be completely filled or not at all';
+            } else {
+                // Partial: highlighted
+                partialBtn.style.background = 'rgba(91, 158, 255, 0.2)';
+                partialBtn.style.borderColor = 'rgba(91, 158, 255, 0.5)';
+                partialBtn.style.color = '#5b9eff';
+                // All or Nothing: dimmed
+                aonBtn.style.background = 'rgba(255,255,255,0.05)';
+                aonBtn.style.borderColor = 'rgba(255,255,255,0.1)';
+                aonBtn.style.color = 'rgba(255,255,255,0.6)';
+                // Description
+                descText.textContent = 'Order can be partially filled with any amount';
+            }
+
+            console.log(`Fill strategy set to: ${strategy}`);
+        }
+
+        // Initialize window.fillStrategy with default
+        window.fillStrategy = 'all-or-none';
 
         function addShares(amount) {
             const input = document.getElementById('tradeAmountShares');
