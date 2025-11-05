@@ -1676,9 +1676,30 @@ function generateTimeLabels(numPoints, timeRangeSeconds) {
     return labels;
 }
 
+// Get human-readable label for time range
+function getTimeRangeLabel(seconds) {
+    if (!seconds) return 'ALL';
+    if (seconds === 60) return '1m';
+    if (seconds === 300) return '5m';
+    if (seconds === 900) return '15m';
+    if (seconds === 1800) return '30m';
+    if (seconds === 3600) return '1h';
+    if (seconds === 21600) return '6h';
+    if (seconds === 86400) return '24h';
+    return `${seconds}s`;
+}
+
 // Rebuild high-resolution chart data from price history
 function rebuildChartFromHistory() {
     if (priceHistory.length === 0) return;
+
+    // Check if we have enough data for the current time range
+    const requiredSeconds = currentTimeRange || 60;
+    if (priceHistory.length < requiredSeconds * 0.5) { // Warn if we have less than 50% of required data
+        const hoursAvailable = (priceHistory.length / 3600).toFixed(1);
+        const hoursRequired = (requiredSeconds / 3600).toFixed(1);
+        console.warn(`⚠️ INSUFFICIENT DATA: Have ${hoursAvailable}h, showing ${getTimeRangeLabel(currentTimeRange)} (${hoursRequired}h). Chart will fill as data accumulates.`);
+    }
 
     // Calculate optimal sampling rate for current time range
     currentSamplingRate = getOptimalSamplingRate(currentTimeRange);
@@ -3440,7 +3461,191 @@ function showToast(type, title, message) {
     }, 4000);
 }
 
+// ============= LIMIT ORDER FUNCTIONS =============
+
+// Serialize order to bytes (Borsh format) - matches orderbook.html implementation
+function serializeOrder(order, marketPubkey, userPubkey) {
+    const buffers = [];
+
+    // Helper functions
+    function writeU8(value) {
+        return new Uint8Array([value]);
+    }
+
+    function writeI64LE(value) {
+        const buf = new ArrayBuffer(8);
+        const view = new DataView(buf);
+        view.setBigInt64(0, BigInt(value), true);
+        return new Uint8Array(buf);
+    }
+
+    function writeU64LE(value) {
+        const buf = new ArrayBuffer(8);
+        const view = new DataView(buf);
+        view.setBigUint64(0, BigInt(value), true);
+        return new Uint8Array(buf);
+    }
+
+    function writeU16LE(value) {
+        const buf = new ArrayBuffer(2);
+        const view = new DataView(buf);
+        view.setUint16(0, value, true);
+        return new Uint8Array(buf);
+    }
+
+    // Serialize in order (matches Borsh struct layout)
+    buffers.push(marketPubkey.toBytes());
+    buffers.push(userPubkey.toBytes());
+    buffers.push(writeU8(order.action));
+    buffers.push(writeU8(order.side));
+    buffers.push(writeI64LE(order.shares_e6));
+    buffers.push(writeI64LE(order.limit_price_e6));
+    buffers.push(writeI64LE(order.max_cost_e6));
+    buffers.push(writeI64LE(order.min_proceeds_e6));
+    buffers.push(writeI64LE(order.expiry_ts));
+    buffers.push(writeU64LE(order.nonce));
+    buffers.push(writeU16LE(order.keeper_fee_bps));
+    buffers.push(writeU16LE(order.min_fill_bps));
+
+    // Concatenate all buffers
+    const totalLength = buffers.reduce((sum, buf) => sum + buf.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const buf of buffers) {
+        result.set(buf, offset);
+        offset += buf.length;
+    }
+
+    return result;
+}
+
+// Submit limit order to orderbook API
+async function submitLimitOrder(tradeData) {
+    const { action, side, numShares, limitPrice } = tradeData;
+
+    if (!wallet || !wallet.publicKey) {
+        addLog('ERROR: No wallet connected', 'error');
+        showError('No wallet');
+        return;
+    }
+
+    try {
+        addLog(`Submitting limit order: ${action.toUpperCase()} ${numShares} ${side.toUpperCase()} @ $${limitPrice.toFixed(4)}`, 'info');
+
+        // Get market PDA
+        const programId = new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID);
+        const ammSeedBytes = new TextEncoder().encode(CONFIG.AMM_SEED);
+        const [marketPda] = await solanaWeb3.PublicKey.findProgramAddress(
+            [ammSeedBytes],
+            programId
+        );
+
+        // Create order with default parameters
+        const now = Math.floor(Date.now() / 1000);
+        const ttl = 86400; // 24 hours default
+        const keeperFeeBps = 10; // 0.1% default
+        const slippagePct = 0.5; // 0.5% default slippage
+        const minFillBps = 0; // Partial fill allowed by default
+
+        // Adjust limit price for slippage tolerance
+        const slippageFactor = slippagePct / 100;
+        const actionNum = action === 'buy' ? 1 : 2;
+        const adjustedLimitPrice = actionNum === 1
+            ? limitPrice * (1 + slippageFactor)  // BUY: increase limit
+            : limitPrice * (1 - slippageFactor); // SELL: decrease limit
+
+        console.log(`[LIMIT ORDER] Slippage adjustment: ${limitPrice.toFixed(4)} → ${adjustedLimitPrice.toFixed(4)} (${slippagePct}%)`);
+
+        const order = {
+            market: marketPda.toString(),
+            user: wallet.publicKey.toString(),
+            action: actionNum,
+            side: side === 'yes' ? 1 : 2,
+            shares_e6: Math.floor(numShares * 10_000_000),
+            limit_price_e6: Math.floor(adjustedLimitPrice * 1e6),
+            max_cost_e6: Number.MAX_SAFE_INTEGER,
+            min_proceeds_e6: 0,
+            expiry_ts: now + ttl,
+            nonce: Date.now() * 1000 + Math.floor(Math.random() * 1000),
+            keeper_fee_bps: keeperFeeBps,
+            min_fill_bps: minFillBps
+        };
+
+        // Serialize order (Borsh encoding)
+        const messageBytes = serializeOrder(order, marketPda, wallet.publicKey);
+
+        // Sign with Ed25519 using session wallet
+        const signature = nacl.sign.detached(messageBytes, wallet.secretKey);
+        const signatureHex = Array.from(signature).map(b => b.toString(16).padStart(2, '0')).join('');
+
+        // Submit to orderbook API
+        const API_BASE = `${window.location.protocol}//${window.location.host}/orderbook-api`;
+        const response = await fetch(`${API_BASE}/api/orders/submit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order, signature: signatureHex })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            const priceInfo = adjustedLimitPrice !== limitPrice
+                ? `$${limitPrice.toFixed(4)} (adjusted to $${adjustedLimitPrice.toFixed(4)} with ${slippagePct}% slippage)`
+                : `$${limitPrice.toFixed(4)}`;
+            addLog(`✅ Order #${data.order_id} submitted: ${action.toUpperCase()} ${numShares} ${side.toUpperCase()} @ ${priceInfo}`, 'success');
+            showToast('success', '📋 Order Submitted', `Limit order #${data.order_id} placed successfully`);
+
+            // Reload open orders if the function exists
+            if (typeof loadOpenOrders === 'function') {
+                loadOpenOrders();
+            }
+        } else {
+            addLog(`Failed to submit order: ${data.error}`, 'error');
+            showError(`Order failed: ${data.error}`);
+        }
+    } catch (err) {
+        console.error('Error submitting limit order:', err);
+        addLog(`ERROR: ${err.message}`, 'error');
+        showError(`Order error: ${err.message}`);
+    }
+}
+
+// ============= END LIMIT ORDER FUNCTIONS =============
+
 async function executeTrade() {
+    // Check if we're in limit order mode
+    if (typeof currentOrderType !== 'undefined' && currentOrderType === 'limit') {
+        // Get limit price from UI
+        const limitPriceInput = document.getElementById('limitPriceInput');
+        const limitPriceValue = limitPriceInput ? parseFloat(limitPriceInput.value) : null;
+
+        if (!limitPriceValue || isNaN(limitPriceValue) || limitPriceValue <= 0) {
+            addLog('ERROR: Invalid limit price', 'error');
+            showError('Invalid limit price');
+            return;
+        }
+
+        // Get number of shares
+        const numShares = parseFloat(document.getElementById('tradeAmountShares').value);
+        if (isNaN(numShares) || numShares <= 0) {
+            addLog('ERROR: Invalid number of shares', 'error');
+            showError('Invalid shares');
+            return;
+        }
+
+        // Submit limit order instead of market order
+        const tradeData = {
+            action: currentAction,
+            side: currentSide,
+            numShares,
+            limitPrice: limitPriceValue
+        };
+
+        await submitLimitOrder(tradeData);
+        return;
+    }
+
+    // Original market order logic below...
     // Check if market is open (status 0 = Premarket, 1 = Open, 2 = Stopped)
     // Trading is allowed in both Premarket (0) and Open (1) states
     if (currentMarketStatus !== 0 && currentMarketStatus !== 1) {
@@ -5980,21 +6185,176 @@ function addSingleTradeToHistory(tradeData) {
     }
 }
 
+// ============= OPEN ORDERS =============
+
+async function loadOpenOrders() {
+    const ordersFeed = document.getElementById('ordersFeed');
+    if (!ordersFeed) return;
+
+    // Check if wallet is connected
+    if (!wallet || !wallet.publicKey) {
+        ordersFeed.innerHTML = '<div class="trade-feed-empty"><span class="empty-icon">📋</span><span class="empty-text">Connect wallet to view your open orders</span></div>';
+        return;
+    }
+
+    const userAddress = wallet.publicKey.toString();
+
+    try {
+        const API_BASE = `${window.location.protocol}//${window.location.host}/orderbook-api`;
+        const response = await fetch(`${API_BASE}/api/orders/user/${userAddress}`);
+
+        if (!response.ok) {
+            console.warn('Failed to load open orders:', response.status);
+            ordersFeed.innerHTML = '<div class="trade-feed-empty"><span class="empty-icon">⚠️</span><span class="empty-text">Failed to load orders</span></div>';
+            return;
+        }
+
+        const data = await response.json();
+        if (data.orders && Array.isArray(data.orders)) {
+            displayOpenOrders(data.orders);
+        }
+    } catch (err) {
+        console.warn('Failed to load open orders:', err);
+        ordersFeed.innerHTML = '<div class="trade-feed-empty"><span class="empty-icon">⚠️</span><span class="empty-text">Error loading orders</span></div>';
+    }
+}
+
+function displayOpenOrders(orders) {
+    const ordersFeed = document.getElementById('ordersFeed');
+    if (!ordersFeed) return;
+
+    // Filter for pending orders only
+    const pendingOrders = orders.filter(o => o.status === 'pending');
+
+    // Clear existing items
+    ordersFeed.innerHTML = '';
+
+    if (pendingOrders.length === 0) {
+        ordersFeed.innerHTML = '<div class="trade-feed-empty"><span class="empty-icon">📋</span><span class="empty-text">No open orders</span></div>';
+        return;
+    }
+
+    // Create table structure
+    const table = document.createElement('div');
+    table.className = 'trading-table';
+
+    // Add header
+    table.innerHTML = `
+        <div class="trading-table-header">
+            <div class="col-id" style="width: 50px;">#</div>
+            <div class="col-type" style="width: 50px;">TYPE</div>
+            <div class="col-direction" style="width: 60px;">SIDE</div>
+            <div class="col-price" style="width: 80px;">LIMIT</div>
+            <div class="col-size" style="width: 70px;">SIZE</div>
+            <div class="col-time" style="width: 80px;">CREATED</div>
+            <div class="col-actions" style="width: 70px;">ACTION</div>
+        </div>
+    `;
+
+    // Add rows
+    const tbody = document.createElement('div');
+    tbody.className = 'trading-table-body';
+
+    // Sort by submission time descending (newest first)
+    const sortedOrders = [...pendingOrders].sort((a, b) =>
+        new Date(b.submitted_at) - new Date(a.submitted_at)
+    );
+
+    sortedOrders.forEach(orderData => {
+        const order = orderData.order;
+        const isBuy = order.action === 1;
+        const sideText = order.side === 1 ? 'YES' : 'NO';
+        const shares = (order.shares_e6 / 10_000_000).toFixed(2);
+        const price = (order.limit_price_e6 / 1e6).toFixed(4);
+        const time = new Date(orderData.submitted_at);
+        const timeStr = time.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+
+        const row = document.createElement('div');
+        row.className = 'trading-table-row';
+        row.style.color = isBuy ? '#10b981' : '#ef4444';
+
+        row.innerHTML = `
+            <div class="col-id" style="width: 50px; font-weight: 600;">#${orderData.order_id}</div>
+            <div class="col-type" style="width: 50px;">${isBuy ? 'BUY' : 'SELL'}</div>
+            <div class="col-direction" style="width: 60px;">
+                <span class="badge ${order.side === 1 ? 'badge-yes' : 'badge-no'}" style="font-size: 10px; padding: 2px 6px;">${sideText}</span>
+            </div>
+            <div class="col-price" style="width: 80px; color: #a855f7;">$${price}</div>
+            <div class="col-size" style="width: 70px; color: #fff;">${shares}</div>
+            <div class="col-time" style="width: 80px; color: #6b7280; font-size: 11px;">${timeStr}</div>
+            <div class="col-actions" style="width: 70px;">
+                <button onclick="cancelOrder(${orderData.order_id})" style="font-size: 10px; padding: 3px 8px; background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid #ef4444; border-radius: 4px; cursor: pointer;">Cancel</button>
+            </div>
+        `;
+
+        tbody.appendChild(row);
+    });
+
+    table.appendChild(tbody);
+    ordersFeed.appendChild(table);
+}
+
+async function cancelOrder(orderId) {
+    if (!wallet || !wallet.publicKey) {
+        showError('No wallet connected');
+        return;
+    }
+
+    if (!confirm(`Cancel order #${orderId}?`)) {
+        return;
+    }
+
+    try {
+        const API_BASE = `${window.location.protocol}//${window.location.host}/orderbook-api`;
+        const response = await fetch(`${API_BASE}/api/orders/${orderId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            addLog(`✅ Order #${orderId} cancelled`, 'success');
+            showToast('success', '✅ Order Cancelled', `Order #${orderId} has been cancelled`);
+
+            // Reload open orders
+            loadOpenOrders();
+        } else {
+            addLog(`Failed to cancel order: ${data.error}`, 'error');
+            showError(`Cancel failed: ${data.error}`);
+        }
+    } catch (err) {
+        console.error('Error cancelling order:', err);
+        addLog(`ERROR: ${err.message}`, 'error');
+        showError(`Cancel error: ${err.message}`);
+    }
+}
+
+// ============= END OPEN ORDERS =============
+
 function switchFeedTab(tab) {
     const liveFeedTab = document.getElementById('liveFeedTab');
     const settlementFeedTab = document.getElementById('settlementFeedTab');
     const tradingFeedTab = document.getElementById('tradingFeedTab');
+    const ordersFeedTab = document.getElementById('ordersFeedTab');
     const tradeFeed = document.getElementById('tradeFeed');
     const settlementFeed = document.getElementById('settlementFeed');
     const tradingFeed = document.getElementById('tradingFeed');
+    const ordersFeed = document.getElementById('ordersFeed');
 
     // Reset all tabs
     liveFeedTab.classList.remove('active');
     settlementFeedTab.classList.remove('active');
     tradingFeedTab.classList.remove('active');
+    ordersFeedTab.classList.remove('active');
     tradeFeed.classList.add('hidden');
     settlementFeed.classList.add('hidden');
     tradingFeed.classList.add('hidden');
+    ordersFeed.classList.add('hidden');
 
     // Update current tab tracker
     currentFeedTab = tab;
@@ -6010,6 +6370,10 @@ function switchFeedTab(tab) {
         tradingFeedTab.classList.add('active');
         tradingFeed.classList.remove('hidden');
         loadTradingHistory();
+    } else if (tab === 'orders') {
+        ordersFeedTab.classList.add('active');
+        ordersFeed.classList.remove('hidden');
+        loadOpenOrders();
     }
 }
 
