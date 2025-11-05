@@ -459,6 +459,17 @@ app.post('/api/orders/:order_id/fill', (req, res) => {
       broadcastKeeperLog(logMsg, 'success');
       broadcastKeeperLog(`TX: ${tx_signature}`, 'tx');
 
+      // Broadcast order filled event to SSE clients
+      broadcastOrderUpdate('order_filled', {
+        order_id: parseInt(order_id),
+        order: orderData,
+        status: 'filled',
+        filled_tx: tx_signature,
+        filled_shares: parseFloat(shares),
+        execution_price: parseFloat(price),
+        total_cost: (shares_filled * execution_price) / 1e6 / 10_000_000
+      });
+
       res.json({ success: true, order_id: parseInt(order_id) });
     });
   });
