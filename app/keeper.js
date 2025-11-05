@@ -230,6 +230,30 @@ async function checkIfExecutable(connection, amm, order) {
         const execPrice = calculateCurrentPrice(amm, order.action, order.side, orderShares);
         const onChainTolerance = 0.002; // 0.2% on-chain PRICE_SLIPPAGE_TOLERANCE_BPS
         console.log(`   Order size: ${orderShares.toFixed(2)} shares | Exec price: $${(execPrice / 1e6).toFixed(6)}`);
+        // Check vault balance for BUY orders (user needs to pay)
+        if (order.action === 1) { // BUY
+            // Calculate approximate cost for the order
+            const estimatedCost = (order.shares_e6 / 10000000) * (execPrice / 1e6); // Cost in XNT
+            const LAMPORTS_PER_XNT = 100; // 1 XNT = 100 lamports
+            const requiredLamports = Math.ceil(estimatedCost * LAMPORTS_PER_XNT);
+            // Check vault balance
+            const ammPda = getAmmPda();
+            const vaultSolPda = getVaultPda(ammPda);
+            try {
+                const vaultBalance = await connection.getBalance(vaultSolPda);
+                const MIN_VAULT_RESERVE = 1000000000; // 1 SOL minimum reserve
+                const availableBalance = vaultBalance - MIN_VAULT_RESERVE;
+                if (availableBalance < requiredLamports) {
+                    console.log(`   ❌ Insufficient vault balance: need ${requiredLamports} lamports, have ${availableBalance} available (${vaultBalance} total - ${MIN_VAULT_RESERVE} reserve)`);
+                    return false;
+                }
+                console.log(`   ✅ Vault balance check: ${requiredLamports} lamports needed, ${availableBalance} available`);
+            }
+            catch (err) {
+                console.error(`   ⚠️  Could not check vault balance: ${err.message}`);
+                // Continue anyway - let on-chain check handle it
+            }
+        }
         // Check price condition with slippage buffer
         if (order.action === 1) { // BUY
             // For BUY: price must be below limit, accounting for slippage making it worse
