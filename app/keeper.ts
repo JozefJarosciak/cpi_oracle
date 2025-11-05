@@ -303,29 +303,52 @@ async function checkIfExecutable(
 
     console.log(`   Order size: ${orderShares.toFixed(2)} shares | Exec price: $${(execPrice / 1e6).toFixed(6)}`);
 
-    // Check vault balance for BUY orders (user needs to pay)
+    // Check user's position vault balance for BUY orders (user needs to pay)
     if (order.action === 1) { // BUY
-      // Calculate approximate cost for the order
-      const estimatedCost = (order.shares_e6 / 10_000_000) * (execPrice / 1e6); // Cost in XNT
-      const LAMPORTS_PER_XNT = 100; // 1 XNT = 100 lamports
-      const requiredLamports = Math.ceil(estimatedCost * LAMPORTS_PER_XNT);
-
-      // Check vault balance
-      const ammPda = getAmmPda();
-      const vaultSolPda = getVaultPda(ammPda);
-
       try {
-        const vaultBalance = await connection.getBalance(vaultSolPda);
-        const MIN_VAULT_RESERVE = 1_000_000_000; // 1 SOL minimum reserve
-        const availableBalance = vaultBalance - MIN_VAULT_RESERVE;
+        // Read user's position account to check vault balance
+        const ammPda = getAmmPda();
+        const userPubkey = new PublicKey(order.user);
 
-        if (availableBalance < requiredLamports) {
-          console.log(`   ❌ Insufficient vault balance: need ${requiredLamports} lamports, have ${availableBalance} available (${vaultBalance} total - ${MIN_VAULT_RESERVE} reserve)`);
+        // Derive position PDA
+        const [positionPda] = PublicKey.findProgramAddressSync(
+          [POS_SEED, ammPda.toBuffer(), userPubkey.toBuffer()],
+          PID
+        );
+
+        // Fetch position account data directly
+        const positionAccountInfo = await connection.getAccountInfo(positionPda);
+        if (!positionAccountInfo) {
+          console.error(`   ⚠️  Position account not found for user ${order.user.slice(0, 5)}...`);
+          return true; // Let on-chain handle it
+        }
+
+        // Parse vault_balance_e6 from account data
+        // Position account layout:
+        // discriminator(8) + owner(32) + yes_shares(8) + no_shares(8) + master_wallet(32) + vault_balance_e6(8) + ...
+        // vault_balance_e6 is at offset 8+32+8+8+32 = 88
+        const vaultBalanceE6 = new BN(positionAccountInfo.data.slice(88, 96), 'le');
+
+        // Estimate cost: shares * price, with some buffer for fees
+        // shares_e6 is in 1e6 units (1M = 1 share), execPrice is in 1e6
+        // Cost formula: (shares_e6 / 1e6) * (execPrice / 1e6) = cost in XNT
+        // Then multiply by 1e6 to get cost_e6
+        // Simplified: shares_e6 * execPrice / 1e6
+        const estimatedCost_e6 = Math.ceil(order.shares_e6 * execPrice / 1e6);
+
+        // Add protocol fee buffer (use AMM fee_bps)
+        const feeBps = amm.feeBps;
+        const protocolFee_e6 = Math.ceil(estimatedCost_e6 * feeBps / 10_000);
+        const totalRequired_e6 = estimatedCost_e6 + protocolFee_e6;
+
+        const totalRequiredBN = new BN(totalRequired_e6);
+        if (vaultBalanceE6.lt(totalRequiredBN)) {
+          console.log(`   ❌ Insufficient user vault balance: need ${totalRequired_e6} e6 (${(totalRequired_e6/1e6).toFixed(2)} XNT), have ${vaultBalanceE6.toString()} e6`);
           return false;
         }
-        console.log(`   ✅ Vault balance check: ${requiredLamports} lamports needed, ${availableBalance} available`);
+        console.log(`   ✅ User vault balance check: ${totalRequired_e6} e6 needed (${(totalRequired_e6/1e6).toFixed(2)} XNT), ${vaultBalanceE6.toString()} e6 available`);
       } catch (err: any) {
-        console.error(`   ⚠️  Could not check vault balance: ${err.message}`);
+        console.error(`   ⚠️  Could not check user vault balance: ${err.message}`);
         // Continue anyway - let on-chain check handle it
       }
     }
