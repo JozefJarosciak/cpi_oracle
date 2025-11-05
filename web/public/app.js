@@ -7012,7 +7012,7 @@ async function loadPositions() {
                     <div class="pos-value">VALUE</div>
                     <div class="pos-cost">COST</div>
                     <div class="pos-pnl">PNL</div>
-                    <div class="pos-action">ACTION</div>
+                    <div class="pos-action" style="width: 70px;">ACTION</div>
                 </div>
             `;
 
@@ -7033,7 +7033,7 @@ async function loadPositions() {
                             ${pnlSign}${pos.pnl.toFixed(2)}
                             <span class="pnl-percent">(${pnlSign}${pos.pnlPercent.toFixed(1)}%)</span>
                         </div>
-                        <div class="pos-action">
+                        <div class="pos-action" style="width: 70px;">
                             <button class="close-position-btn" data-side="${pos.side}" data-shares="${pos.shares}"
                                 style="font-size: 10px; padding: 3px 8px; background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid #ef4444; border-radius: 4px; cursor: pointer; white-space: nowrap;">
                                 Close
