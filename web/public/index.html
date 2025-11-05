@@ -392,6 +392,7 @@
                             <button class="feed-tab" id="settlementFeedTab" onclick="switchFeedTab('settlement')">SETTLEMENT</button>
                             <button class="feed-tab" id="tradingFeedTab" onclick="switchFeedTab('trading')">TRADING</button>
                             <button class="feed-tab" id="ordersFeedTab" onclick="switchFeedTab('orders')">OPEN ORDERS</button>
+                            <button class="feed-tab" id="filledFeedTab" onclick="switchFeedTab('filled')">FILLED ORDERS</button>
                         </div>
                         <div class="feed-status">
                             <div class="ws-status" id="wsStatus" title="Live Trade Feed">
@@ -423,6 +424,12 @@
                         <div class="trade-feed-empty">
                             <span class="empty-icon">📋</span>
                             <span class="empty-text">Connect wallet to view your open orders</span>
+                        </div>
+                    </div>
+                    <div class="trade-feed-list hidden" id="filledFeed">
+                        <div class="trade-feed-empty">
+                            <span class="empty-icon">✅</span>
+                            <span class="empty-text">Connect wallet to view your filled orders</span>
                         </div>
                     </div>
                 </div>

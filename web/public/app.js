@@ -6336,25 +6336,151 @@ async function cancelOrder(orderId) {
 
 // ============= END OPEN ORDERS =============
 
+// ============= FILLED ORDERS =============
+
+async function loadFilledOrders() {
+    const filledFeed = document.getElementById('filledFeed');
+    if (!filledFeed) return;
+
+    // Check if wallet is connected
+    if (!wallet || !wallet.publicKey) {
+        filledFeed.innerHTML = '<div class="trade-feed-empty"><span class="empty-icon">✅</span><span class="empty-text">Connect wallet to view your filled orders</span></div>';
+        return;
+    }
+
+    const userAddress = wallet.publicKey.toString();
+
+    try {
+        const API_BASE = `${window.location.protocol}//${window.location.host}/orderbook-api`;
+        const response = await fetch(`${API_BASE}/api/orders/user/${userAddress}`);
+
+        if (!response.ok) {
+            console.warn('Failed to load filled orders:', response.status);
+            filledFeed.innerHTML = '<div class="trade-feed-empty"><span class="empty-icon">⚠️</span><span class="empty-text">Failed to load orders</span></div>';
+            return;
+        }
+
+        const data = await response.json();
+        if (data.orders && Array.isArray(data.orders)) {
+            displayFilledOrders(data.orders);
+        }
+    } catch (err) {
+        console.warn('Failed to load filled orders:', err);
+        filledFeed.innerHTML = '<div class="trade-feed-empty"><span class="empty-icon">⚠️</span><span class="empty-text">Error loading orders</span></div>';
+    }
+}
+
+function displayFilledOrders(orders) {
+    const filledFeed = document.getElementById('filledFeed');
+    if (!filledFeed) return;
+
+    // Filter for filled orders only
+    const filledOrders = orders.filter(o => o.status === 'filled');
+
+    // Clear existing items
+    filledFeed.innerHTML = '';
+
+    if (filledOrders.length === 0) {
+        filledFeed.innerHTML = '<div class="trade-feed-empty"><span class="empty-icon">✅</span><span class="empty-text">No filled orders</span></div>';
+        return;
+    }
+
+    // Create table structure
+    const table = document.createElement('div');
+    table.className = 'trading-table';
+
+    // Add header
+    table.innerHTML = `
+        <div class="trading-table-header">
+            <div class="col-id" style="width: 45px;">#</div>
+            <div class="col-type" style="width: 50px;">TYPE</div>
+            <div class="col-direction" style="width: 50px;">SIDE</div>
+            <div class="col-size" style="width: 60px;">SIZE</div>
+            <div class="col-price" style="width: 70px;">EXEC</div>
+            <div class="col-value" style="width: 70px;">COST</div>
+            <div class="col-time" style="width: 70px;">FILLED</div>
+            <div class="col-tx" style="width: 70px;">TX</div>
+        </div>
+    `;
+
+    // Add rows
+    const tbody = document.createElement('div');
+    tbody.className = 'trading-table-body';
+
+    // Sort by filled_at descending (newest first)
+    const sortedOrders = [...filledOrders].sort((a, b) =>
+        new Date(b.filled_at) - new Date(a.filled_at)
+    );
+
+    sortedOrders.forEach(orderData => {
+        const order = orderData.order;
+        const isBuy = order.action === 1;
+        const sideText = order.side === 1 ? 'YES' : 'NO';
+        const shares = orderData.filled_shares ? orderData.filled_shares.toFixed(2) : '0.00';
+        const execPrice = orderData.execution_price ? orderData.execution_price.toFixed(4) : '0.0000';
+        const totalCost = orderData.total_cost ? orderData.total_cost.toFixed(4) : '0.0000';
+        const time = new Date(orderData.filled_at);
+        const timeStr = time.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+        const txShort = orderData.filled_tx ? orderData.filled_tx.slice(0, 6) + '...' : '-';
+        const txLink = orderData.filled_tx
+            ? `https://explorer.testnet.x1.xyz/tx/${orderData.filled_tx}`
+            : '#';
+
+        const row = document.createElement('div');
+        row.className = 'trading-table-row';
+        row.style.color = isBuy ? '#10b981' : '#ef4444';
+
+        row.innerHTML = `
+            <div class="col-id" style="width: 45px; font-weight: 600; font-size: 11px;">#${orderData.order_id}</div>
+            <div class="col-type" style="width: 50px; font-size: 11px;">${isBuy ? 'BUY' : 'SELL'}</div>
+            <div class="col-direction" style="width: 50px;">
+                <span class="badge ${order.side === 1 ? 'badge-yes' : 'badge-no'}" style="font-size: 10px; padding: 2px 6px;">${sideText}</span>
+            </div>
+            <div class="col-size" style="width: 60px; color: #fff; font-size: 11px;">${shares}</div>
+            <div class="col-price" style="width: 70px; color: #10b981; font-size: 11px;">$${execPrice}</div>
+            <div class="col-value" style="width: 70px; color: #a855f7; font-weight: 600; font-size: 11px;">$${totalCost}</div>
+            <div class="col-time" style="width: 70px; color: #6b7280; font-size: 10px;">${timeStr}</div>
+            <div class="col-tx" style="width: 70px; font-size: 10px;">
+                ${orderData.filled_tx ? `<a href="${txLink}" target="_blank" style="color: #5b9eff; text-decoration: none; font-family: monospace;">${txShort}</a>` : '-'}
+            </div>
+        `;
+
+        tbody.appendChild(row);
+    });
+
+    table.appendChild(tbody);
+    filledFeed.appendChild(table);
+}
+
+// ============= END FILLED ORDERS =============
+
 function switchFeedTab(tab) {
     const liveFeedTab = document.getElementById('liveFeedTab');
     const settlementFeedTab = document.getElementById('settlementFeedTab');
     const tradingFeedTab = document.getElementById('tradingFeedTab');
     const ordersFeedTab = document.getElementById('ordersFeedTab');
+    const filledFeedTab = document.getElementById('filledFeedTab');
     const tradeFeed = document.getElementById('tradeFeed');
     const settlementFeed = document.getElementById('settlementFeed');
     const tradingFeed = document.getElementById('tradingFeed');
     const ordersFeed = document.getElementById('ordersFeed');
+    const filledFeed = document.getElementById('filledFeed');
 
     // Reset all tabs
     liveFeedTab.classList.remove('active');
     settlementFeedTab.classList.remove('active');
     tradingFeedTab.classList.remove('active');
     ordersFeedTab.classList.remove('active');
+    filledFeedTab.classList.remove('active');
     tradeFeed.classList.add('hidden');
     settlementFeed.classList.add('hidden');
     tradingFeed.classList.add('hidden');
     ordersFeed.classList.add('hidden');
+    filledFeed.classList.add('hidden');
 
     // Update current tab tracker
     currentFeedTab = tab;
@@ -6374,6 +6500,10 @@ function switchFeedTab(tab) {
         ordersFeedTab.classList.add('active');
         ordersFeed.classList.remove('hidden');
         loadOpenOrders();
+    } else if (tab === 'filled') {
+        filledFeedTab.classList.add('active');
+        filledFeed.classList.remove('hidden');
+        loadFilledOrders();
     }
 }
 
