@@ -1251,21 +1251,13 @@
                         console.log(`   Checking if user trade: ${isUserTrade} (wallet: ${userWallet.slice(0,8)}..., trade user: ${trade.user})`);
                         console.log(`   Current tab: ${currentFeedTab}`);
 
-                        // Update live position tracking with avgPrice from each trade
-                        if (isUserTrade && typeof updateLivePosition === 'function') {
-                            console.log('[POSITIONS] 📊 SSE Trade Event Received:');
-                            console.log('[POSITIONS]   Action:', trade.action);
-                            console.log('[POSITIONS]   Side:', trade.side);
-                            console.log('[POSITIONS]   Shares:', trade.shares);
-                            console.log('[POSITIONS]   avgPrice (from on-chain):', trade.avgPrice);
-                            console.log('[POSITIONS] Updating position...');
-                            updateLivePosition(trade.side, trade.action, trade.shares, trade.avgPrice);
-
-                            // Update positions display IMMEDIATELY - same as Live trades!
-                            if (currentFeedTab === 'positions' && typeof updatePositionsDisplay === 'function') {
-                                console.log('[POSITIONS] 💨 Updating display IMMEDIATELY (no blockchain lookup!)');
-                                updatePositionsDisplay(); // Direct DOM update, no async calls!
-                            }
+                        // Positions tab: reload from API when user trades (after blockchain finality)
+                        if (isUserTrade && currentFeedTab === 'positions' && typeof loadPositions === 'function') {
+                            console.log('[POSITIONS] 📊 SSE Trade Event - reloading from API after delay');
+                            // Wait 2 seconds for blockchain finality, then reload
+                            setTimeout(() => {
+                                loadPositions();
+                            }, 2000);
                         }
 
                         if (isUserTrade && currentFeedTab === 'trading') {

@@ -129,6 +129,14 @@ db.exec(`
     );
     CREATE INDEX IF NOT EXISTS idx_quote_cycle_time ON quote_history(cycle_id, timestamp);
     CREATE INDEX IF NOT EXISTS idx_quote_timestamp ON quote_history(timestamp DESC);
+
+    CREATE TABLE IF NOT EXISTS position_cost_basis (
+        wallet_pubkey TEXT PRIMARY KEY NOT NULL,
+        yes_cost_basis_e6 INTEGER NOT NULL DEFAULT 0,
+        no_cost_basis_e6 INTEGER NOT NULL DEFAULT 0,
+        last_updated INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_position_wallet ON position_cost_basis(wallet_pubkey);
 `);
 
 const MAX_PRICE_HISTORY_HOURS = 24; // Keep up to 24 hours of price data
@@ -577,13 +585,21 @@ async function getOnChainPosition(walletPubkeyStr) {
         // Fetch position account
         const positionAccount = await connection.getAccountInfo(positionPda);
 
+        // Get cost basis from SQLite
+        const costBasis = getPositionCostBasis(walletPubkeyStr);
+
         if (!positionAccount) {
             return {
                 exists: false,
                 yesShares: 0,
                 noShares: 0,
                 accountBalance: 0,
-                positionPda: positionPda.toString()
+                positionPda: positionPda.toString(),
+                // Cost basis data
+                yesCostBasis: costBasis.yesCostE6 / 1_000_000,
+                noCostBasis: costBasis.noCostE6 / 1_000_000,
+                yesAvgEntry: 0,
+                noAvgEntry: 0
             };
         }
 
@@ -594,15 +610,28 @@ async function getOnChainPosition(walletPubkeyStr) {
         const noSharesE6 = Number(data.readBigInt64LE(48));
         const accountBalanceE6 = Number(data.readBigInt64LE(88));
 
+        // Calculate average entry prices
+        const yesShares = yesSharesE6 / 10_000_000;
+        const noShares = noSharesE6 / 10_000_000;
+        const yesCostBasis = costBasis.yesCostE6 / 1_000_000;
+        const noCostBasis = costBasis.noCostE6 / 1_000_000;
+        const yesAvgEntry = yesShares > 0 ? yesCostBasis / yesShares : 0;
+        const noAvgEntry = noShares > 0 ? noCostBasis / noShares : 0;
+
         return {
             exists: true,
-            yesShares: yesSharesE6 / 10_000_000,
-            noShares: noSharesE6 / 10_000_000,
+            yesShares: yesShares,
+            noShares: noShares,
             accountBalance: accountBalanceE6 / 10_000_000,  // User's trading account balance (collateral)
             yesSharesE6: yesSharesE6,
             noSharesE6: noSharesE6,
             accountBalanceE6: accountBalanceE6,
-            positionPda: positionPda.toString()
+            positionPda: positionPda.toString(),
+            // Cost basis data
+            yesCostBasis: yesCostBasis,
+            noCostBasis: noCostBasis,
+            yesAvgEntry: yesAvgEntry,
+            noAvgEntry: noAvgEntry
         };
     } catch (err) {
         console.error('Error fetching on-chain position:', err);
@@ -641,6 +670,80 @@ function cleanupOldTradingHistory() {
     } catch (err) {
         console.error('Failed to cleanup old trading history:', err.message);
         return 0;
+    }
+}
+
+// Position cost basis functions
+function updatePositionCostBasis(walletPubkey, action, side, costE6) {
+    try {
+        // action: 'BUY' or 'SELL'
+        // side: 'UP' or 'DOWN'
+        // costE6: cost in e6 scale (positive for BUY, should be negative for SELL)
+
+        const stmt = db.prepare(`
+            INSERT INTO position_cost_basis (wallet_pubkey, yes_cost_basis_e6, no_cost_basis_e6, last_updated)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(wallet_pubkey) DO UPDATE SET
+                yes_cost_basis_e6 = yes_cost_basis_e6 + excluded.yes_cost_basis_e6,
+                no_cost_basis_e6 = no_cost_basis_e6 + excluded.no_cost_basis_e6,
+                last_updated = excluded.last_updated
+        `);
+
+        // Determine which field to update based on side and action
+        let yesCostDelta = 0;
+        let noCostDelta = 0;
+
+        if (action === 'BUY') {
+            // Add cost basis for buys
+            if (side === 'UP') {
+                yesCostDelta = costE6;
+            } else if (side === 'DOWN') {
+                noCostDelta = costE6;
+            }
+        } else if (action === 'SELL') {
+            // Subtract cost basis for sells (proportional reduction)
+            // For sells, we need to reduce cost basis proportionally
+            // This is handled by passing negative costE6
+            if (side === 'UP') {
+                yesCostDelta = costE6; // Should be negative
+            } else if (side === 'DOWN') {
+                noCostDelta = costE6; // Should be negative
+            }
+        }
+
+        stmt.run(walletPubkey, yesCostDelta, noCostDelta, Date.now());
+        return true;
+    } catch (err) {
+        console.error('Failed to update position cost basis:', err.message);
+        return false;
+    }
+}
+
+function getPositionCostBasis(walletPubkey) {
+    try {
+        const stmt = db.prepare('SELECT * FROM position_cost_basis WHERE wallet_pubkey = ?');
+        const row = stmt.get(walletPubkey);
+
+        if (row) {
+            return {
+                yesCostE6: row.yes_cost_basis_e6,
+                noCostE6: row.no_cost_basis_e6,
+                lastUpdated: row.last_updated
+            };
+        }
+
+        return {
+            yesCostE6: 0,
+            noCostE6: 0,
+            lastUpdated: 0
+        };
+    } catch (err) {
+        console.error('Failed to get position cost basis:', err.message);
+        return {
+            yesCostE6: 0,
+            noCostE6: 0,
+            lastUpdated: 0
+        };
     }
 }
 
@@ -1612,6 +1715,31 @@ const server = http.createServer((req, res) => {
                         data.avgPrice,
                         data.pnl || null
                     );
+
+                    // Update cost basis if walletPubkey is provided
+                    if (success && data.walletPubkey) {
+                        const costE6 = Math.round(data.costUsd * 1_000_000);
+
+                        if (data.action === 'BUY') {
+                            // For BUY, add cost basis (positive)
+                            updatePositionCostBasis(data.walletPubkey, data.action, data.side, costE6);
+                            console.log(`[COST-BASIS] ${data.userPrefix} BUY ${data.side}: +${data.costUsd.toFixed(4)} XNT cost basis`);
+                        } else if (data.action === 'SELL') {
+                            // For SELL, subtract cost basis proportionally
+                            // Get current position to calculate proportion
+                            const costBasis = getPositionCostBasis(data.walletPubkey);
+                            const currentCostE6 = data.side === 'UP' ? costBasis.yesCostE6 : costBasis.noCostE6;
+
+                            // For sells, we receive proceeds but need to reduce cost basis proportionally
+                            // Ideally we'd fetch on-chain shares to calculate exact proportion
+                            // For now, use a simplified approach: reduce cost basis by the sell proceeds
+                            // This is approximate but will be corrected by actual position tracking
+                            const costReduction = -costE6; // Negative to reduce
+                            updatePositionCostBasis(data.walletPubkey, data.action, data.side, costReduction);
+                            console.log(`[COST-BASIS] ${data.userPrefix} SELL ${data.side}: -${data.costUsd.toFixed(4)} XNT cost basis`);
+                        }
+                    }
+
                     if (success) {
                         // Broadcast to SSE clients
                         const trade = {

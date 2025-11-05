@@ -6936,13 +6936,12 @@ async function loadPositions() {
 
         // Build UP position if exists
         if (positionData.yesShares > 0) {
-            // For now, use current quote as entry price (breakeven)
-            // TODO: Add entry price tracking to position API if needed
-            const entryPrice = yesQuote;
+            // Use cost basis from SQLite for accurate entry price
+            const entryPrice = positionData.yesAvgEntry || 0;
+            const costBasis = positionData.yesCostBasis || 0;
             const currentValue = positionData.yesShares * yesQuote;
-            const cost = positionData.yesShares * entryPrice;
-            const pnl = currentValue - cost;
-            const pnlPercent = 0; // Breakeven since entry = mark
+            const pnl = currentValue - costBasis;
+            const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
 
             positions.push({
                 side: 'UP',
@@ -6950,7 +6949,7 @@ async function loadPositions() {
                 entryPrice: entryPrice,
                 markPrice: yesQuote,
                 value: currentValue,
-                cost: cost,
+                cost: costBasis,
                 pnl: pnl,
                 pnlPercent: pnlPercent
             });
@@ -6959,19 +6958,20 @@ async function loadPositions() {
                 shares: positionData.yesShares,
                 entry: entryPrice.toFixed(4),
                 mark: yesQuote.toFixed(4),
-                value: currentValue.toFixed(2)
+                costBasis: costBasis.toFixed(2),
+                value: currentValue.toFixed(2),
+                pnl: pnl.toFixed(2)
             });
         }
 
         // Build DOWN position if exists
         if (positionData.noShares > 0) {
-            // For now, use current quote as entry price (breakeven)
-            // TODO: Add entry price tracking to position API if needed
-            const entryPrice = noQuote;
+            // Use cost basis from SQLite for accurate entry price
+            const entryPrice = positionData.noAvgEntry || 0;
+            const costBasis = positionData.noCostBasis || 0;
             const currentValue = positionData.noShares * noQuote;
-            const cost = positionData.noShares * entryPrice;
-            const pnl = currentValue - cost;
-            const pnlPercent = 0; // Breakeven since entry = mark
+            const pnl = currentValue - costBasis;
+            const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
 
             positions.push({
                 side: 'DOWN',
@@ -6979,7 +6979,7 @@ async function loadPositions() {
                 entryPrice: entryPrice,
                 markPrice: noQuote,
                 value: currentValue,
-                cost: cost,
+                cost: costBasis,
                 pnl: pnl,
                 pnlPercent: pnlPercent
             });
@@ -6988,7 +6988,9 @@ async function loadPositions() {
                 shares: positionData.noShares,
                 entry: entryPrice.toFixed(4),
                 mark: noQuote.toFixed(4),
-                value: currentValue.toFixed(2)
+                costBasis: costBasis.toFixed(2),
+                value: currentValue.toFixed(2),
+                pnl: pnl.toFixed(2)
             });
         }
 

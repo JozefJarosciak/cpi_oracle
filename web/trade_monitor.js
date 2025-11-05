@@ -204,6 +204,7 @@ async function addToTradingHistory(userPubkey, action, side, shares, costUsd, av
         const userPrefix = userPubkey.slice(0, 6);
         const data = JSON.stringify({
             userPrefix,
+            walletPubkey: userPubkey,  // Include full wallet pubkey for cost basis tracking
             action,
             side,
             shares,

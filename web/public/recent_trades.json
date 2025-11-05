@@ -278,5 +278,15 @@
     "signature": "auto-redeem",
     "timestamp": 1762379055031,
     "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "110.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1762379719636,
+    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
   }
 ]
