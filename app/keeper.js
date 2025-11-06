@@ -500,6 +500,25 @@ async function markOrderFilled(orderId, txSignature, sharesFilled, executionPric
         console.error(`❌ Error marking order ${orderId} as filled:`, err.message);
     }
 }
+async function updateCostBasis(userPubkey, action, side, shares, costUsd, avgPrice) {
+    try {
+        const userPrefix = userPubkey.slice(0, 6);
+        await axios_1.default.post('http://localhost:3434/api/trading-history', {
+            userPrefix,
+            walletPubkey: userPubkey,
+            action,
+            side,
+            shares,
+            costUsd,
+            avgPrice,
+            pnl: null
+        });
+        console.log(`✅ Cost basis updated for ${userPrefix} ${action} ${side}: ${shares.toFixed(2)} shares @ $${avgPrice.toFixed(4)}`);
+    }
+    catch (err) {
+        console.error(`❌ Error updating cost basis:`, err.message);
+    }
+}
 /* ==================== MAIN LOOP ==================== */
 async function keeperLoop() {
     const keeper = loadKeeper(KEEPER_WALLET);
@@ -596,6 +615,13 @@ async function keeperLoop() {
                             await markOrderFilled(order_id, result.txSignature, result.filledShares, // Use actual filled shares from transaction logs
                             result.executionPrice, // Use actual execution price from logs
                             keeper.publicKey.toString());
+                            // Update cost basis for the user
+                            const sharesDecimal = result.filledShares / 10000000;
+                            const priceDecimal = result.executionPrice / 1e6;
+                            const costUsd = sharesDecimal * priceDecimal;
+                            const action = order.action === 1 ? 'BUY' : 'SELL';
+                            const side = order.side === 1 ? 'UP' : 'DOWN';
+                            await updateCostBasis(order.user, action, side, sharesDecimal, costUsd, priceDecimal);
                         }
                         else {
                             console.log(`⚠️  Order ${order_id} execution skipped (implementation pending)`);

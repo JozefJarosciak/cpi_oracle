@@ -226,15 +226,13 @@ pub struct Position {
     pub master_wallet: Pubkey,   // Backpack wallet that authorized this session wallet
     pub vault_balance_e6: i64,   // User's SOL balance in vault (1e6 scale)
     pub vault_bump: u8,          // Bump for user_vault PDA
-    pub yes_cost_basis_e6: i64,  // Total cost paid for YES shares (for PnL calculation)
-    pub no_cost_basis_e6: i64,   // Total cost paid for NO shares (for PnL calculation)
     pub used_nonces: Vec<u64>,   // Track used nonces for limit order replay protection (rolling window of last 100)
 }
 impl Position {
     pub const SEED: &'static [u8] = b"pos";
     pub const USER_VAULT_SEED: &'static [u8] = b"user_vault";
     // Note: SPACE is now dynamic due to Vec<u64>. Initial size + room for 100 nonces
-    pub const SPACE: usize = 32 + 8 + 8 + 32 + 8 + 1 + 8 + 8 + 4 + (8 * 100);  // owner + yes + no + master_wallet + vault_balance + vault_bump + yes_cost + no_cost + vec_len + (nonces)
+    pub const SPACE: usize = 32 + 8 + 8 + 32 + 8 + 1 + 4 + (8 * 100);  // owner + yes + no + master_wallet + vault_balance + vault_bump + vec_len + (nonces)
     pub const MAX_NONCES: usize = 100; // Keep rolling window of last 100 nonces
 }
 
@@ -1112,6 +1110,9 @@ pub mod cpi_oracle {
                 // Optimized: single msg with integers only (no floats, no emit)
                 msg!("SELL YES: proceeds={} sold={} qY={} qN={} vault={}",
                      proceeds_e6, sold_e6.round() as i64, amm.q_yes, amm.q_no, amm.vault_e6);
+
+                // Emit trade event for monitoring
+                emit_trade(amm, 1, 2, proceeds_e6, sold_e6.round() as i64, avg_h);
             }
             (2, 2) => { // SELL NO → pay proceeds to user_vault
                 require!(amount >= MIN_SELL_E6 && amount <= DQ_MAX_E6, ReaderError::BadParam);
@@ -1145,6 +1146,9 @@ pub mod cpi_oracle {
                 // Optimized: single msg with integers only (no floats, no emit)
                 msg!("SELL NO: proceeds={} sold={} qY={} qN={} vault={}",
                      proceeds_e6, sold_e6.round() as i64, amm.q_yes, amm.q_no, amm.vault_e6);
+
+                // Emit trade event for monitoring
+                emit_trade(amm, 2, 2, proceeds_e6, sold_e6.round() as i64, avg_h);
             }
             _ => return err!(ReaderError::BadParam),
         }

@@ -1748,18 +1748,42 @@ const server = http.createServer((req, res) => {
                             updatePositionCostBasis(data.walletPubkey, data.action, data.side, costE6);
                             console.log(`[COST-BASIS] ${data.userPrefix} BUY ${data.side}: +${data.costUsd.toFixed(4)} XNT cost basis`);
                         } else if (data.action === 'SELL') {
-                            // For SELL, subtract cost basis proportionally
-                            // Get current position to calculate proportion
+                            // For SELL, reduce cost basis proportionally based on shares sold
                             const costBasis = getPositionCostBasis(data.walletPubkey);
                             const currentCostE6 = data.side === 'UP' ? costBasis.yesCostE6 : costBasis.noCostE6;
 
-                            // For sells, we receive proceeds but need to reduce cost basis proportionally
-                            // Ideally we'd fetch on-chain shares to calculate exact proportion
-                            // For now, use a simplified approach: reduce cost basis by the sell proceeds
-                            // This is approximate but will be corrected by actual position tracking
-                            const costReduction = -costE6; // Negative to reduce
-                            updatePositionCostBasis(data.walletPubkey, data.action, data.side, costReduction);
-                            console.log(`[COST-BASIS] ${data.userPrefix} SELL ${data.side}: -${data.costUsd.toFixed(4)} XNT cost basis`);
+                            // Get current position shares to calculate proportional cost basis
+                            // Note: Position is fetched AFTER trade completes, so add shares back to get pre-trade amount
+                            getOnChainPosition(data.walletPubkey).then(position => {
+                                const postTradeShares = data.side === 'UP' ? position.yesShares : position.noShares;
+                                const sharesSold = data.shares;
+                                const preTradeShares = postTradeShares + sharesSold; // Reconstruct pre-trade position
+
+                                let costReduction;
+
+                                // If we had no shares before, or selling resulted in zero shares, clear entire cost basis
+                                if (preTradeShares <= 0 || postTradeShares <= 0.001) {
+                                    costReduction = -currentCostE6; // Clear entire cost basis
+                                    console.log(`[COST-BASIS] ${data.userPrefix} SELL ${data.side}: Clearing entire cost basis ${(currentCostE6/1_000_000).toFixed(4)} XNT (sold ${sharesSold.toFixed(2)}/${preTradeShares.toFixed(2)} shares)`);
+                                } else {
+                                    // Proportional reduction based on shares sold
+                                    // costReduction = (shares_sold / pre_trade_shares) * current_cost_basis
+                                    const proportionalCostE6 = Math.round((sharesSold / preTradeShares) * currentCostE6);
+                                    costReduction = -proportionalCostE6;
+
+                                    const avgCostBasis = preTradeShares > 0 ? currentCostE6 / preTradeShares / 1_000_000 : 0;
+                                    console.log(`[COST-BASIS] ${data.userPrefix} SELL ${data.side}: -${(proportionalCostE6/1_000_000).toFixed(4)} XNT cost basis (${sharesSold.toFixed(2)}/${preTradeShares.toFixed(2)} shares @ avg ${avgCostBasis.toFixed(4)} XNT/share)`);
+                                }
+
+                                updatePositionCostBasis(data.walletPubkey, data.action, data.side, costReduction);
+                            }).catch(err => {
+                                console.error(`[COST-BASIS] Failed to fetch position for ${data.userPrefix}:`, err.message);
+                                // Fallback: use the old (incorrect) method
+                                const costE6 = Math.round(data.costUsd * 1_000_000);
+                                const costReduction = currentCostE6 <= costE6 ? -currentCostE6 : -costE6;
+                                console.log(`[COST-BASIS] ${data.userPrefix} SELL ${data.side}: -${Math.abs(costReduction/1_000_000).toFixed(4)} XNT cost basis (fallback method)`);
+                                updatePositionCostBasis(data.walletPubkey, data.action, data.side, costReduction);
+                            });
                         }
                     }
 
