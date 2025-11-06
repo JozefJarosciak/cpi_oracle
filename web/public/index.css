@@ -832,9 +832,10 @@ body:not(.debug-mode) .debug-slot-item {
 
 .quick-amounts {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, auto);
     gap: 6px;
     margin-top: 8px;
+    justify-content: start;
 }
 
 .quick-amounts button {
@@ -879,6 +880,7 @@ body:not(.debug-mode) .debug-slot-item {
 
 .btn-execute {
     width: 100%;
+    max-width: 280px;
     background: var(--green);
     color: #000;
     border: none;
@@ -1383,6 +1385,38 @@ button.disabled {
 }
 
 .chart-style-toggle svg {
+    transition: all 0.2s ease;
+}
+
+.chart-price-line-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 28px;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-left: 4px;
+}
+
+.chart-price-line-toggle:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: var(--text-primary);
+}
+
+.chart-price-line-toggle.active {
+    background: rgba(255, 165, 0, 0.1);
+    border-color: rgba(255, 165, 0, 0.3);
+    color: #ffa500;
+}
+
+.chart-price-line-toggle svg {
     transition: all 0.2s ease;
 }
 

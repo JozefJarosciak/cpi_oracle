@@ -100,6 +100,7 @@ function getEffectivePointsPerSecond(timeRangeSeconds) {
 
 // Market start price (for arrow indicator)
 let marketStartPrice = null;
+let showPriceToBeatLine = false; // Toggle for price-to-beat horizontal line on chart
 
 let connection = null;
 let ammPda = null;
@@ -1551,6 +1552,38 @@ function toggleChartStyle() {
     console.log('Chart style:', chartStyle);
 }
 
+// Toggle price-to-beat line visibility
+function togglePriceToBeatLine() {
+    showPriceToBeatLine = !showPriceToBeatLine;
+
+    // Save preference to localStorage
+    const PRICE_LINE_KEY = 'showPriceToBeatLine';
+    try {
+        localStorage.setItem(PRICE_LINE_KEY, showPriceToBeatLine);
+    } catch (err) {
+        console.warn('Failed to save price line preference:', err);
+    }
+
+    // Update button visual state
+    const toggleBtn = document.getElementById('priceToBeatToggle');
+    if (toggleBtn) {
+        if (showPriceToBeatLine) {
+            toggleBtn.classList.add('active');
+            toggleBtn.title = 'Hide price to beat line';
+        } else {
+            toggleBtn.classList.remove('active');
+            toggleBtn.title = 'Show price to beat line';
+        }
+    }
+
+    // Redraw chart to show/hide the line
+    if (btcChart) {
+        btcChart.update('none'); // Update without animation
+    }
+
+    console.log('Price to beat line:', showPriceToBeatLine ? 'visible' : 'hidden');
+}
+
 // Rebuild chart when switching between area and candlestick
 function rebuildChartWithNewStyle() {
     if (!btcChart) return;
@@ -1641,6 +1674,32 @@ function loadChartStylePreference() {
         }
     } catch (err) {
         console.warn('Failed to load chart style preference:', err);
+    }
+}
+
+// Load price line visibility preference from localStorage
+function loadPriceLinePreference() {
+    const PRICE_LINE_KEY = 'showPriceToBeatLine';
+    try {
+        const saved = localStorage.getItem(PRICE_LINE_KEY);
+        if (saved !== null) {
+            showPriceToBeatLine = saved === 'true';
+            console.log('Loaded price line preference:', showPriceToBeatLine);
+        }
+
+        // Update button state
+        const toggleBtn = document.getElementById('priceToBeatToggle');
+        if (toggleBtn) {
+            if (showPriceToBeatLine) {
+                toggleBtn.classList.add('active');
+                toggleBtn.title = 'Hide price to beat line';
+            } else {
+                toggleBtn.classList.remove('active');
+                toggleBtn.title = 'Show price to beat line';
+            }
+        }
+    } catch (err) {
+        console.warn('Failed to load price line preference:', err);
     }
 }
 
@@ -1825,6 +1884,10 @@ function initBTCChart() {
 
     console.log('Initializing BTC Chart...');
 
+    // Load user preferences from localStorage
+    loadChartStylePreference();
+    loadPriceLinePreference();
+
     // Calculate optimal sampling for initial chart setup
     currentSamplingRate = getOptimalSamplingRate(currentTimeRange);
     const effectivePointsPerSecond = getEffectivePointsPerSecond(currentTimeRange);
@@ -1944,6 +2007,58 @@ function initBTCChart() {
                 ctx.fillStyle = `rgba(0, 255, 0, ${layer.alpha})`;
                 ctx.fill();
             });
+
+            ctx.restore();
+        }
+    };
+
+    // Custom plugin to draw price-to-beat horizontal line
+    const priceToBeatLinePlugin = {
+        id: 'priceToBeatLine',
+        afterDatasetsDraw(chart) {
+            if (!showPriceToBeatLine || !marketStartPrice || marketStartPrice <= 0) return;
+
+            const ctx = chart.ctx;
+            const yScale = chart.scales.y;
+            const xScale = chart.scales.x;
+
+            // Calculate Y position for the market start price
+            const yPos = yScale.getPixelForValue(marketStartPrice);
+
+            // Only draw if the price is within the visible range
+            if (yPos < yScale.top || yPos > yScale.bottom) return;
+
+            ctx.save();
+
+            // Draw dashed horizontal line
+            ctx.strokeStyle = '#ffa500'; // Orange color for visibility
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]); // Dashed line pattern
+
+            ctx.beginPath();
+            ctx.moveTo(xScale.left, yPos);
+            ctx.lineTo(xScale.right, yPos);
+            ctx.stroke();
+
+            // Draw label on the right side
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.font = 'bold 11px "SF Mono", Monaco, monospace';
+
+            const labelText = '$' + marketStartPrice.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+            const textWidth = ctx.measureText(labelText).width;
+            const padding = 6;
+
+            // Background box for label
+            ctx.fillRect(xScale.right - textWidth - padding * 2 - 4, yPos - 9, textWidth + padding * 2, 18);
+
+            // Text
+            ctx.fillStyle = '#ffa500';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(labelText, xScale.right - 4 - padding, yPos);
 
             ctx.restore();
         }
@@ -2107,7 +2222,7 @@ function initBTCChart() {
                 easing: 'easeInOutQuart' // Smooth easing function
             }
         },
-        plugins: [minMaxPlugin, lastPriceGlowPlugin]
+        plugins: [minMaxPlugin, lastPriceGlowPlugin, priceToBeatLinePlugin]
     });
 
     console.log('BTC Chart initialized successfully!');
