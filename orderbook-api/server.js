@@ -4,6 +4,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const crypto = require('crypto');
 const path = require('path');
+const http = require('http');
 
 const app = express();
 const PORT = process.env.PORT || 3436;
@@ -470,10 +471,67 @@ app.post('/api/orders/:order_id/fill', (req, res) => {
         total_cost: (shares_filled / 10_000_000) * (execution_price / 1_000_000)
       });
 
+      // Notify main server about the fill to update cost basis
+      notifyMainServerOfFill(orderData, shares_filled, execution_price);
+
       res.json({ success: true, order_id: parseInt(order_id) });
     });
   });
 });
+
+// Helper function to notify main server of filled order for cost basis tracking
+async function notifyMainServerOfFill(orderData, sharesFilled, executionPrice) {
+  try {
+    const action = orderData.action === 1 ? 'BUY' : 'SELL';
+    const side = orderData.side === 1 ? 'UP' : 'DOWN';
+    const shares = sharesFilled / 10_000_000;
+    const price = executionPrice / 1_000_000;
+    const costUsd = shares * price;
+
+    const data = JSON.stringify({
+      userPrefix: orderData.user_pubkey.slice(0, 6),
+      walletPubkey: orderData.user_pubkey,
+      action,
+      side,
+      shares,
+      costUsd,
+      avgPrice: price,
+      pnl: null
+    });
+
+    const options = {
+      hostname: 'localhost',
+      port: 3434,
+      path: '/api/trading-history',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': data.length
+      }
+    };
+
+    const req = http.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => body += chunk);
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          console.log(`✅ Cost basis updated for ${orderData.user_pubkey.slice(0, 6)}: ${action} ${shares.toFixed(2)} ${side} @ $${price.toFixed(6)}`);
+        } else {
+          console.error(`❌ Failed to update cost basis: ${body}`);
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      console.error('Error notifying main server:', err.message);
+    });
+
+    req.write(data);
+    req.end();
+  } catch (err) {
+    console.error('Failed to notify main server:', err.message);
+  }
+}
 
 // POST /api/orders/:order_id/cancel - Cancel order (user only)
 app.post('/api/orders/:order_id/cancel', (req, res) => {
