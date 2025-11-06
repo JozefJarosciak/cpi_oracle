@@ -467,7 +467,7 @@ app.post('/api/orders/:order_id/fill', (req, res) => {
         filled_tx: tx_signature,
         filled_shares: parseFloat(shares),
         execution_price: parseFloat(price),
-        total_cost: (shares_filled * execution_price) / 1e6 / 10_000_000
+        total_cost: (shares_filled / 10_000_000) * (execution_price / 1_000_000)
       });
 
       res.json({ success: true, order_id: parseInt(order_id) });
