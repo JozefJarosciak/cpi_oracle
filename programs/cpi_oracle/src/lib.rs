@@ -495,6 +495,12 @@ pub struct UserVaultWithdraw<'info> {
 pub struct AdminOnly<'info> {
     #[account(mut, seeds = [Amm::SEED], bump = amm.bump)]
     pub amm: Account<'info, Amm>,
+
+    /// Admin signer - must be fee_dest to authorize admin operations
+    #[account(
+        constraint = admin.key() == amm.fee_dest @ ReaderError::NotOwner
+    )]
+    pub admin: Signer<'info>,
 }
 
 #[derive(Accounts)]
@@ -609,6 +615,13 @@ pub struct SnapshotStart<'info> {
 pub struct SettleByOracle<'info> {
     #[account(mut, seeds = [Amm::SEED], bump = amm.bump)]
     pub amm: Account<'info, Amm>,
+
+    /// Admin signer - must be fee_dest to authorize settlement
+    #[account(
+        constraint = admin.key() == amm.fee_dest @ ReaderError::NotOwner
+    )]
+    pub admin: Signer<'info>,
+
     /// CHECK: must be owned by the oracle program
     #[account(owner = ORACLE_PROGRAM_ID)]
     pub oracle_state: AccountInfo<'info>,

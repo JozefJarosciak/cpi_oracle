@@ -468,6 +468,7 @@ async function settleMarket(conn, kp, ammPda) {
     programId: PID,
     keys: [
       { pubkey: ammPda, isSigner: false, isWritable: true },
+      { pubkey: kp.publicKey, isSigner: true, isWritable: false }, // Admin (fee_dest) - SECURITY FIX
       { pubkey: ORACLE_STATE, isSigner: false, isWritable: false },
     ],
     data: settleData,
