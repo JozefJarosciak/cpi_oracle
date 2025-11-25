@@ -20,3 +20,5 @@ nohup.out
 fees.json
 bal.sh
 points/*.db
+points/*.db-shm
+points/*.db-wal

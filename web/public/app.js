@@ -1233,6 +1233,9 @@ function showHasWallet(backpackAddr) {
     // Enable all action buttons when wallet connected
     enableActionButtons();
 
+    // Start fetching user points
+    startPointsPolling();
+
     console.log('[DEBUG showHasWallet] Function completed');
 }
 
@@ -8162,5 +8165,65 @@ if (typeof window !== 'undefined') {
         document.addEventListener('DOMContentLoaded', initDebugToggle);
     } else {
         initDebugToggle();
+    }
+}
+
+// ============= POINTS SYSTEM =============
+
+// Fetch and display user points
+async function fetchUserPoints() {
+    if (!backpackWallet || !backpackWallet.publicKey) {
+        return;
+    }
+
+    try {
+        const masterPubkey = backpackWallet.publicKey.toString();
+        const response = await fetch(`/api/points/user/${masterPubkey}`);
+
+        if (!response.ok) {
+            console.error('[POINTS] Failed to fetch points:', response.status);
+            return;
+        }
+
+        const data = await response.json();
+        const points = data.total_points || 0;
+
+        // Update display
+        const pointsElement = document.getElementById('navUserPoints');
+        if (pointsElement) {
+            pointsElement.textContent = formatPointsNumber(points);
+        }
+
+        console.log(`[POINTS] User ${masterPubkey.slice(0,6)} has ${points} points`);
+    } catch (err) {
+        console.error('[POINTS] Error fetching points:', err);
+    }
+}
+
+// Format points number (1000 -> 1K, 1000000 -> 1M)
+function formatPointsNumber(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return n.toString();
+}
+
+// Start points polling when wallet connects
+let pointsPollingInterval = null;
+
+function startPointsPolling() {
+    // Fetch immediately
+    fetchUserPoints();
+
+    // Then poll every 30 seconds
+    if (pointsPollingInterval) {
+        clearInterval(pointsPollingInterval);
+    }
+    pointsPollingInterval = setInterval(fetchUserPoints, 30000);
+}
+
+function stopPointsPolling() {
+    if (pointsPollingInterval) {
+        clearInterval(pointsPollingInterval);
+        pointsPollingInterval = null;
     }
 }

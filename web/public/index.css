@@ -98,8 +98,8 @@ body {
     position: relative;
     width: 28px;
     height: 14px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(128, 128, 128, 0.3);
+    border: 1px solid rgba(128, 128, 128, 0.4);
     border-radius: 8px;
     transition: background 0.2s ease, border-color 0.2s ease;
 }
@@ -111,19 +111,19 @@ body {
     transform: translateY(-50%);
     width: 10px;
     height: 10px;
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(128, 128, 128, 0.6);
     border-radius: 50%;
     transition: left 0.2s ease, background 0.2s ease;
 }
 
 .debug-toggle input[type="checkbox"]:checked + .debug-toggle-track {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(63, 182, 139, 0.4);
+    border-color: rgba(63, 182, 139, 0.6);
 }
 
 .debug-toggle input[type="checkbox"]:checked + .debug-toggle-track .debug-toggle-thumb {
     left: 14px;
-    background: rgba(255, 255, 255, 0.5);
+    background: #3fb68b;
 }
 
 .debug-label {
@@ -132,6 +132,11 @@ body {
     color: rgba(255, 255, 255, 0.4);
     letter-spacing: 0.5px;
     text-transform: uppercase;
+    transition: color 0.2s ease;
+}
+
+.debug-toggle input[type="checkbox"]:checked ~ .debug-label {
+    color: #3fb68b;
 }
 
 /* Hide slot items when debug is off */
@@ -194,6 +199,42 @@ body:not(.debug-mode) .debug-slot-item {
 .balance-unit {
     font-size: 11px;
     color: var(--text-secondary);
+}
+
+/* Points Display */
+.points-display {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.2);
+    border-radius: 4px;
+    text-decoration: none;
+    margin-right: 8px;
+    transition: all 0.15s;
+}
+
+.points-display:hover {
+    background: rgba(255, 215, 0, 0.15);
+    border-color: rgba(255, 215, 0, 0.3);
+}
+
+.points-icon {
+    font-size: 12px;
+}
+
+.points-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: #ffd700;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+}
+
+.points-label {
+    font-size: 10px;
+    color: rgba(255, 215, 0, 0.7);
+    font-weight: 500;
 }
 
 /* ===== TERMINAL GRID ===== */
