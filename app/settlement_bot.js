@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// app/settlement_bot.js — Automated settlement bot for 11-minute market cycles
-// Cycles: 5 mins pre-market -> snapshot -> 5 mins active -> settle -> 1 min results -> restart
-// Markets start on minutes aligned to 11-minute intervals
+// app/settlement_bot.js — Automated settlement bot for 30-minute market cycles
+// Cycles: 5 mins pre-market -> snapshot -> 25 mins active -> settle -> restart
+// Markets start at :00 and :30 minutes past the hour (e.g., 01:00, 01:30, 02:00, etc.)
 
 const fs = require("fs");
 const crypto = require("crypto");
@@ -28,9 +28,9 @@ const USER_VAULT_SEED = Buffer.from("user_vault");
 const POS_SEED = Buffer.from("pos");
 
 // === TIMING CONSTANTS ===
-const PREMARKET_DURATION_MS = 1 * 60 * 1000;  // 5 minutes pre-market (no snapshot yet)
-const ACTIVE_DURATION_MS = 10 * 60 * 1000;    // 10 minutes active (after snapshot)
-const CYCLE_DURATION_MS = PREMARKET_DURATION_MS + ACTIVE_DURATION_MS; // 15 minutes total
+const PREMARKET_DURATION_MS = 5 * 60 * 1000;  // 5 minutes pre-market (no snapshot yet)
+const ACTIVE_DURATION_MS = 25 * 60 * 1000;    // 25 minutes active (after snapshot)
+const CYCLE_DURATION_MS = 30 * 60 * 1000;     // 30 minutes total (aligns to :00 and :30)
 
 // === LAMPORTS CONVERSION ===
 const LAMPORTS_PER_E6 = 100;                   // Must match Rust program constant
@@ -177,6 +177,51 @@ function postSettlementHistory(userAddress, amountXnt, userSide, snapshotPrice =
   } catch (err) {
     // Silently fail - settlement history is optional
   }
+}
+
+/* ---------------- Cancel All Open Orders ---------------- */
+async function cancelAllOpenOrders() {
+  return new Promise((resolve) => {
+    try {
+      const options = {
+        hostname: 'localhost',
+        port: 3436,
+        path: '/api/orders/cancel-all',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': 0
+        }
+      };
+
+      const req = http.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const result = JSON.parse(data);
+            if (result.cancelled_count > 0) {
+              logInfo(`  → Cancelled ${result.cancelled_count} open limit orders`);
+            }
+          } catch (e) {}
+          resolve();
+        });
+      });
+
+      req.on('error', (err) => {
+        // Silently fail if orderbook API is not running
+        resolve();
+      });
+
+      req.end();
+
+      // Timeout after 3 seconds
+      setTimeout(resolve, 3000);
+
+    } catch (err) {
+      resolve();
+    }
+  });
 }
 
 /* ---------------- Reset Volume for New Market Cycle ---------------- */
@@ -722,14 +767,30 @@ async function readMarketData(conn, ammPda) {
 function getNextStartTime() {
   const now = new Date();
 
-  logInfo(C.bold("📅 Starting market cycle immediately:"));
+  logInfo(C.bold("📅 Calculating next market cycle start time:"));
   logInfo(`  Current time: ${formatTime(now)}`);
 
-  // Start immediately - just round to nearest second
+  // Round to next 30-minute boundary (:00 or :30)
   const nextStart = new Date(now);
-  nextStart.setMilliseconds(0);
+  const currentMinute = nextStart.getMinutes();
 
-  logInfo(C.g(`  ✓ Market cycle starting NOW at: ${formatTime(nextStart)}`));
+  if (currentMinute < 30) {
+    // Next start is at :30 of current hour
+    nextStart.setMinutes(30, 0, 0);
+  } else {
+    // Next start is at :00 of next hour
+    nextStart.setHours(nextStart.getHours() + 1, 0, 0, 0);
+  }
+
+  // If we're already past the calculated time (race condition), use it anyway
+  // This can happen if currentMinute is exactly 30 or 0
+  if (nextStart.getTime() <= now.getTime()) {
+    // Add 30 minutes to get the next boundary
+    nextStart.setTime(nextStart.getTime() + 30 * 60 * 1000);
+  }
+
+  const waitTime = nextStart.getTime() - now.getTime();
+  logInfo(C.g(`  ✓ Next market cycle starts at: ${formatTime(nextStart)} (in ${formatCountdown(waitTime)})`));
 
   return nextStart;
 }
@@ -747,18 +808,20 @@ function formatCountdown(ms) {
 
 /* ---------------- Main Cycle Loop ---------------- */
 async function runCycle(conn, kp, ammPda, vaultPda) {
-  // Wait until the next aligned time boundary (minute ending in 0)
-  const nextStart = getNextStartTime();
-  const now = Date.now();
-  const waitMs = nextStart.getTime() - now;
+  // Get current 30-minute window (either :00-:30 or :30-:00)
+  // This ensures markets stay aligned to clock boundaries
+  const now = new Date();
+  const currentMinute = now.getMinutes();
 
-  if (waitMs > 1000) {
-    log(C.bold(`\n⏰ Waiting ${formatCountdown(waitMs)} until next cycle at ${formatTime(nextStart)}`));
-    await new Promise(r => setTimeout(r, waitMs));
+  // Calculate the start of the current 30-minute window
+  const cycleStart = new Date(now);
+  if (currentMinute < 30) {
+    cycleStart.setMinutes(0, 0, 0);
+  } else {
+    cycleStart.setMinutes(30, 0, 0);
   }
 
-  // Use the aligned start time for all calculations
-  const cycleStartTime = nextStart.getTime();
+  const cycleStartTime = cycleStart.getTime();
   const snapshotTime = cycleStartTime + PREMARKET_DURATION_MS;
   const marketEndTime = snapshotTime + ACTIVE_DURATION_MS;
   const nextCycleStartTime = cycleStartTime + CYCLE_DURATION_MS;
@@ -916,6 +979,10 @@ async function runCycle(conn, kp, ammPda, vaultPda) {
     log(`Target time: ${formatTime(new Date(marketEndTime))}`);
     log(`Actual time: ${formatTime(new Date(actualStopTime))} (${timingError > 0 ? '+' : ''}${timingError}ms)`);
     await stopMarket(conn, kp, ammPda);
+
+    // Cancel all open limit orders when market stops
+    await cancelAllOpenOrders();
+
     await new Promise(r => setTimeout(r, 1500));
 
     // Capture settlement data
@@ -1019,7 +1086,7 @@ async function wipeAllPositions(conn, kp, ammPda) {
 /* ---------------- Main ---------------- */
 async function main() {
   console.log(C.bold("\n╔═══════════════════════════════════════════════╗"));
-  console.log(C.bold("║     AUTOMATED SETTLEMENT BOT - 11 MIN CYCLES  ║"));
+  console.log(C.bold("║     AUTOMATED SETTLEMENT BOT - 30 MIN CYCLES  ║"));
   console.log(C.bold("╚═══════════════════════════════════════════════╝\n"));
 
   logInfo(`Oracle: ${ORACLE_STATE.toString()}`);
@@ -1154,6 +1221,10 @@ async function main() {
   log(`Target time: ${formatTime(new Date(marketEndTime))}`);
   log(`Actual time: ${formatTime(new Date(actualStopTime))} (${timingError > 0 ? '+' : ''}${timingError}ms)`);
   await stopMarket(conn, kp, ammPda);
+
+  // Cancel all open limit orders when market stops
+  await cancelAllOpenOrders();
+
   await new Promise(r => setTimeout(r, 1500));
 
   log(C.bold("\n⚖️  SETTLING MARKET\n"));
@@ -1246,6 +1317,8 @@ async function forceSettle() {
       logInfo(`Found ${positions.length} positions that need redemption`);
     } else {
       log(C.bold("🛑 Market is STOPPED but not settled. Settling now...\n"));
+      // Cancel any remaining open orders
+      await cancelAllOpenOrders();
       const settleSuccess = await settleMarket(conn, kp, ammPda);
       if (!settleSuccess) {
         logError("Settlement failed!");
@@ -1289,7 +1362,7 @@ if (command === 'force-settle') {
 ${C.bold('Settlement Bot Commands:')}
 
   ${C.y('node app/settlement_bot.js')}
-    Run the automated settlement bot (10-minute cycles)
+    Run the automated settlement bot (30-minute cycles starting at :00 and :30)
 
   ${C.y('node app/settlement_bot.js force-settle')}
     Manually trigger settlement for a stopped market
