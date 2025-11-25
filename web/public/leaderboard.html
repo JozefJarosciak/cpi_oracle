@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X1 Markets - Leaderboard</title>
+    <style>
+        /* ===== HYPERLIQUID STYLE ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #141414;
+            --bg-tertiary: #1a1a1a;
+            --bg-hover: #202020;
+            --border-color: #252525;
+            --border-light: #2a2a2a;
+            --text-primary: #e8e8e8;
+            --text-secondary: #888888;
+            --text-dim: #555555;
+            --green: #3fb68b;
+            --green-bg: rgba(63, 182, 139, 0.1);
+            --red: #ff5353;
+            --red-bg: rgba(255, 83, 83, 0.1);
+            --blue: #5b9eff;
+            --gold: #ffd700;
+            --silver: #c0c0c0;
+            --bronze: #cd7f32;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 13px;
+            line-height: 1.4;
+            min-height: 100vh;
+        }
+
+        /* ===== TOP BAR ===== */
+        .top-bar {
+            height: 48px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 16px;
+        }
+
+        .top-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .top-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .brand {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--green);
+            letter-spacing: -0.5px;
+            text-decoration: none;
+        }
+
+        .brand-subtitle {
+            font-size: 14px;
+            font-weight: 400;
+            color: var(--text-secondary);
+            letter-spacing: 0;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 13px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            transition: all 0.15s;
+        }
+
+        .nav-link:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+
+        .nav-link.active {
+            color: var(--green);
+            background: var(--green-bg);
+        }
+
+        /* ===== MAIN CONTENT ===== */
+        .main-content {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 32px 16px;
+        }
+
+        .page-header {
+            margin-bottom: 32px;
+            text-align: center;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .page-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        /* ===== STATS CARDS ===== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--green);
+            margin-bottom: 4px;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* ===== LEADERBOARD TABLE ===== */
+        .leaderboard-container {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .leaderboard-header {
+            display: grid;
+            grid-template-columns: 60px 1fr 120px 120px 120px 120px;
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .leaderboard-row {
+            display: grid;
+            grid-template-columns: 60px 1fr 120px 120px 120px 120px;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border-color);
+            align-items: center;
+            transition: background 0.15s;
+        }
+
+        .leaderboard-row:hover {
+            background: var(--bg-hover);
+        }
+
+        .leaderboard-row:last-child {
+            border-bottom: none;
+        }
+
+        .rank {
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .rank-1 { color: var(--gold); }
+        .rank-2 { color: var(--silver); }
+        .rank-3 { color: var(--bronze); }
+
+        .rank-medal {
+            font-size: 18px;
+        }
+
+        .wallet-address {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 13px;
+            color: var(--text-primary);
+        }
+
+        .wallet-address a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .wallet-address a:hover {
+            color: var(--blue);
+        }
+
+        .points-value {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 13px;
+            text-align: right;
+        }
+
+        .points-total {
+            color: var(--green);
+            font-weight: 600;
+        }
+
+        .points-breakdown {
+            color: var(--text-secondary);
+        }
+
+        /* ===== LOADING STATE ===== */
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        .loading-spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--green);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ===== EMPTY STATE ===== */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .leaderboard-header,
+            .leaderboard-row {
+                grid-template-columns: 50px 1fr 80px;
+            }
+
+            .leaderboard-header > *:nth-child(n+4),
+            .leaderboard-row > *:nth-child(n+4) {
+                display: none;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        /* ===== REFRESH BUTTON ===== */
+        .refresh-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+
+        .refresh-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .last-updated {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-left">
+            <a href="/" class="brand">X1 <span class="brand-subtitle">Vero Prediction Markets</span></a>
+        </div>
+        <div class="top-right">
+            <a href="/" class="nav-link">Trade</a>
+            <a href="/leaderboard.html" class="nav-link active">Leaderboard</a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="page-header">
+            <h1 class="page-title">Points Leaderboard</h1>
+            <p class="page-subtitle">Earn points from deposits, trades, and wins</p>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalUsers">-</div>
+                <div class="stat-label">Total Users</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalPoints">-</div>
+                <div class="stat-label">Total Points</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="depositPoints">-</div>
+                <div class="stat-label">From Deposits</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="tradePoints">-</div>
+                <div class="stat-label">From Trades</div>
+            </div>
+        </div>
+
+        <!-- Leaderboard -->
+        <div class="leaderboard-container">
+            <div class="leaderboard-header">
+                <div>Rank</div>
+                <div>Wallet</div>
+                <div style="text-align: right;">Total</div>
+                <div style="text-align: right;">Deposits</div>
+                <div style="text-align: right;">Trades</div>
+                <div style="text-align: right;">Wins</div>
+            </div>
+            <div id="leaderboardBody">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div>Loading leaderboard...</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px;">
+            <span class="last-updated" id="lastUpdated"></span>
+            <button class="refresh-btn" onclick="loadData()">Refresh</button>
+        </div>
+    </div>
+
+    <script>
+        const EXPLORER_BASE = 'https://explorer.x1.xyz/address/';
+
+        function formatNumber(n) {
+            if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return n.toLocaleString();
+        }
+
+        function truncateAddress(addr) {
+            if (!addr || addr.length < 12) return addr;
+            return addr.slice(0, 6) + '...' + addr.slice(-4);
+        }
+
+        function getRankDisplay(rank) {
+            if (rank === 1) return '<span class="rank-medal">🥇</span>';
+            if (rank === 2) return '<span class="rank-medal">🥈</span>';
+            if (rank === 3) return '<span class="rank-medal">🥉</span>';
+            return `#${rank}`;
+        }
+
+        async function loadStats() {
+            try {
+                const res = await fetch('/api/points/stats');
+                const stats = await res.json();
+
+                document.getElementById('totalUsers').textContent = formatNumber(stats.total_users || 0);
+                document.getElementById('totalPoints').textContent = formatNumber(stats.total_points || 0);
+                document.getElementById('depositPoints').textContent = formatNumber(stats.total_deposit_points || 0);
+                document.getElementById('tradePoints').textContent = formatNumber(stats.total_trade_points || 0);
+            } catch (err) {
+                console.error('Failed to load stats:', err);
+            }
+        }
+
+        async function loadLeaderboard() {
+            const body = document.getElementById('leaderboardBody');
+
+            try {
+                const res = await fetch('/api/points/leaderboard?limit=100');
+                const users = await res.json();
+
+                if (!users || users.length === 0) {
+                    body.innerHTML = '<div class="empty-state">No users yet. Start trading to earn points!</div>';
+                    return;
+                }
+
+                // Filter out test users
+                const realUsers = users.filter(u => !u.master_pubkey.startsWith('TestUser'));
+
+                body.innerHTML = realUsers.map((user, index) => {
+                    const rank = index + 1;
+                    const rankClass = rank <= 3 ? `rank-${rank}` : '';
+
+                    return `
+                        <div class="leaderboard-row">
+                            <div class="rank ${rankClass}">${getRankDisplay(rank)}</div>
+                            <div class="wallet-address">
+                                <a href="${EXPLORER_BASE}${user.master_pubkey}" target="_blank" rel="noopener">
+                                    ${truncateAddress(user.master_pubkey)}
+                                </a>
+                            </div>
+                            <div class="points-value points-total">${formatNumber(user.total_points)}</div>
+                            <div class="points-value points-breakdown">${formatNumber(user.deposit_points)}</div>
+                            <div class="points-value points-breakdown">${formatNumber(user.trade_points)}</div>
+                            <div class="points-value points-breakdown">${formatNumber(user.win_points)}</div>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (err) {
+                console.error('Failed to load leaderboard:', err);
+                body.innerHTML = '<div class="empty-state">Failed to load leaderboard</div>';
+            }
+        }
+
+        async function loadData() {
+            await Promise.all([loadStats(), loadLeaderboard()]);
+            document.getElementById('lastUpdated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+        }
+
+        // Initial load
+        loadData();
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadData, 30000);
+    </script>
+</body>
+</html>
