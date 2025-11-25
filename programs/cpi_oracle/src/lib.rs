@@ -11,7 +11,7 @@ declare_id!("EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF");
 // Oracle (foreign) settings
 // =========================
 pub const ORACLE_PROGRAM_ID: Pubkey =
-    pubkey!("7ARBeYF5rGCanAGiRaxhVpiuZZpGXazo5UJqHMoJgkuE");
+    pubkey!("LuS6XnQ3qNXqNQvAJ3akXnEJRBv9XNoUricjMgTyCxX");
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct OracleStateMirror {
@@ -3148,12 +3148,10 @@ fn read_btc_price_e6(oracle_ai: &AccountInfo) -> Result<(i64, i64)> {
     let t2 = read_i64_le(&d[o..o+8]); o += 8;
     let t3 = read_i64_le(&d[o..o+8]); o += 8;
 
-    // skip eth + sol (48 + 48)
-    o += 96;
-
-    // decimals (u8) + bump (u8)
-    let decimals = d[o] as u32; o += 1;
-    /* bump */ o += 1;
+    // Skip remaining triplets - decimals is at end of data
+    // Works for both testnet (3 triplets, 186 bytes) and mainnet (6 triplets, 362 bytes)
+    // Decimals is at data.len() - 2 (after discriminator), bump at data.len() - 1
+    let decimals = data[data.len() - 2] as u32;
 
     // robust median
     let p_raw = median3_i64(p1, p2, p3);

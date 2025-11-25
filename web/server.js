@@ -271,8 +271,8 @@ async function fetchOraclePrice() {
         const t2 = readI64();
         const t3 = readI64();
 
-        o += 96; // Skip ETH + SOL
-        const decimals = d.readUInt8(o);
+        // Decimals byte is at end of oracle data (works for both testnet 186 bytes and mainnet 362 bytes)
+        const decimals = d.readUInt8(d.length - 2);
 
         // Calculate median price
         const median3 = (a, b, c) => {
