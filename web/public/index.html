@@ -59,7 +59,7 @@
                     <div class="balance-info">
                         <div class="balance-row">
                             <div class="balance-label-section">
-                                <span class="balance-label">Backpack Wallet</span>
+                                <span class="balance-label">Your Wallet</span>
                                 <span class="balance-sublabel">Available</span>
                             </div>
                             <span class="balance-value" id="sessionWalletBalance">Loading...</span>
@@ -92,7 +92,7 @@
                     <div id="accountAddressesSection" style="display: none; margin: 16px 0; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
                         <div style="font-size: 11px; color: #888; margin-bottom: 12px;">
                             <div style="margin-bottom: 8px;">
-                                <div style="color: #aaa; margin-bottom: 2px;">Backpack Wallet (Master)</div>
+                                <div style="color: #aaa; margin-bottom: 2px;">Your Wallet (Master)</div>
                                 <div style="font-family: monospace; color: #0f0; word-break: break-all; cursor: pointer;" id="backpackWalletAddr" onclick="copyAddress(this)" title="Click to copy">-</div>
                             </div>
                             <div style="margin-bottom: 8px;">
@@ -133,13 +133,13 @@
                         <div class="deposit-info-item">
                             <div class="info-icon">ℹ️</div>
                             <div class="info-text">
-                                <strong>Direct transfer</strong> from Backpack to vault. Session wallet trades using vault funds.
+                                <strong>Direct transfer</strong> from your wallet to vault. Session wallet trades using vault funds.
                             </div>
                         </div>
                         <div class="deposit-info-item">
                             <div class="info-icon">🔒</div>
                             <div class="info-text">
-                                <strong>Secure architecture</strong> — Session wallet never holds funds. Only Backpack can withdraw.
+                                <strong>Secure architecture</strong> — Session wallet never holds funds. Only your wallet can withdraw.
                             </div>
                         </div>
                     </div>
@@ -1651,7 +1651,7 @@
 
                 modal.classList.remove('hidden');
             } else {
-                showError('Please connect your Backpack wallet first');
+                showError('Please connect your wallet first');
             }
         }
 

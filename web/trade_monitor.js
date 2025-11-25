@@ -11,6 +11,10 @@ const path = require('path');
 const { PointsDB } = require('../points/points.js');
 const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
 
+// Access main server's database for cost basis lookup
+const Database = require('better-sqlite3');
+const priceHistoryDb = new Database(path.join(__dirname, 'price_history.db'), { readonly: true });
+
 const RPC_URL = process.env.RPC_URL || 'https://rpc.testnet.x1.xyz';
 const PROGRAM_ID = new PublicKey('EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF');
 const AMM_SEED = Buffer.from('amm_btc_v6');
@@ -447,11 +451,12 @@ function parseRedeemFromLogs(logs) {
         // Look for: "💸 REDEEM pay=X lamports" or "💸 ADMIN_REDEEM user=X pay=Y lamports"
         const redeemMatch = log.match(/REDEEM pay=(\d+) lamports/);
         if (redeemMatch) {
-            return { payoutLamports: parseInt(redeemMatch[1]) };
+            return { payoutLamports: parseInt(redeemMatch[1]), userFromLog: null };
         }
-        const adminMatch = log.match(/ADMIN_REDEEM user=\S+ pay=(\d+) lamports/);
+        // For AdminRedeem, extract the user from the log since fee payer is the operator
+        const adminMatch = log.match(/ADMIN_REDEEM user=(\S+) pay=(\d+) lamports/);
         if (adminMatch) {
-            return { payoutLamports: parseInt(adminMatch[1]) };
+            return { payoutLamports: parseInt(adminMatch[2]), userFromLog: adminMatch[1] };
         }
     }
     return null;
@@ -475,7 +480,76 @@ async function awardDepositPoints(connection, sessionWallet, amountLamports, txS
     }
 }
 
-// Award points for win/redeem
+// Get cost basis from trading history for the CURRENT CYCLE only
+// Returns the winning side's cost basis (the side with positive shares)
+function getCostBasisForWallet(sessionWallet) {
+    try {
+        const userPrefix = sessionWallet.slice(0, 6);
+
+        // Get latest cycle_id from this user's most recent trade
+        const cycleRow = priceHistoryDb.prepare(`
+            SELECT cycle_id FROM trading_history
+            WHERE user_prefix = ?
+            ORDER BY timestamp DESC LIMIT 1
+        `).get(userPrefix);
+
+        if (!cycleRow) {
+            console.log(`[POINTS] No trading history found for ${userPrefix}`);
+            return { yesCostUsd: 0, noCostUsd: 0, yesShares: 0, noShares: 0 };
+        }
+        const cycleId = cycleRow.cycle_id;
+
+        // Get all trades for this wallet in this cycle only
+        const trades = priceHistoryDb.prepare(`
+            SELECT action, side, shares, cost_usd
+            FROM trading_history
+            WHERE user_prefix = ? AND cycle_id = ?
+            ORDER BY timestamp ASC
+        `).all(userPrefix, cycleId);
+
+        let yesCostBasis = 0;
+        let noCostBasis = 0;
+        let yesShares = 0;
+        let noShares = 0;
+
+        for (const trade of trades) {
+            const isYes = (trade.side === 'YES' || trade.side === 'UP');
+
+            if (trade.action === 'BUY') {
+                if (isYes) {
+                    yesCostBasis += trade.cost_usd;
+                    yesShares += trade.shares;
+                } else {
+                    noCostBasis += trade.cost_usd;
+                    noShares += trade.shares;
+                }
+            } else if (trade.action === 'SELL') {
+                if (isYes && yesShares > 0) {
+                    const proportionSold = Math.min(1, trade.shares / yesShares);
+                    yesCostBasis -= yesCostBasis * proportionSold;
+                    yesShares -= trade.shares;
+                } else if (!isYes && noShares > 0) {
+                    const proportionSold = Math.min(1, trade.shares / noShares);
+                    noCostBasis -= noCostBasis * proportionSold;
+                    noShares -= trade.shares;
+                }
+            }
+        }
+
+        return {
+            yesCostUsd: yesCostBasis,
+            noCostUsd: noCostBasis,
+            yesShares: yesShares,
+            noShares: noShares,
+            cycleId: cycleId
+        };
+    } catch (err) {
+        console.error('[POINTS] Failed to get cost basis:', err.message);
+        return { yesCostUsd: 0, noCostUsd: 0, yesShares: 0, noShares: 0 };
+    }
+}
+
+// Award points for win/redeem - based on PROFIT only (payout - winning side cost basis)
 async function awardWinPoints(connection, sessionWallet, payoutLamports, txSignature) {
     try {
         if (pointsDb.txExists(txSignature)) return;
@@ -483,10 +557,35 @@ async function awardWinPoints(connection, sessionWallet, payoutLamports, txSigna
         const masterWallet = await getMasterWallet(connection, sessionWallet);
         if (!masterWallet) return;
 
-        const result = pointsDb.recordWin(masterWallet, payoutLamports, txSignature);
+        // Get cost basis for current cycle
+        const costBasis = getCostBasisForWallet(sessionWallet);
+        const payoutXnt = payoutLamports / LAMPORTS_PER_XNT;
+
+        // Use winning side's cost basis (the side with more shares in current cycle)
+        // If user bought YES and YES won, use YES cost. Same for NO.
+        let costXnt;
+        let winningSide;
+        if (costBasis.yesShares >= costBasis.noShares) {
+            costXnt = costBasis.yesCostUsd;
+            winningSide = 'YES';
+        } else {
+            costXnt = costBasis.noCostUsd;
+            winningSide = 'NO';
+        }
+
+        const profitXnt = payoutXnt - costXnt;
+
+        // Only award points on positive profit
+        if (profitXnt <= 0) {
+            console.log(`[POINTS] No win points - ${winningSide} payout ${payoutXnt.toFixed(2)} XNT, cost ${costXnt.toFixed(2)} XNT, profit ${profitXnt.toFixed(2)} XNT`);
+            return;
+        }
+
+        // Convert profit to lamports for recordWin
+        const profitLamports = Math.floor(profitXnt * LAMPORTS_PER_XNT);
+        const result = pointsDb.recordWin(masterWallet, profitLamports, txSignature);
         if (result.points > 0) {
-            const xnt = payoutLamports / LAMPORTS_PER_XNT;
-            console.log(`[POINTS] +${result.points} win points to ${masterWallet.slice(0,8)} (${xnt.toFixed(2)} XNT payout)`);
+            console.log(`[POINTS] +${result.points} win points to ${masterWallet.slice(0,8)} (${winningSide} profit: ${profitXnt.toFixed(2)} XNT, payout: ${payoutXnt.toFixed(2)} XNT, cost: ${costXnt.toFixed(2)} XNT)`);
         }
     } catch (err) {
         console.error('[POINTS] Failed to award win points:', err.message);
@@ -643,15 +742,17 @@ async function startMonitoring() {
             // Check for redeem/win events
             const redeemEvent = parseRedeemFromLogs(logs.logs);
             if (redeemEvent && redeemEvent.payoutLamports > 0) {
-                // Get user from transaction
-                let userPubkey = null;
-                try {
-                    const tx = await connection.getTransaction(logs.signature, { maxSupportedTransactionVersion: 0 });
-                    if (tx?.transaction?.message) {
-                        const accountKeys = tx.transaction.message.getAccountKeys();
-                        userPubkey = accountKeys.get(0)?.toString();
-                    }
-                } catch (err) { /* ignore */ }
+                // For AdminRedeem, user is in the log; for regular Redeem, get from transaction
+                let userPubkey = redeemEvent.userFromLog;
+                if (!userPubkey) {
+                    try {
+                        const tx = await connection.getTransaction(logs.signature, { maxSupportedTransactionVersion: 0 });
+                        if (tx?.transaction?.message) {
+                            const accountKeys = tx.transaction.message.getAccountKeys();
+                            userPubkey = accountKeys.get(0)?.toString();
+                        }
+                    } catch (err) { /* ignore */ }
+                }
 
                 if (userPubkey) {
                     awardWinPoints(connection, userPubkey, redeemEvent.payoutLamports, logs.signature);

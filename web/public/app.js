@@ -497,7 +497,7 @@ async function restoreSession() {
         // If we have a cached connection preference but not connected, try to reconnect
         if (cachedAddress) {
             console.log('[Restore] Found cached wallet, attempting auto-reconnect...');
-            addLog('Auto-reconnecting to Backpack...', 'info');
+            addLog('Auto-reconnecting wallet...', 'info');
 
             try {
                 // Attempt silent reconnection
@@ -561,7 +561,7 @@ function setupBackpackAccountListener() {
 
         if (!publicKey) {
             // User disconnected
-            addLog('Backpack disconnected', 'warning');
+            addLog('Wallet disconnected', 'warning');
             disconnectWallet();
             return;
         }
@@ -573,7 +573,7 @@ function setupBackpackAccountListener() {
         }
 
         const newBackpackAddress = publicKey.toString();
-        addLog('Backpack wallet switched to: ' + newBackpackAddress.substring(0, 12) + '...', 'info');
+        addLog('Wallet switched to: ' + newBackpackAddress.substring(0, 12) + '...', 'info');
 
         try {
             // Update backpack wallet reference
@@ -582,8 +582,8 @@ function setupBackpackAccountListener() {
             // Clear old session wallet cache before deriving new one
             clearSessionWalletCache();
 
-            // Re-derive session wallet for the new Backpack wallet
-            addLog('Re-deriving session wallet for new Backpack account...', 'info');
+            // Re-derive session wallet for the new wallet
+            addLog('Re-deriving session wallet for new account...', 'info');
             console.log('[Account Switch] Deriving new session wallet...');
 
             wallet = await deriveSessionWalletFromBackpack(backpackWallet);
@@ -592,7 +592,7 @@ function setupBackpackAccountListener() {
             console.log('[Account Switch] New session wallet:', sessionAddr);
 
             addLog('Switched to session wallet: ' + sessionAddr.substring(0, 12) + '...', 'success');
-            addLog('This is the deterministic session wallet for your new Backpack account', 'info');
+            addLog('This is the deterministic session wallet for your new account', 'info');
 
             // Update cache with new wallet address
             cacheWalletConnection(newBackpackAddress);
@@ -622,22 +622,22 @@ async function connectBackpack() {
 
         if (!window.backpack) {
             console.error('[connectBackpack] Backpack wallet not found in window object');
-            addLog('ERROR: Backpack wallet not found!', 'error');
-            addLog('Please open this page in the Backpack mobile browser', 'info');
-            showError('Backpack wallet not found! Please open in Backpack browser');
+            addLog('ERROR: Wallet not found!', 'error');
+            addLog('Please open this page in a supported wallet browser', 'info');
+            showError('Wallet not found! Please use a supported wallet browser');
             return;
         }
 
         console.log('[connectBackpack] Backpack detected, attempting to connect...');
-        addLog('Connecting to Backpack wallet...', 'info');
-        showStatus('Connecting to Backpack...');
+        addLog('Connecting wallet...', 'info');
+        showStatus('Connecting wallet...');
 
         // Connect Backpack
         const response = await window.backpack.connect();
         backpackWallet = window.backpack;
         const backpackAddress = backpackWallet.publicKey.toString();
 
-        addLog('Backpack connected: ' + backpackAddress.substring(0, 12) + '...', 'success');
+        addLog('Wallet connected: ' + backpackAddress.substring(0, 12) + '...', 'success');
 
         // Derive deterministic session wallet from Backpack signature
         // Same Backpack = Same signature = Same session wallet, ALWAYS!
@@ -652,8 +652,8 @@ async function connectBackpack() {
         console.log('[DEBUG] Session address:', sessionAddr);
 
         addLog('Session wallet: ' + sessionAddr.substring(0, 12) + '...', 'success');
-        addLog('This wallet is deterministically derived from your Backpack signature', 'info');
-        addLog('Same Backpack = Same session wallet, on any device!', 'info');
+        addLog('This wallet is deterministically derived from your wallet signature', 'info');
+        addLog('Same wallet = Same session wallet, on any device!', 'info');
 
         // Cache the wallet connection for auto-reconnect on page navigation
         cacheWalletConnection(backpackAddress);
@@ -677,7 +677,7 @@ async function connectBackpack() {
 
     } catch (err) {
         addLog('Connection failed: ' + err.message, 'error');
-        showError('Failed to connect Backpack: ' + err.message);
+        showError('Failed to connect wallet: ' + err.message);
         console.error(err);
         clearWalletCache(); // Clear cache on connection failure
     }
@@ -860,7 +860,7 @@ async function deriveSessionWalletFromBackpack(backpackWallet) {
         cacheSessionWallet(seed, sessionAddress);
 
         addLog('Session wallet derived from signature (deterministic)', 'success');
-        addLog('Same Backpack = Same session wallet, always!', 'info');
+        addLog('Same wallet = Same session wallet, always!', 'info');
 
         console.log('[DEBUG derive] Returning keypair...');
         return keypair;
@@ -1355,7 +1355,7 @@ Session wallets are stored in your browser and are meant for small amounts only.
 
 Recommendation:
 • Keep < 100 XNT in session wallets
-• Withdraw excess to your Backpack wallet
+• Withdraw excess to your wallet
 • Session wallets are less secure than hardware wallets
 
 This is a temporary wallet for trading only.
@@ -3845,7 +3845,7 @@ async function executeTrade() {
         if (estimatedCost > currentBalance) {
             const shortfall = estimatedCost - currentBalance;
             addLog(`ERROR: Insufficient VAULT balance. Need ${estimatedCost.toFixed(4)} XNT in vault, have ${currentBalance.toFixed(4)} XNT (short ${shortfall.toFixed(4)} XNT)`, 'error');
-            addLog(`💡 TIP: Use the DEPOSIT button to transfer XNT from your Backpack wallet to your trading vault`, 'info');
+            addLog(`💡 TIP: Use the DEPOSIT button to transfer XNT from your wallet to your trading vault`, 'info');
             showError(`Insufficient vault: need ${estimatedCost.toFixed(2)} XNT, have ${currentBalance.toFixed(2)} XNT. Click DEPOSIT.`);
             showToast(
                 'error',
@@ -4601,9 +4601,9 @@ async function withdrawToBackpack() {
         console.log('[withdrawToBackpack] Position PDA:', posPda.toString());
         console.log('[withdrawToBackpack] User Vault PDA:', userVaultPda.toString());
 
-        // SECURITY: Verify Backpack wallet ownership before withdrawal
-        addLog('Requesting Backpack signature for withdrawal verification...', 'info');
-        showStatus('Please sign the verification message in Backpack wallet...');
+        // SECURITY: Verify wallet ownership before withdrawal
+        addLog('Requesting signature for withdrawal verification...', 'info');
+        showStatus('Please sign the verification message in your wallet...');
 
         try {
             const timestamp = Date.now();
@@ -4613,20 +4613,20 @@ async function withdrawToBackpack() {
             const verificationSignature = await backpackWallet.signMessage(encodedMessage);
 
             if (!verificationSignature || verificationSignature.length === 0) {
-                addLog('ERROR: Invalid signature response from Backpack', 'error');
+                addLog('ERROR: Invalid signature response from wallet', 'error');
                 showError('Security error: Invalid signature');
                 return;
             }
 
-            addLog('✓ Backpack wallet verified successfully', 'success');
+            addLog('✓ Wallet verified successfully', 'success');
         } catch (err) {
             addLog('ERROR: User rejected signature or verification failed', 'error');
             showError('Withdrawal cancelled: ' + err.message);
             return;
         }
 
-        addLog(`Withdrawing ${amount.toFixed(4)} XNT from vault to Backpack...`, 'info');
-        showStatus('Withdrawing ' + amount.toFixed(4) + ' XNT from vault to Backpack...');
+        addLog(`Withdrawing ${amount.toFixed(4)} XNT from vault to your wallet...`, 'info');
+        showStatus('Withdrawing ' + amount.toFixed(4) + ' XNT from vault to your wallet...');
 
         // Create withdraw instruction
         const discriminator = await createDiscriminator('withdraw');
@@ -4662,8 +4662,8 @@ async function withdrawToBackpack() {
         // Sign with session wallet first
         tx.sign(wallet);
 
-        addLog('Requesting Backpack signature for withdrawal transaction...', 'info');
-        showStatus('Please approve withdrawal in Backpack wallet...');
+        addLog('Requesting signature for withdrawal transaction...', 'info');
+        showStatus('Please approve withdrawal in your wallet...');
 
         // Then sign with Backpack
         const fullySignedTx = await backpackWallet.signTransaction(tx);
@@ -4678,11 +4678,11 @@ async function withdrawToBackpack() {
         addLog('Confirming transaction...', 'info');
         await connection.confirmTransaction(signature, 'confirmed');
 
-        addLog(`Withdrawal SUCCESS: ${amount.toFixed(4)} XNT transferred from vault to Backpack`, 'success');
+        addLog(`Withdrawal SUCCESS: ${amount.toFixed(4)} XNT transferred from vault to your wallet`, 'success');
         showStatus('Withdrawal success! Tx: ' + signature.substring(0, 16) + '...');
 
         // Show toast notification
-        showToast('success', 'Withdrawal Complete', `${amount.toFixed(4)} XNT transferred to Backpack wallet`);
+        showToast('success', 'Withdrawal Complete', `${amount.toFixed(4)} XNT transferred to your wallet`);
 
         // Clear input and update balance
         document.getElementById('withdrawAmount').value = '';
@@ -5035,7 +5035,7 @@ async function debugInit() {
         addLog(`Wallet balance: ${solBalance.toFixed(4)} XNT`, 'info');
 
         if (solBalance < 0.1) {
-            addLog(`WARNING: Low balance! You need at least 0.1 XNT. Please fund from Backpack wallet.`, 'warning');
+            addLog(`WARNING: Low balance! You need at least 0.1 XNT. Please fund from your wallet.`, 'warning');
             addLog(`Current session wallet: ${wallet.publicKey.toString()}`, 'info');
             return;
         }
