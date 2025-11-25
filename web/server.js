@@ -1269,6 +1269,88 @@ const server = http.createServer((req, res) => {
 
     // ========== End TypeScript API Endpoints ==========
 
+    // ========== Points API Endpoints ==========
+
+    // API: Get points leaderboard
+    if (req.url.startsWith('/api/points/leaderboard') && req.method === 'GET') {
+        try {
+            const { PointsDB } = require('../points/points.js');
+            const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
+            const urlParams = new URL(req.url, `http://${req.headers.host}`);
+            const limit = parseInt(urlParams.searchParams.get('limit')) || 100;
+            const leaderboard = pointsDb.getLeaderboard(limit);
+            pointsDb.close();
+
+            res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify(leaderboard));
+        } catch (err) {
+            console.error('Points leaderboard error:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
+    // API: Get user points
+    if (req.url.startsWith('/api/points/user/') && req.method === 'GET') {
+        try {
+            const { PointsDB } = require('../points/points.js');
+            const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
+            const masterPubkey = req.url.split('/api/points/user/')[1];
+
+            if (!masterPubkey || masterPubkey.length < 32) {
+                res.writeHead(400, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+                res.end(JSON.stringify({ error: 'Invalid pubkey' }));
+                pointsDb.close();
+                return;
+            }
+
+            const user = pointsDb.getUser(masterPubkey);
+            const rank = pointsDb.getUserRank(masterPubkey);
+            pointsDb.close();
+
+            res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify(user ? { ...user, rank } : { total_points: 0, rank: null }));
+        } catch (err) {
+            console.error('Points user error:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
+    // API: Get points stats
+    if (req.url === '/api/points/stats' && req.method === 'GET') {
+        try {
+            const { PointsDB } = require('../points/points.js');
+            const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
+            const stats = pointsDb.getStats();
+            pointsDb.close();
+
+            res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify(stats));
+        } catch (err) {
+            console.error('Points stats error:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+            res.end(JSON.stringify({ error: err.message }));
+        }
+        return;
+    }
+
+    // ========== End Points API Endpoints ==========
+
     // API: Get cumulative volume
     if (req.url === '/api/volume' && req.method === 'GET') {
         // Logging disabled for high-frequency endpoint

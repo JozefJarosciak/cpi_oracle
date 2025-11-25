@@ -1,13 +1,24 @@
 #!/usr/bin/env node
 // Trade Monitor - Listens to all on-chain trades and broadcasts via WebSocket
+// Also tracks points for deposits, trades, and wins
 
 const { Connection, PublicKey } = require('@solana/web3.js');
 const WebSocket = require('ws');
 const fs = require('fs');
+const path = require('path');
+
+// Points system
+const { PointsDB } = require('../points/points.js');
+const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
 
 const RPC_URL = process.env.RPC_URL || 'https://rpc.testnet.x1.xyz';
 const PROGRAM_ID = new PublicKey('EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF');
+const AMM_SEED = Buffer.from('amm_btc_v6');
+const POS_SEED = Buffer.from('pos');
 const WS_PORT = 3435;
+
+// Cache for session wallet -> master wallet mapping
+const masterWalletCache = new Map();
 
 // Trade storage (in-memory only - database is source of truth)
 const MAX_TRADES = 100;
@@ -357,6 +368,133 @@ try {
     console.error('Failed to load chat:', err.message);
 }
 
+// ============= POINTS SYSTEM HELPERS =============
+
+// Conversion constants (must match program)
+const LAMPORTS_PER_E6 = 100;
+const E6_PER_XNT = 10_000_000;
+const LAMPORTS_PER_XNT = E6_PER_XNT * LAMPORTS_PER_E6;
+
+// Get master wallet from position account (with caching)
+async function getMasterWallet(connection, sessionWallet) {
+    if (masterWalletCache.has(sessionWallet)) {
+        return masterWalletCache.get(sessionWallet);
+    }
+
+    try {
+        const sessionPubkey = new PublicKey(sessionWallet);
+        const [ammPda] = PublicKey.findProgramAddressSync([AMM_SEED], PROGRAM_ID);
+        const [posPda] = PublicKey.findProgramAddressSync(
+            [POS_SEED, ammPda.toBuffer(), sessionPubkey.toBuffer()],
+            PROGRAM_ID
+        );
+
+        const posAccount = await connection.getAccountInfo(posPda);
+        if (!posAccount || posAccount.data.length < 8 + 32 + 8 + 8 + 32) {
+            return null;
+        }
+
+        // Position layout: disc(8) + owner(32) + yes_shares(8) + no_shares(8) + master_wallet(32)
+        const masterWallet = new PublicKey(posAccount.data.slice(8 + 32 + 8 + 8, 8 + 32 + 8 + 8 + 32));
+        const masterWalletStr = masterWallet.toString();
+
+        masterWalletCache.set(sessionWallet, masterWalletStr);
+        return masterWalletStr;
+    } catch (err) {
+        console.error(`Failed to get master wallet for ${sessionWallet}:`, err.message);
+        return null;
+    }
+}
+
+// Award points for a trade
+async function awardTradePoints(connection, sessionWallet, sharesE6, side, direction, txSignature) {
+    try {
+        // Check if already processed
+        if (pointsDb.txExists(txSignature)) {
+            return;
+        }
+
+        const masterWallet = await getMasterWallet(connection, sessionWallet);
+        if (!masterWallet) {
+            console.log(`[POINTS] Skipping trade - no master wallet for ${sessionWallet.slice(0,8)}`);
+            return;
+        }
+
+        const result = pointsDb.recordTrade(masterWallet, sharesE6, side, direction, txSignature);
+        if (result.points > 0) {
+            console.log(`[POINTS] +${result.points} trade points to ${masterWallet.slice(0,8)} (${direction} ${side})`);
+        }
+    } catch (err) {
+        console.error('[POINTS] Failed to award trade points:', err.message);
+    }
+}
+
+// Parse deposit events from logs
+function parseDepositFromLogs(logs) {
+    for (const log of logs) {
+        // Look for: "✅ Deposited X lamports"
+        const match = log.match(/Deposited (\d+) lamports/);
+        if (match) {
+            return { amountLamports: parseInt(match[1]) };
+        }
+    }
+    return null;
+}
+
+// Parse redeem/win events from logs
+function parseRedeemFromLogs(logs) {
+    for (const log of logs) {
+        // Look for: "💸 REDEEM pay=X lamports" or "💸 ADMIN_REDEEM user=X pay=Y lamports"
+        const redeemMatch = log.match(/REDEEM pay=(\d+) lamports/);
+        if (redeemMatch) {
+            return { payoutLamports: parseInt(redeemMatch[1]) };
+        }
+        const adminMatch = log.match(/ADMIN_REDEEM user=\S+ pay=(\d+) lamports/);
+        if (adminMatch) {
+            return { payoutLamports: parseInt(adminMatch[1]) };
+        }
+    }
+    return null;
+}
+
+// Award points for deposit
+async function awardDepositPoints(connection, sessionWallet, amountLamports, txSignature) {
+    try {
+        if (pointsDb.txExists(txSignature)) return;
+
+        const masterWallet = await getMasterWallet(connection, sessionWallet);
+        if (!masterWallet) return;
+
+        const result = pointsDb.recordDeposit(masterWallet, amountLamports, txSignature);
+        if (result.points > 0) {
+            const xnt = amountLamports / LAMPORTS_PER_XNT;
+            console.log(`[POINTS] +${result.points} deposit points to ${masterWallet.slice(0,8)} (${xnt.toFixed(2)} XNT)`);
+        }
+    } catch (err) {
+        console.error('[POINTS] Failed to award deposit points:', err.message);
+    }
+}
+
+// Award points for win/redeem
+async function awardWinPoints(connection, sessionWallet, payoutLamports, txSignature) {
+    try {
+        if (pointsDb.txExists(txSignature)) return;
+
+        const masterWallet = await getMasterWallet(connection, sessionWallet);
+        if (!masterWallet) return;
+
+        const result = pointsDb.recordWin(masterWallet, payoutLamports, txSignature);
+        if (result.points > 0) {
+            const xnt = payoutLamports / LAMPORTS_PER_XNT;
+            console.log(`[POINTS] +${result.points} win points to ${masterWallet.slice(0,8)} (${xnt.toFixed(2)} XNT payout)`);
+        }
+    } catch (err) {
+        console.error('[POINTS] Failed to award win points:', err.message);
+    }
+}
+
+// ============= END POINTS SYSTEM =============
+
 // Parse TradeSnapshot event from logs
 function parseTradesFromLogs(logs, signature) {
     // Look for ALL "Program data: " logs which contain base64 encoded events
@@ -466,6 +604,14 @@ async function startMonitoring() {
                         updateUserPosition(trade);
                     }
 
+                    // Award points for trade
+                    if (userPubkey && userPubkey !== 'Unknown') {
+                        const sharesE6 = Math.floor(parseFloat(trade.shares) * 1_000_000);
+                        const side = trade.side.toLowerCase();
+                        const direction = trade.action.toLowerCase();
+                        awardTradePoints(connection, userPubkey, sharesE6, side, direction, logs.signature);
+                    }
+
                     // Broadcast to clients
                     broadcastTrade(trade);
                 }
@@ -473,6 +619,42 @@ async function startMonitoring() {
                 // Log summary if multiple trades (ClosePosition)
                 if (parsedTrades.length > 1) {
                     console.log(`📦 Processed ${parsedTrades.length} trade events from ClosePosition`);
+                }
+            }
+
+            // Check for deposit events (even if no trade)
+            const depositEvent = parseDepositFromLogs(logs.logs);
+            if (depositEvent && depositEvent.amountLamports > 0) {
+                // Get user from transaction
+                let userPubkey = null;
+                try {
+                    const tx = await connection.getTransaction(logs.signature, { maxSupportedTransactionVersion: 0 });
+                    if (tx?.transaction?.message) {
+                        const accountKeys = tx.transaction.message.getAccountKeys();
+                        userPubkey = accountKeys.get(0)?.toString();
+                    }
+                } catch (err) { /* ignore */ }
+
+                if (userPubkey) {
+                    awardDepositPoints(connection, userPubkey, depositEvent.amountLamports, logs.signature);
+                }
+            }
+
+            // Check for redeem/win events
+            const redeemEvent = parseRedeemFromLogs(logs.logs);
+            if (redeemEvent && redeemEvent.payoutLamports > 0) {
+                // Get user from transaction
+                let userPubkey = null;
+                try {
+                    const tx = await connection.getTransaction(logs.signature, { maxSupportedTransactionVersion: 0 });
+                    if (tx?.transaction?.message) {
+                        const accountKeys = tx.transaction.message.getAccountKeys();
+                        userPubkey = accountKeys.get(0)?.toString();
+                    }
+                } catch (err) { /* ignore */ }
+
+                if (userPubkey) {
+                    awardWinPoints(connection, userPubkey, redeemEvent.payoutLamports, logs.signature);
                 }
             }
         },
@@ -486,6 +668,8 @@ async function startMonitoring() {
         console.log('\nShutting down...');
         await connection.removeOnLogsListener(subscriptionId);
         wss.close();
+        pointsDb.close();
+        console.log('Points database closed');
         process.exit(0);
     });
 }

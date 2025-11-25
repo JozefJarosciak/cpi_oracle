@@ -879,7 +879,6 @@ body:not(.debug-mode) .debug-slot-item {
 
 .btn-execute {
     width: 100%;
-    max-width: 280px;
     background: var(--green);
     color: #000;
     border: none;

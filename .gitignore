@@ -19,3 +19,4 @@ nohup.out
 # Local data files
 fees.json
 bal.sh
+points/*.db
