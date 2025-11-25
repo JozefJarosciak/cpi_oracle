@@ -736,7 +736,8 @@
             const sharesInput = document.getElementById('tradeAmountShares');
             const sharesSlider = document.getElementById('sharesSlider');
             if (sharesInput.value) {
-                sharesSlider.value = Math.min(Math.max(sharesInput.value, 1), 500);
+                const maxVal = parseInt(sharesSlider.max) || 500;
+                sharesSlider.value = Math.min(Math.max(sharesInput.value, 0), maxVal);
             }
             // Update the BUY/SELL button text with new amount
             if (typeof updateTradeButton === 'function') {
@@ -787,8 +788,10 @@
                 return;
             }
 
-            // Cap at slider maximum
-            const cappedShares = Math.min(maxShares, 500);
+            // Cap at slider maximum (which is already calculated based on balance)
+            const slider = document.getElementById('sharesSlider');
+            const sliderMax = parseInt(slider?.max) || 500;
+            const cappedShares = Math.min(maxShares, sliderMax);
 
             setShares(cappedShares);
             showToast(`Max shares set: ${cappedShares} (≈${(cappedShares * price).toFixed(2)} XNT)`, 'success');

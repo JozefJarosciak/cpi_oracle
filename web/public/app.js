@@ -1317,6 +1317,9 @@ async function updateWalletBalance() {
         // Set global wallet balance for trading functions
         window.walletBalance = vaultBalance;
 
+        // Update slider max based on new balance
+        updateSliderMax();
+
         // Update nav bar
         if (document.getElementById('navWalletBal')) {
             document.getElementById('navWalletBal').textContent = solBalanceShort;
@@ -1363,6 +1366,47 @@ This is a temporary wallet for trading only.
 
     console.warn(warning);
     addLog(`⚠️ High balance warning: ${balance.toFixed(2)} XNT in session wallet`, 'warning');
+}
+
+// Update shares slider max based on vault balance and current price
+function updateSliderMax() {
+    const slider = document.getElementById('sharesSlider');
+    if (!slider) return;
+
+    const balance = window.walletBalance || 0;
+    if (balance <= 0) {
+        slider.max = 0;
+        return;
+    }
+
+    // Get current price for selected side (currentSide is 'yes' or 'no' lowercase)
+    const side = (typeof currentSide !== 'undefined' ? currentSide : 'yes').toLowerCase();
+    let price = side === 'yes' ? currentYesPrice : currentNoPrice;
+
+    // Fallback to UI if global price not set
+    if (!price || price <= 0) {
+        const priceEl = document.getElementById(side === 'yes' ? 'yesBtnPrice' : 'noBtnPrice');
+        price = priceEl ? parseFloat(priceEl.textContent) : 0.5;
+    }
+
+    if (price <= 0) {
+        slider.max = 500; // Default fallback
+        return;
+    }
+
+    // Calculate max shares with small buffer for fees/slippage
+    const safeBalance = balance * 0.98;
+    const maxShares = Math.floor(safeBalance / price);
+
+    // Cap at reasonable maximum (500) but allow less if balance is low
+    slider.max = Math.min(Math.max(maxShares, 0), 500);
+
+    // Also clamp current value if it exceeds new max
+    if (parseInt(slider.value) > parseInt(slider.max)) {
+        slider.value = slider.max;
+        const input = document.getElementById('tradeAmountShares');
+        if (input) input.value = slider.max;
+    }
 }
 
 // ============= BTC PRICE CHART =============
@@ -2860,6 +2904,9 @@ async function fetchMarketData() {
         if (document.getElementById('noBtnPrice')) {
             document.getElementById('noBtnPrice').textContent = noProb.toFixed(2);
         }
+
+        // Update slider max when prices change
+        updateSliderMax();
 
         // Update vault display (in header)
         // vault_e6 uses LAMPORTS scale: 1 XNT = 10_000_000 e6
@@ -5899,6 +5946,7 @@ function selectOutcome(side) {
     }
     validateSellButtons();
     updateTradeButton();
+    updateSliderMax(); // Update max shares for new side's price
 }
 
 function setShares(shares) {
@@ -5915,7 +5963,8 @@ function addShares(amount) {
     // Update slider if it exists
     const sharesSlider = document.getElementById('sharesSlider');
     if (sharesSlider) {
-        sharesSlider.value = Math.min(Math.max(newShares, 1), 500);
+        const maxVal = parseInt(sharesSlider.max) || 500;
+        sharesSlider.value = Math.min(Math.max(newShares, 0), maxVal);
     }
 
     validateSellButtons();
