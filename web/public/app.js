@@ -5253,7 +5253,11 @@ async function fetchCycleStatus() {
 let lastShownResolutionTimestamp = null;
 
 function updateWinnerBanner(status) {
+    // Winner banner disabled
     const bannerEl = document.getElementById('winnerBanner');
+    if (bannerEl) bannerEl.style.display = 'none';
+    return;
+
     const outcomeEl = document.getElementById('winnerOutcome');
     const reasonEl = document.getElementById('winnerReason');
 
