@@ -36,6 +36,10 @@ export declare class StreamService {
     private readonly statusFilePath;
     constructor(config: StreamServiceConfig);
     /**
+     * Start the price ticker on server startup (runs forever)
+     */
+    private startPriceTicker;
+    /**
      * Initialize SSE response headers
      */
     private initSSE;

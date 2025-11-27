@@ -70,6 +70,32 @@ class StreamService {
         this.enableLogging = config.enableLogging ?? false;
         // Path to market_status.json (one level up from web/)
         this.statusFilePath = path.join(__dirname, '..', '..', '..', 'market_status.json');
+        // Start price ticker immediately on server start
+        this.startPriceTicker();
+    }
+    /**
+     * Start the price ticker on server startup (runs forever)
+     */
+    startPriceTicker() {
+        console.log(`[SSE] 🚀 Starting price ticker on server startup`);
+        let tickCount = 0;
+        this.priceInterval = setInterval(async () => {
+            tickCount++;
+            try {
+                const currentPrice = await this.oracleService.fetchPrice();
+                if (currentPrice) {
+                    if (tickCount % 10 === 0) {
+                        console.log(`[SSE] 📊 Tick #${tickCount}: $${currentPrice.price.toFixed(2)} → ${this.priceClients.size} clients`);
+                    }
+                    if (this.priceClients.size > 0) {
+                        this.broadcastToClients(this.priceClients, 'price', currentPrice);
+                    }
+                }
+            }
+            catch (err) {
+                console.error(`[SSE] ❌ Tick #${tickCount} error:`, err.message);
+            }
+        }, 1000);
     }
     /**
      * Initialize SSE response headers
@@ -102,33 +128,16 @@ class StreamService {
     async addPriceClient(res) {
         this.initSSE(res);
         this.priceClients.add(res);
-        if (this.enableLogging) {
-            console.log(`[StreamService] Price client added (${this.priceClients.size} active)`);
-        }
-        // Send initial data
+        console.log(`[SSE] 🔌 Price client CONNECTED (${this.priceClients.size} active)`);
+        // Send initial price immediately
         const price = await this.oracleService.fetchPrice();
         if (price) {
             this.sendEvent(res, 'price', price);
         }
-        // Start polling if first client
-        if (this.priceClients.size === 1) {
-            this.priceInterval = setInterval(async () => {
-                const currentPrice = await this.oracleService.fetchPrice();
-                if (currentPrice) {
-                    this.broadcastToClients(this.priceClients, 'price', currentPrice);
-                }
-            }, 1000);
-        }
         // Cleanup on disconnect
         res.on('close', () => {
             this.priceClients.delete(res);
-            if (this.enableLogging) {
-                console.log(`[StreamService] Price client removed (${this.priceClients.size} active)`);
-            }
-            if (this.priceClients.size === 0 && this.priceInterval) {
-                clearInterval(this.priceInterval);
-                this.priceInterval = undefined;
-            }
+            console.log(`[SSE] 🔌 Price client DISCONNECTED (${this.priceClients.size} remaining)`);
         });
     }
     /**

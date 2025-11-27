@@ -30,8 +30,8 @@ function logToBuffer(message) {
 }
 
 // Solana Oracle Configuration
-const RPC_URL = 'https://rpc.testnet.x1.xyz';
-const ORACLE_STATE = '4KYeNyv1B9YjjQkfJk2C6Uqo71vKzFZriRe5NXg6GyCq';
+const RPC_URL = 'https://rpc.mainnet.x1.xyz';
+const ORACLE_STATE = 'ErU8byy8jYDZg5NjsF7eacK2khJ7jfUjsoQZ2E28baJA';
 const ORACLE_POLL_INTERVAL = 1000; // 1 second (for real-time UI updates)
 
 // Solana connection
@@ -525,6 +525,173 @@ function getSettlementHistory(limit = 100) {
     }
 }
 
+function getUserStats(userPrefix) {
+    try {
+        // Get settlement stats (wins/losses)
+        const settlementStmt = db.prepare(`
+            SELECT
+                COUNT(*) as total_rounds,
+                SUM(CASE WHEN result = 'WIN' THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result = 'LOSS' THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN result = 'WIN' THEN amount ELSE 0 END) as total_won,
+                SUM(CASE WHEN result = 'LOSS' THEN amount ELSE 0 END) as total_lost,
+                SUM(CASE WHEN result = 'WIN' THEN amount ELSE -amount END) as net_pnl
+            FROM settlement_history
+            WHERE user_prefix = ?
+        `);
+        const settlementStats = settlementStmt.get(userPrefix) || {
+            total_rounds: 0, wins: 0, losses: 0, total_won: 0, total_lost: 0, net_pnl: 0
+        };
+
+        // Get trading stats
+        const tradingStmt = db.prepare(`
+            SELECT
+                COUNT(*) as total_trades,
+                SUM(CASE WHEN action = 'BUY' THEN 1 ELSE 0 END) as buys,
+                SUM(CASE WHEN action = 'SELL' THEN 1 ELSE 0 END) as sells,
+                SUM(CASE WHEN action = 'BUY' THEN cost_usd ELSE 0 END) as total_bought,
+                SUM(CASE WHEN action = 'SELL' THEN cost_usd ELSE 0 END) as total_sold,
+                SUM(shares) as total_shares
+            FROM trading_history
+            WHERE user_prefix = ?
+        `);
+        const tradingStats = tradingStmt.get(userPrefix) || {
+            total_trades: 0, buys: 0, sells: 0, total_bought: 0, total_sold: 0, total_shares: 0
+        };
+
+        // Get recent settlements (last 10)
+        const recentSettlementsStmt = db.prepare(`
+            SELECT * FROM settlement_history
+            WHERE user_prefix = ?
+            ORDER BY timestamp DESC
+            LIMIT 10
+        `);
+        const recentSettlements = recentSettlementsStmt.all(userPrefix);
+
+        return {
+            userPrefix,
+            settlement: {
+                totalRounds: settlementStats.total_rounds || 0,
+                wins: settlementStats.wins || 0,
+                losses: settlementStats.losses || 0,
+                winRate: settlementStats.total_rounds > 0
+                    ? ((settlementStats.wins / settlementStats.total_rounds) * 100).toFixed(1)
+                    : '0.0',
+                totalWon: settlementStats.total_won || 0,
+                totalLost: settlementStats.total_lost || 0,
+                netPnl: settlementStats.net_pnl || 0
+            },
+            trading: {
+                totalTrades: tradingStats.total_trades || 0,
+                buys: tradingStats.buys || 0,
+                sells: tradingStats.sells || 0,
+                totalBought: tradingStats.total_bought || 0,
+                totalSold: tradingStats.total_sold || 0,
+                totalShares: tradingStats.total_shares || 0
+            },
+            recentSettlements
+        };
+    } catch (err) {
+        console.error('Failed to get user stats:', err.message);
+        return null;
+    }
+}
+
+function getSettlementLeaderboard(limit = 100) {
+    try {
+        // Get settlement stats
+        const stmt = db.prepare(`
+            SELECT
+                user_prefix,
+                COUNT(*) as total_rounds,
+                SUM(CASE WHEN result = 'WIN' THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN result = 'WIN' THEN amount ELSE 0 END) as total_won,
+                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN amount ELSE 0 END) as total_lost,
+                SUM(CASE WHEN result = 'WIN' THEN amount ELSE -amount END) as net_pnl
+            FROM settlement_history
+            GROUP BY user_prefix
+        `);
+        const settlements = stmt.all();
+
+        // Create a map of all users keyed by prefix
+        const usersMap = {};
+
+        // Add settlement users
+        for (const s of settlements) {
+            usersMap[s.user_prefix] = {
+                user_prefix: s.user_prefix,
+                total_rounds: s.total_rounds || 0,
+                wins: s.wins || 0,
+                losses: s.losses || 0,
+                total_won: s.total_won || 0,
+                total_lost: s.total_lost || 0,
+                net_pnl: s.net_pnl || 0,
+                total_points: 0,
+                full_pubkey: null
+            };
+        }
+
+        // Try to get points data and merge
+        try {
+            const { PointsDB } = require('../points/points.js');
+            const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
+            const pointsLeaderboard = pointsDb.getLeaderboard(500);
+            pointsDb.close();
+
+            // Merge points into existing users by matching prefix
+            for (const p of pointsLeaderboard) {
+                if (p.master_pubkey.startsWith('TestUser')) continue; // Skip test users
+
+                const pubkey = p.master_pubkey;
+                const prefix = pubkey.slice(0, 6);
+
+                // Try to find matching user by prefix (partial match)
+                let matched = false;
+                for (const userPrefix of Object.keys(usersMap)) {
+                    if (pubkey.startsWith(userPrefix) || userPrefix.startsWith(prefix)) {
+                        // User exists from settlements, add points
+                        usersMap[userPrefix].total_points = (usersMap[userPrefix].total_points || 0) + (p.total_points || 0);
+                        usersMap[userPrefix].full_pubkey = pubkey;
+                        matched = true;
+                        break;
+                    }
+                }
+
+                if (!matched) {
+                    // New user with only points, no settlements
+                    usersMap[prefix] = {
+                        user_prefix: prefix,
+                        total_rounds: 0,
+                        wins: 0,
+                        losses: 0,
+                        total_won: 0,
+                        total_lost: 0,
+                        net_pnl: 0,
+                        total_points: p.total_points || 0,
+                        full_pubkey: pubkey
+                    };
+                }
+            }
+        } catch (pointsErr) {
+            console.warn('Points DB not available:', pointsErr.message);
+        }
+
+        // Convert to array and sort by net_pnl DESC, then by points DESC
+        const result = Object.values(usersMap)
+            .sort((a, b) => {
+                if (b.net_pnl !== a.net_pnl) return b.net_pnl - a.net_pnl;
+                return b.total_points - a.total_points;
+            })
+            .slice(0, limit);
+
+        return result;
+    } catch (err) {
+        console.error('Failed to get settlement leaderboard:', err.message);
+        return [];
+    }
+}
+
 function cleanupOldSettlements() {
     try {
         const cutoffTime = Date.now() - (MAX_SETTLEMENT_HISTORY_HOURS * 60 * 60 * 1000);
@@ -831,7 +998,7 @@ const SECURITY_HEADERS = {
     'X-XSS-Protection': '1; mode=block',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
-    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://rpc.testnet.x1.xyz wss://rpc.testnet.x1.xyz ws://localhost:3435 wss://localhost:3435 http://127.0.0.1:8899 http://localhost:8899; img-src 'self' data:; font-src 'self'"
+    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://rpc.mainnet.x1.xyz wss://rpc.mainnet.x1.xyz https://rpc.testnet.x1.xyz wss://rpc.testnet.x1.xyz ws://localhost:3536 wss://localhost:3536 http://127.0.0.1:8899 http://localhost:8899; img-src 'self' data:; font-src 'self'"
 };
 
 const MIME_TYPES = {
@@ -852,7 +1019,7 @@ const server = http.createServer((req, res) => {
         const targetPath = req.url.replace('/orderbook-api', '');
         const options = {
             hostname: 'localhost',
-            port: 3436,
+            port: 3537,
             path: targetPath,
             method: req.method,
             headers: req.headers
@@ -893,8 +1060,12 @@ const server = http.createServer((req, res) => {
             'Access-Control-Allow-Origin': '*'
         });
 
-        // Send initial batch of recent trades
+        // Send initial batch of recent trades (filtered)
         try {
+            // Filter out keeper/deployer wallets and malformed entries
+            const DEPLOYER_PREFIX = 'AivknD';
+            const KEEPER_PREFIX = 'jqj117';
+
             const stmt = db.prepare(`
                 SELECT
                     user_prefix,
@@ -905,11 +1076,14 @@ const server = http.createServer((req, res) => {
                     avg_price,
                     timestamp
                 FROM trading_history
+                WHERE user_prefix NOT LIKE ? AND user_prefix NOT LIKE ?
+                  AND ABS(shares) <= 1000000 AND ABS(cost_usd) <= 1000000
+                  AND (avg_price >= 0 AND avg_price <= 100)
                 ORDER BY timestamp DESC
                 LIMIT 100
             `);
 
-            const trades = stmt.all().map(row => ({
+            const trades = stmt.all(`${DEPLOYER_PREFIX}%`, `${KEEPER_PREFIX}%`).map(row => ({
                 side: row.side === 'UP' ? 'YES' : 'NO',
                 action: row.action,
                 amount: row.cost_usd.toFixed(4),
@@ -945,6 +1119,10 @@ const server = http.createServer((req, res) => {
             const url = new URL(req.url, `http://${req.headers.host}`);
             const limit = parseInt(url.searchParams.get('limit')) || 100;
 
+            // Filter out keeper/deployer wallets and malformed entries
+            const DEPLOYER_PREFIX = 'AivknD';
+            const KEEPER_PREFIX = 'jqj117';
+
             const stmt = db.prepare(`
                 SELECT
                     user_prefix,
@@ -955,11 +1133,14 @@ const server = http.createServer((req, res) => {
                     avg_price,
                     timestamp
                 FROM trading_history
+                WHERE user_prefix NOT LIKE ? AND user_prefix NOT LIKE ?
+                  AND ABS(shares) <= 1000000 AND ABS(cost_usd) <= 1000000
+                  AND (avg_price >= 0 AND avg_price <= 100)
                 ORDER BY timestamp DESC
                 LIMIT ?
             `);
 
-            const trades = stmt.all(limit).map(row => ({
+            const trades = stmt.all(`${DEPLOYER_PREFIX}%`, `${KEEPER_PREFIX}%`, limit).map(row => ({
                 side: row.side === 'UP' ? 'YES' : 'NO',
                 action: row.action,
                 amount: row.cost_usd.toFixed(4),
@@ -1084,7 +1265,7 @@ const server = http.createServer((req, res) => {
     // ========== TypeScript API Endpoints for proto2 ==========
 
     // TypeScript: Current price endpoint
-    if (req.url === '/api/ts/current-price' && req.method === 'GET') {
+    if (req.url.startsWith('/api/ts/current-price') && req.method === 'GET') {
         (async () => {
             try {
                 const price = await tsApiController.getCurrentPrice();
@@ -1546,7 +1727,7 @@ const server = http.createServer((req, res) => {
     }
 
     // API: Get current BTC price from oracle cache
-    if (req.url === '/api/current-price' && req.method === 'GET') {
+    if (req.url.startsWith('/api/current-price') && req.method === 'GET') {
         logToBuffer(`${logPrefix} 📦 SERVICE: Original JavaScript (cached oracle price)`);
         res.writeHead(200, {
             'Content-Type': 'application/json',
@@ -1688,6 +1869,49 @@ const server = http.createServer((req, res) => {
             ...SECURITY_HEADERS
         });
         res.end(JSON.stringify({ history: history }));
+        return;
+    }
+
+    // API: Get settlement leaderboard (from trading history)
+    if (req.url.startsWith('/api/settlement-leaderboard') && req.method === 'GET') {
+        const urlParams = new URL(req.url, `http://${req.headers.host}`);
+        const limit = parseInt(urlParams.searchParams.get('limit')) || 100;
+        const leaderboard = getSettlementLeaderboard(limit);
+        res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            ...SECURITY_HEADERS
+        });
+        res.end(JSON.stringify(leaderboard));
+        return;
+    }
+
+    // API: Get user stats (combined wins/losses)
+    if (req.url.startsWith('/api/user-stats/') && req.method === 'GET') {
+        const userPrefix = req.url.split('/api/user-stats/')[1];
+        if (userPrefix && userPrefix.length >= 5) {
+            const stats = getUserStats(userPrefix);
+            if (stats) {
+                res.writeHead(200, {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify(stats));
+            } else {
+                res.writeHead(500, {
+                    'Content-Type': 'application/json',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify({ error: 'Failed to fetch user stats' }));
+            }
+        } else {
+            res.writeHead(400, {
+                'Content-Type': 'application/json',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify({ error: 'Invalid user prefix (minimum 5 characters)' }));
+        }
         return;
     }
 
