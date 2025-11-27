@@ -127,6 +127,7 @@
 
                     <div class="modal-actions-secondary">
                         <button class="btn-fund-session" onclick="fundSessionWallet()">Fund Session Wallet</button>
+                        <button class="btn-sweep-session" onclick="sweepSessionWallet()">Sweep Session Wallet</button>
                     </div>
 
                     <div class="deposit-info-section">
@@ -467,30 +468,6 @@
                     </div>
                 </div>
 
-                <!-- Trollbox -->
-                <div class="trollbox-section">
-                    <div class="trollbox-header">
-                        <span class="trollbox-title">CHAT</span>
-                        <span class="trollbox-count" id="chatCount">0</span>
-                    </div>
-                    <div class="trollbox-messages" id="trollboxMessages">
-                        <div class="trollbox-empty">
-                            <span class="empty-icon">💬</span>
-                            <span class="empty-text">No messages yet...</span>
-                        </div>
-                    </div>
-                    <div class="trollbox-input-wrapper">
-                        <input
-                            type="text"
-                            id="trollboxInput"
-                            class="trollbox-input"
-                            placeholder="Type message (max 300 chars)"
-                            maxlength="300"
-                            onkeypress="if(event.key==='Enter') sendChatMessage()"
-                        >
-                        <button class="trollbox-send-btn" onclick="sendChatMessage()">SEND</button>
-                    </div>
-                </div>
             </div>
 
             <!-- Right: Trade Panel -->
@@ -1402,203 +1379,7 @@
             connectTradeStream();
             // NOTE: Order stream disabled - data is already loaded via API calls in loadOpenOrders() and loadFilledOrders()
             // connectOrderStream();
-            setupTrollboxAutoScroll(); // Initialize trollbox auto-scroll
         });
-
-        // Trollbox functions
-        let chatMessages = [];
-        let trollboxAutoScroll = true; // Auto-scroll to newest messages
-
-        // Keep trollbox scrolled to show newest messages
-        function ensureTrollboxScrolledTop() {
-            const messagesDiv = document.getElementById('trollboxMessages');
-            if (messagesDiv && trollboxAutoScroll) {
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            }
-        }
-
-        // Set up auto-scroll observer for trollbox
-        function setupTrollboxAutoScroll() {
-            const messagesDiv = document.getElementById('trollboxMessages');
-            if (!messagesDiv) return;
-
-            // Watch for new messages being added
-            const observer = new MutationObserver(() => {
-                ensureTrollboxScrolledTop();
-            });
-
-            observer.observe(messagesDiv, {
-                childList: true, // Watch for added/removed messages
-                subtree: false
-            });
-
-            // Detect manual scrolling - if user scrolls up to read old messages, pause auto-scroll
-            let scrollTimeout;
-            messagesDiv.addEventListener('scroll', () => {
-                // Check if user is at the bottom (within 10px tolerance)
-                const isAtBottom = messagesDiv.scrollHeight - messagesDiv.scrollTop - messagesDiv.clientHeight < 10;
-
-                if (!isAtBottom) {
-                    // User scrolled up away from bottom
-                    trollboxAutoScroll = false;
-                    clearTimeout(scrollTimeout);
-                    // Re-enable auto-scroll after 5 seconds of no scrolling
-                    scrollTimeout = setTimeout(() => {
-                        trollboxAutoScroll = true;
-                        ensureTrollboxScrolledTop();
-                    }, 5000);
-                } else {
-                    // User is at bottom
-                    trollboxAutoScroll = true;
-                }
-            });
-
-            console.log('Trollbox auto-scroll initialized');
-        }
-
-        // Load chat history - completely rebuild chat UI from sorted messages
-        function loadChatHistory(messages) {
-            const messagesDiv = document.getElementById('trollboxMessages');
-            if (!messagesDiv) return;
-
-            // Store messages in memory
-            chatMessages = messages.slice(-50); // Keep last 50 messages
-
-            // Sort messages by timestamp (oldest to newest) - column-reverse CSS will show newest at top
-            chatMessages.sort((a, b) => a.timestamp - b.timestamp);
-
-            // Clear the chat container completely
-            messagesDiv.innerHTML = '';
-
-            // Build the entire chat HTML in one string
-            let chatHTML = '';
-            chatMessages.forEach(msg => {
-                const timestamp = new Date(msg.timestamp).toLocaleTimeString('en-US', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: false
-                });
-
-                chatHTML += `
-                    <div class="trollbox-message">
-                        <span class="chat-time">${timestamp}</span>
-                        <span class="chat-user">${msg.user}:</span>
-                        <span class="chat-text">${escapeHtml(msg.text)}</span>
-                    </div>
-                `;
-            });
-
-            // Set all messages at once
-            messagesDiv.innerHTML = chatHTML;
-
-            // Update chat count
-            const chatCount = document.getElementById('chatCount');
-            if (chatCount) {
-                chatCount.textContent = chatMessages.length;
-            }
-
-            // Force scroll to bottom
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            trollboxAutoScroll = true;
-
-            console.log(`💬 Chat loaded: ${chatMessages.length} messages, scroll position: ${messagesDiv.scrollTop}, height: ${messagesDiv.scrollHeight}`);
-        }
-
-        function displayChatMessage(msg, shouldScroll = true) {
-            const messagesDiv = document.getElementById('trollboxMessages');
-
-            const emptyState = messagesDiv.querySelector('.trollbox-empty');
-            if (emptyState) {
-                emptyState.remove();
-            }
-
-            const msgDiv = document.createElement('div');
-            msgDiv.className = 'trollbox-message';
-
-            const timestamp = new Date(msg.timestamp).toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            });
-
-            msgDiv.innerHTML = `
-                <span class="chat-time">${timestamp}</span>
-                <span class="chat-user">${msg.user}:</span>
-                <span class="chat-text">${escapeHtml(msg.text)}</span>
-            `;
-
-            messagesDiv.appendChild(msgDiv);
-            // MutationObserver will auto-scroll if trollboxAutoScroll is true
-
-            chatMessages.push(msg);
-
-            const chatCount = document.getElementById('chatCount');
-            if (chatCount) {
-                chatCount.textContent = chatMessages.length;
-            }
-
-            const messages = messagesDiv.querySelectorAll('.trollbox-message');
-            if (messages.length > 100) {
-                messages[0].remove();
-            }
-        }
-
-        function displayChatError(message) {
-            const messagesDiv = document.getElementById('trollboxMessages');
-
-            const msgDiv = document.createElement('div');
-            msgDiv.className = 'trollbox-message trollbox-error';
-            msgDiv.style.color = '#ff5353';
-            msgDiv.style.fontStyle = 'italic';
-
-            const timestamp = new Date().toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            });
-
-            msgDiv.innerHTML = `
-                <span class="chat-time">${timestamp}</span>
-                <span class="chat-text">⚠️ ${escapeHtml(message)}</span>
-            `;
-
-            messagesDiv.appendChild(msgDiv);
-            // MutationObserver will auto-scroll
-
-            setTimeout(() => {
-                if (msgDiv.parentNode) {
-                    msgDiv.remove();
-                }
-            }, 5000);
-        }
-
-        function sendChatMessage() {
-            const input = document.getElementById('trollboxInput');
-            const text = input.value.trim();
-
-            if (!text) return;
-
-            if (!tradeSocket || tradeSocket.readyState !== WebSocket.OPEN) {
-                alert('Not connected to chat server');
-                return;
-            }
-
-            let username = 'Anon';
-            if (wallet && wallet.publicKey) {
-                username = wallet.publicKey.toString().slice(0, 5);
-            }
-
-            tradeSocket.send(JSON.stringify({
-                type: 'chat',
-                user: username,
-                text: text
-            }));
-
-            input.value = '';
-        }
 
         function escapeHtml(text) {
             const div = document.createElement('div');
@@ -1863,6 +1644,112 @@
                 console.error('Fund session wallet error:', err);
                 addLog(`ERROR: Funding failed - ${err.message}`, 'error');
                 showError('Funding failed: ' + err.message);
+            }
+        }
+
+        window.sweepSessionWallet = async function sweepSessionWallet() {
+            console.log('[sweepSessionWallet] Called');
+
+            if (!wallet || !wallet.publicKey || !backpackWallet) {
+                console.log('[sweepSessionWallet] No wallet connected');
+                showError('Wallet not connected');
+                return;
+            }
+
+            try {
+                // Get session wallet balance
+                const sessionBalance = await connection.getBalance(wallet.publicKey);
+
+                // Need to leave enough for:
+                // 1. Transaction fee (~5000 lamports)
+                // 2. Rent exemption for 0-data account (~890880 lamports)
+                // OR we can close the account entirely by sweeping everything and having backpack pay fee
+                const MIN_RENT_EXEMPT = 890880; // Minimum for rent exemption
+                const FEE_RESERVE = 10000; // Transaction fee buffer
+
+                // If balance is very low, nothing to sweep
+                if (sessionBalance <= FEE_RESERVE) {
+                    showError('Session wallet balance too low to sweep');
+                    addLog('Session wallet has insufficient balance to sweep', 'warning');
+                    return;
+                }
+
+                // Read amount from the deposit amount input field
+                const amountInput = document.getElementById('depositAmount');
+                const inputAmount = parseFloat(amountInput.value);
+
+                let sweepAmount;
+                let sweepXNT;
+
+                // Keep 0.1 XNT in session wallet for future TX fees
+                const KEEP_RESERVE = 0.1 * 1e9; // 0.1 XNT = 100,000,000 lamports
+
+                if (inputAmount && inputAmount > 0) {
+                    // User specified an amount
+                    sweepAmount = Math.floor(inputAmount * 1e9);
+
+                    if (sweepAmount > sessionBalance) {
+                        showError(`Insufficient balance. Session wallet has: ${(sessionBalance / 1e9).toFixed(6)} XNT`);
+                        addLog(`Session wallet balance: ${(sessionBalance / 1e9).toFixed(6)} XNT`, 'warning');
+                        return;
+                    }
+
+                    sweepXNT = inputAmount;
+                } else {
+                    // No amount specified - sweep all except 0.1 XNT reserve
+                    if (sessionBalance <= KEEP_RESERVE) {
+                        showError(`Balance too low. Need > 0.1 XNT to sweep (keeping 0.1 XNT for fees)`);
+                        addLog(`Session wallet balance: ${(sessionBalance / 1e9).toFixed(6)} XNT (need > 0.1 XNT)`, 'warning');
+                        return;
+                    }
+                    sweepAmount = sessionBalance - KEEP_RESERVE;
+                    sweepXNT = sweepAmount / 1e9;
+                }
+
+                addLog(`Sweeping ${sweepXNT.toFixed(6)} XNT from session wallet to your wallet...`, 'info');
+
+                // Create SystemProgram transfer from Session wallet to Backpack
+                const sweepIx = solanaWeb3.SystemProgram.transfer({
+                    fromPubkey: wallet.publicKey,          // Source: Session wallet
+                    toPubkey: backpackWallet.publicKey,    // Destination: Master wallet
+                    lamports: sweepAmount
+                });
+
+                // Build transaction - Backpack pays fee so we can sweep entire balance
+                const transaction = new solanaWeb3.Transaction().add(sweepIx);
+                transaction.feePayer = backpackWallet.publicKey;
+                transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+                // Sign with session wallet first (the sender)
+                transaction.partialSign(wallet);
+
+                // Then sign with Backpack wallet (the fee payer)
+                const signedTx = await backpackWallet.signTransaction(transaction);
+
+                // Send transaction
+                const txid = await connection.sendRawTransaction(signedTx.serialize());
+
+                addLog(`Sweep transaction sent: ${txid}`, 'success');
+                addLog('Waiting for confirmation...', 'info');
+
+                await connection.confirmTransaction(txid, 'confirmed');
+
+                addLog(`Swept ${sweepXNT.toFixed(6)} XNT to your wallet!`, 'success');
+
+                // Wait a moment for blockchain state to settle
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                // Refresh balances in the modal
+                if (typeof updateDepositModalBalances === 'function') {
+                    await updateDepositModalBalances();
+                } else {
+                    await openDepositModal();
+                }
+
+            } catch (err) {
+                console.error('Sweep session wallet error:', err);
+                addLog(`ERROR: Sweep failed - ${err.message}`, 'error');
+                showError('Sweep failed: ' + err.message);
             }
         }
 

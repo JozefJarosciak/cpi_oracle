@@ -2805,6 +2805,25 @@ button.disabled {
     transform: none;
 }
 
+/* Sweep Session Button - orange/warning style */
+.btn-sweep-session {
+    background: var(--bg-primary);
+    border: 1px solid #a85;
+    color: #da8;
+    transition: all 0.15s;
+}
+
+.btn-sweep-session:hover {
+    background: rgba(170, 136, 85, 0.1);
+    border-color: #da8;
+    color: #fc9;
+}
+
+.btn-sweep-session:active {
+    background: var(--bg-primary);
+    transform: none;
+}
+
 /* Deposit Info Section */
 .deposit-info-section {
     background: rgba(255, 255, 255, 0.02);

@@ -1330,17 +1330,28 @@ async function updateWalletBalance() {
             document.getElementById('walletBal').textContent = solBalance;
         }
 
-        // Security warning for high balances
+        // Security warning for high balances in SESSION WALLET (not trading account)
+        // Session wallet is for TX fees only, should be small
         const WARNING_THRESHOLD = 100; // 100 XNT
         const lastWarningKey = 'btc_market_balance_warning_shown';
         const lastWarningTime = localStorage.getItem(lastWarningKey);
         const now = Date.now();
 
-        // Show warning if balance > threshold and no warning shown in last 24h
-        if (balanceNum > WARNING_THRESHOLD) {
-            if (!lastWarningTime || (now - parseInt(lastWarningTime)) > 24 * 60 * 60 * 1000) {
-                showBalanceWarning(balanceNum);
-                localStorage.setItem(lastWarningKey, now.toString());
+        // Check actual session wallet on-chain balance (lamports), not trading vault
+        if (wallet && wallet.publicKey) {
+            try {
+                const sessionWalletLamports = await connection.getBalance(wallet.publicKey);
+                const sessionWalletXNT = sessionWalletLamports / 1e9;
+
+                // Show warning if session wallet balance > threshold and no warning shown in last 24h
+                if (sessionWalletXNT > WARNING_THRESHOLD) {
+                    if (!lastWarningTime || (now - parseInt(lastWarningTime)) > 24 * 60 * 60 * 1000) {
+                        showBalanceWarning(sessionWalletXNT);
+                        localStorage.setItem(lastWarningKey, now.toString());
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to check session wallet balance for warning:', err);
             }
         }
     } catch (err) {
