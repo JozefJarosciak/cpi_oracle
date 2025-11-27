@@ -6133,6 +6133,7 @@ function displaySettlementHistory(history) {
             <div class="col-spent">SPENT</div>
             <div class="col-payout">PAYOUT</div>
             <div class="col-profit">PROFIT</div>
+            <div class="col-roi">ROI</div>
         </div>
     `;
 
@@ -6227,6 +6228,22 @@ function displaySettlementHistory(history) {
             profitClass = 'profit-negative';
         }
 
+        // Calculate ROI percentage
+        let roiDisplay = '0%';
+        let roiClass = 'profit-neutral';
+        if (netSpent > 0) {
+            const roiPercent = (profit / netSpent) * 100;
+            if (roiPercent > 0.1) {
+                roiClass = 'profit-positive';
+                roiDisplay = '+' + roiPercent.toFixed(1) + '%';
+            } else if (roiPercent < -0.1) {
+                roiClass = 'profit-negative';
+                roiDisplay = roiPercent.toFixed(1) + '%';
+            } else {
+                roiDisplay = '0%';
+            }
+        }
+
         console.log(`  Display values:`, {
             dateStr,
             timeStr,
@@ -6236,7 +6253,8 @@ function displaySettlementHistory(history) {
             netSpent: netSpent.toFixed(4),
             payout,
             profitDisplay,
-            profitClass
+            profitClass,
+            roiDisplay
         });
 
         const row = document.createElement('div');
@@ -6248,6 +6266,7 @@ function displaySettlementHistory(history) {
             <div class="col-spent">${netSpent.toFixed(4)}</div>
             <div class="col-payout">${payout}</div>
             <div class="col-profit ${profitClass}">${profitDisplay}</div>
+            <div class="col-roi ${roiClass}">${roiDisplay}</div>
         `;
 
         tbody.appendChild(row);

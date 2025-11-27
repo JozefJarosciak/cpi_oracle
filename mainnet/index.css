@@ -3894,6 +3894,25 @@ button.disabled {
     background: rgba(136, 136, 136, 0.1);
 }
 
+.settlement-table-row .col-roi {
+    font-weight: 700;
+    font-size: 11px;
+    text-align: right;
+    padding: 3px 4px;
+    border-radius: 3px;
+    min-width: 50px;
+}
+
+.settlement-table-row .col-roi.profit-positive {
+    color: #00ff88;
+    background: rgba(0, 255, 136, 0.1);
+}
+
+.settlement-table-row .col-roi.profit-negative {
+    color: #ff4444;
+    background: rgba(255, 68, 68, 0.1);
+}
+
 /* ===== TRADING HISTORY TABLE ===== */
 
 .trading-table {
