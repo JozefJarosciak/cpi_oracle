@@ -5249,6 +5249,9 @@ async function fetchCycleStatus() {
     }
 }
 
+// Track which resolution has been shown to prevent multiple timeouts
+let lastShownResolutionTimestamp = null;
+
 function updateWinnerBanner(status) {
     const bannerEl = document.getElementById('winnerBanner');
     const outcomeEl = document.getElementById('winnerOutcome');
@@ -5259,18 +5262,37 @@ function updateWinnerBanner(status) {
     // Show banner if we have lastResolution data and we're in WAITING or PREMARKET state
     if ((status.state === 'WAITING' || status.state === 'PREMARKET') && status.lastResolution) {
         const res = status.lastResolution;
-        const startPrice = res.startPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        const settlePrice = res.settlePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-        const arrow = res.settlePrice > res.startPrice ? '↑' : res.settlePrice < res.startPrice ? '↓' : '→';
+        // Skip if we've already shown this resolution
+        if (res.timestamp && res.timestamp === lastShownResolutionTimestamp) {
+            return; // Already showing/shown this resolution
+        }
+
+        // Validate prices exist and are numbers
+        const startPriceNum = parseFloat(res.startPrice) || 0;
+        const settlePriceNum = parseFloat(res.settlePrice) || 0;
+
+        // Skip if prices are invalid
+        if (startPriceNum <= 0 || settlePriceNum <= 0) {
+            bannerEl.style.display = 'none';
+            return;
+        }
+
+        // Mark this resolution as being shown
+        lastShownResolutionTimestamp = res.timestamp;
+
+        const startPriceStr = startPriceNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const settlePriceStr = settlePriceNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        const arrow = settlePriceNum > startPriceNum ? '↑' : settlePriceNum < startPriceNum ? '↓' : '→';
 
         // Calculate correct winner based on price movement
         // UP or SAME → UP wins, DOWN → DOWN wins
-        const displayWinner = res.settlePrice >= res.startPrice ? 'UP' : 'DOWN';
+        const displayWinner = settlePriceNum >= startPriceNum ? 'UP' : 'DOWN';
 
         // Update banner content - just show winner, no "sideways" text
         outcomeEl.textContent = `${displayWinner} WON`;
-        reasonEl.textContent = `$${startPrice} ${arrow} $${settlePrice}`;
+        reasonEl.textContent = `$${startPriceStr} ${arrow} $${settlePriceStr}`;
 
         // Add appropriate class
         if (displayWinner === 'DOWN') {

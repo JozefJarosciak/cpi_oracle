@@ -40,6 +40,9 @@ const LAMPORTS_PER_XNT = E6_PER_XNT * LAMPORTS_PER_E6; // 1 XNT = 1 billion lamp
 // === STATUS FILE ===
 const STATUS_FILE = "./market_status.json";
 
+// === LAST RESOLUTION (persisted in memory across cycles) ===
+let lastResolution = null;
+
 // === LOG FILE ===
 const LOG_FILE = "./settlement_bot.log";
 
@@ -311,6 +314,10 @@ function writeStatus(status) {
     const nextCycleDate = new Date(status.nextCycleStartTime);
     const timeUntilNext = status.nextCycleStartTime - Date.now();
     logInfo(C.m(`📝 Status Update: ${status.state} | Next cycle: ${formatTime(nextCycleDate)} (${formatCountdown(timeUntilNext)} away)`));
+  }
+  // Include lastResolution if available (for winner banner display)
+  if (lastResolution) {
+    status.lastResolution = lastResolution;
   }
   fs.writeFileSync(STATUS_FILE, JSON.stringify(status, null, 2));
 }
@@ -997,6 +1004,16 @@ async function runCycle(conn, kp, ammPda, vaultPda) {
     logSuccess(C.bold("✓ Market settled! Entering waiting period..."));
     if (marketData) {
       log(`Resolution: ${C.bold(marketData.winningSide)} won (Start: $${marketData.startPrice?.toFixed(2)}, Settle: $${settlePrice?.toFixed(2)})`);
+
+      // Store lastResolution for winner banner display
+      lastResolution = {
+        startPrice: marketData.startPrice || 0,
+        settlePrice: settlePrice || 0,
+        winner: marketData.winner, // 1=YES/UP, 2=NO/DOWN
+        winningSide: marketData.winningSide,
+        timestamp: Date.now()
+      };
+      logInfo(`📊 Stored lastResolution: startPrice=$${lastResolution.startPrice?.toFixed(2)}, settlePrice=$${lastResolution.settlePrice?.toFixed(2)}, winner=${lastResolution.winningSide}`);
     }
 
     // Auto-redeem all positions (prevents locked funds) - pass prices for settlement history
@@ -1235,6 +1252,15 @@ async function main() {
     const settlePrice = await readOraclePrice(conn);
     if (marketData) {
       log(`Resolution: ${C.bold(marketData.winningSide)} won (Start: $${marketData.startPrice?.toFixed(2)}, Settle: $${settlePrice?.toFixed(2)})`);
+
+      // Store lastResolution for winner banner display
+      lastResolution = {
+        startPrice: marketData.startPrice || 0,
+        settlePrice: settlePrice || 0,
+        winner: marketData.winner,
+        winningSide: marketData.winningSide,
+        timestamp: Date.now()
+      };
     }
 
     await autoRedeemAllPositions(conn, kp, ammPda, vaultPda, marketData?.startPrice, settlePrice);
@@ -1339,6 +1365,15 @@ async function forceSettle() {
     log(`  Snapshot price: $${finalMarketData.startPrice?.toFixed(2) || '?'}`);
     log(`  Settle price: $${settlePrice?.toFixed(2) || '?'}`);
     log("");
+
+    // Store lastResolution for winner banner display
+    lastResolution = {
+      startPrice: finalMarketData.startPrice || 0,
+      settlePrice: settlePrice || 0,
+      winner: finalMarketData.winner,
+      winningSide: finalMarketData.winningSide,
+      timestamp: Date.now()
+    };
   }
 
   // Redeem all positions
