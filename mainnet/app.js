@@ -5281,18 +5281,13 @@ function updateWinnerBanner(status) {
         // Mark this resolution as being shown
         lastShownResolutionTimestamp = res.timestamp;
 
-        const startPriceStr = startPriceNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        const settlePriceStr = settlePriceNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-        const arrow = settlePriceNum > startPriceNum ? '↑' : settlePriceNum < startPriceNum ? '↓' : '→';
-
         // Calculate correct winner based on price movement
         // UP or SAME → UP wins, DOWN → DOWN wins
         const displayWinner = settlePriceNum >= startPriceNum ? 'UP' : 'DOWN';
 
-        // Update banner content - just show winner, no "sideways" text
+        // Update banner content - just show winner
         outcomeEl.textContent = `${displayWinner} WON`;
-        reasonEl.textContent = `$${startPriceStr} ${arrow} $${settlePriceStr}`;
+        reasonEl.textContent = '';
 
         // Add appropriate class
         if (displayWinner === 'DOWN') {
