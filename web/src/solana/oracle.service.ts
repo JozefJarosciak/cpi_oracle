@@ -81,8 +81,8 @@ export class OracleService {
       const ts2 = readI64();
       const ts3 = readI64();
 
-      offset += 96; // Skip ETH + SOL triplets (48 bytes each)
-      const decimals = d.readUInt8(offset);
+      // Decimals byte is at end of oracle data (works for both testnet 186 bytes and mainnet 362 bytes)
+      const decimals = d.readUInt8(d.length - 2);
 
       // Calculate median price from triplet
       const medianPrice = this.median3(param1, param2, param3);
