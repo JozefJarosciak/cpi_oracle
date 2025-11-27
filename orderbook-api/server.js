@@ -487,10 +487,11 @@ async function notifyMainServerOfFill(orderData, sharesFilled, executionPrice) {
     const shares = sharesFilled / 10_000_000;
     const price = executionPrice / 1_000_000;
     const costUsd = shares * price;
+    const userPubkey = orderData.user || orderData.user_pubkey;
 
     const data = JSON.stringify({
-      userPrefix: orderData.user_pubkey.slice(0, 6),
-      walletPubkey: orderData.user_pubkey,
+      userPrefix: userPubkey.slice(0, 6),
+      walletPubkey: userPubkey,
       action,
       side,
       shares,
@@ -515,7 +516,7 @@ async function notifyMainServerOfFill(orderData, sharesFilled, executionPrice) {
       res.on('data', (chunk) => body += chunk);
       res.on('end', () => {
         if (res.statusCode === 200) {
-          console.log(`✅ Cost basis updated for ${orderData.user_pubkey.slice(0, 6)}: ${action} ${shares.toFixed(2)} ${side} @ $${price.toFixed(6)}`);
+          console.log(`✅ Cost basis updated for ${userPubkey.slice(0, 6)}: ${action} ${shares.toFixed(2)} ${side} @ $${price.toFixed(6)}`);
         } else {
           console.error(`❌ Failed to update cost basis: ${body}`);
         }

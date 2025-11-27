@@ -506,8 +506,11 @@ function addSettlementHistory(userPrefix, result, amount, side, snapshotPrice = 
 
         const netSpent = totalBuys - totalSells;
 
+        // For losses, use net_spent as the amount (what they lost)
+        const finalAmount = (result === 'LOSE' || result === 'LOSS') ? netSpent : amount;
+
         const stmt = db.prepare('INSERT INTO settlement_history (user_prefix, result, amount, side, timestamp, snapshot_price, settle_price, net_spent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-        stmt.run(userPrefix, result, amount, side, timestamp, snapshotPrice, settlePrice, netSpent);
+        stmt.run(userPrefix, result, finalAmount, side, timestamp, snapshotPrice, settlePrice, netSpent);
         return true;
     } catch (err) {
         console.error('Failed to add settlement:', err.message);
@@ -532,10 +535,10 @@ function getUserStats(userPrefix) {
             SELECT
                 COUNT(*) as total_rounds,
                 SUM(CASE WHEN result = 'WIN' THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result = 'LOSS' THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN 1 ELSE 0 END) as losses,
                 SUM(CASE WHEN result = 'WIN' THEN amount ELSE 0 END) as total_won,
-                SUM(CASE WHEN result = 'LOSS' THEN amount ELSE 0 END) as total_lost,
-                SUM(CASE WHEN result = 'WIN' THEN amount ELSE -amount END) as net_pnl
+                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN COALESCE(net_spent, 0) ELSE 0 END) as total_lost,
+                SUM(CASE WHEN result = 'WIN' THEN amount ELSE -COALESCE(net_spent, 0) END) as net_pnl
             FROM settlement_history
             WHERE user_prefix = ?
         `);
@@ -607,8 +610,8 @@ function getSettlementLeaderboard(limit = 100) {
                 SUM(CASE WHEN result = 'WIN' THEN 1 ELSE 0 END) as wins,
                 SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN 1 ELSE 0 END) as losses,
                 SUM(CASE WHEN result = 'WIN' THEN amount ELSE 0 END) as total_won,
-                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN amount ELSE 0 END) as total_lost,
-                SUM(CASE WHEN result = 'WIN' THEN amount ELSE -amount END) as net_pnl
+                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN COALESCE(net_spent, 0) ELSE 0 END) as total_lost,
+                SUM(CASE WHEN result = 'WIN' THEN amount ELSE -COALESCE(net_spent, 0) END) as net_pnl
             FROM settlement_history
             GROUP BY user_prefix
         `);

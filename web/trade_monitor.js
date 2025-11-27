@@ -15,11 +15,11 @@ const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
 const Database = require('better-sqlite3');
 const priceHistoryDb = new Database(path.join(__dirname, 'price_history.db'), { readonly: true });
 
-const RPC_URL = process.env.RPC_URL || 'https://rpc.testnet.x1.xyz';
+const RPC_URL = process.env.RPC_URL || 'https://rpc.mainnet.x1.xyz';
 const PROGRAM_ID = new PublicKey('EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF');
 const AMM_SEED = Buffer.from('amm_btc_v6');
 const POS_SEED = Buffer.from('pos');
-const WS_PORT = 3435;
+const WS_PORT = 3536;
 
 // Cache for session wallet -> master wallet mapping
 const masterWalletCache = new Map();
@@ -29,7 +29,7 @@ const MAX_TRADES = 100;
 const trades = [];
 
 // Server URL for cumulative volume updates
-const SERVER_URL = 'http://localhost:3434';
+const SERVER_URL = 'http://localhost:3535';
 
 // User position tracking for P&L calculation
 // Structure: { userPubkey: { UP: { shares, totalCost }, DOWN: { shares, totalCost } } }
@@ -180,7 +180,7 @@ async function updateCumulativeVolume(side, amount, shares) {
 
         const options = {
             hostname: 'localhost',
-            port: 3434,
+            port: 3535,
             path: '/api/volume',
             method: 'POST',
             headers: {
@@ -230,7 +230,7 @@ async function addToTradingHistory(userPubkey, action, side, shares, costUsd, av
 
         const options = {
             hostname: 'localhost',
-            port: 3434,
+            port: 3535,
             path: '/api/trading-history',
             method: 'POST',
             headers: {
@@ -322,7 +322,7 @@ async function loadRecentTradesFromDB() {
         const http = require('http');
         const options = {
             hostname: 'localhost',
-            port: 3434,
+            port: 3535,
             path: '/api/recent-trades?limit=100',
             method: 'GET'
         };
@@ -672,14 +672,29 @@ async function startMonitoring() {
 
                 // Skip deployer/keeper wallet trades entirely
                 const DEPLOYER_WALLET = 'AivknDqDUqnvyYVmDViiB2bEHKyUK5HcX91gWL2zgTZ4';
-                if (userPubkey === DEPLOYER_WALLET) {
-                    console.log(`⚠️  Skipping keeper trade: ${parsedTrades.length} events from ${logs.signature.slice(0, 8)}...`);
+                const KEEPER_WALLET = 'jqj117nAKqLepiFkxjAQob4p2ibfBnvJ943J3cryX55';
+                if (userPubkey === DEPLOYER_WALLET || userPubkey === KEEPER_WALLET) {
+                    console.log(`⚠️  Skipping deployer/keeper trade: ${parsedTrades.length} events from ${logs.signature.slice(0, 8)}...`);
                     return;
                 }
 
                 // Process each trade event (ClosePosition can have multiple)
                 for (const trade of parsedTrades) {
                     trade.user = userPubkey;
+
+                    // Validate trade data - skip malformed entries
+                    const shares = parseFloat(trade.shares);
+                    const amount = parseFloat(trade.amount);
+                    const avgPrice = parseFloat(trade.avgPrice);
+
+                    // Skip trades with invalid/unreasonable values
+                    if (isNaN(shares) || isNaN(amount) || isNaN(avgPrice) ||
+                        Math.abs(shares) > 1000000 || Math.abs(amount) > 1000000 ||
+                        avgPrice < 0 || avgPrice > 100 ||
+                        (trade.action !== 'REDEEM' && shares < 0)) {
+                        console.log(`⚠️  Skipping malformed trade: shares=${trade.shares}, amount=${trade.amount}, avgPrice=${trade.avgPrice}`);
+                        continue;
+                    }
 
                     console.log(`${trade.user?.slice(0,5) || 'Unknown'} ${trade.action} ${trade.side}: ${trade.shares} shares @ ${trade.avgPrice} XNT`);
 
