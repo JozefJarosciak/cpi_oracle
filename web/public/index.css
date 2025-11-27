@@ -3779,8 +3779,8 @@ button.disabled {
 
 .settlement-table-header {
     display: grid;
-    grid-template-columns: 90px 65px 75px 75px 75px 75px;
-    gap: 6px;
+    grid-template-columns: 85px 60px 70px 65px 65px 65px 55px;
+    gap: 4px;
     padding: 8px 10px;
     background: var(--bg-tertiary);
     border-bottom: 2px solid var(--border-color);
@@ -3798,12 +3798,9 @@ button.disabled {
 
 .settlement-table-header .col-spent,
 .settlement-table-header .col-payout,
-.settlement-table-header .col-profit {
+.settlement-table-header .col-profit,
+.settlement-table-header .col-roi {
     justify-content: flex-end;
-}
-
-.settlement-table-header .col-profit {
-    margin-left: 10px;
 }
 
 .settlement-table-body {
@@ -3813,8 +3810,8 @@ button.disabled {
 
 .settlement-table-row {
     display: grid;
-    grid-template-columns: 90px 65px 75px 75px 75px 75px;
-    gap: 6px;
+    grid-template-columns: 85px 60px 70px 65px 65px 65px 55px;
+    gap: 4px;
     padding: 7px 10px;
     border-bottom: 1px solid var(--border-color);
     transition: background 0.2s;
