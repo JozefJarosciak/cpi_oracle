@@ -5174,12 +5174,11 @@ async function displaySettledMarketWinner(winner, startPriceE6) {
         const settlePriceStr = settlePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
         const winnerText = winner === 1 ? 'UP' : 'DOWN';
-        const direction = settlePrice > startPrice ? 'UP' : settlePrice < startPrice ? 'DOWN' : 'SIDEWAYS';
         const arrow = settlePrice > startPrice ? '↗' : settlePrice < startPrice ? '↘' : '→';
 
-        // Update banner content
+        // Update banner content - just show winner, no "sideways" text
         outcomeEl.textContent = `${winnerText} WON!`;
-        reasonEl.textContent = `BTC went ${direction}: $${startPriceStr} ${arrow} $${settlePriceStr}`;
+        reasonEl.textContent = `$${startPriceStr} ${arrow} $${settlePriceStr}`;
 
         // Add appropriate class
         if (winner === 2) {
@@ -5189,6 +5188,11 @@ async function displaySettledMarketWinner(winner, startPriceE6) {
         }
 
         bannerEl.style.display = 'block';
+
+        // Hide banner after 5 seconds
+        setTimeout(() => {
+            bannerEl.style.display = 'none';
+        }, 5000);
     } catch (err) {
         console.error('Failed to display winner banner:', err);
     }
@@ -5258,15 +5262,13 @@ function updateWinnerBanner(status) {
         const startPrice = res.startPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const settlePrice = res.settlePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-        // Determine if price went up or down
-        const direction = res.settlePrice > res.startPrice ? 'UP' : res.settlePrice < res.startPrice ? 'DOWN' : 'SIDEWAYS';
         const arrow = res.settlePrice > res.startPrice ? '↑' : res.settlePrice < res.startPrice ? '↓' : '→';
 
         // Calculate correct winner based on price movement
         // UP or SAME → UP wins, DOWN → DOWN wins
         const displayWinner = res.settlePrice >= res.startPrice ? 'UP' : 'DOWN';
 
-        // Update banner content with prices
+        // Update banner content - just show winner, no "sideways" text
         outcomeEl.textContent = `${displayWinner} WON`;
         reasonEl.textContent = `$${startPrice} ${arrow} $${settlePrice}`;
 
@@ -5278,6 +5280,11 @@ function updateWinnerBanner(status) {
         }
 
         bannerEl.style.display = 'block';
+
+        // Hide banner after 5 seconds
+        setTimeout(() => {
+            bannerEl.style.display = 'none';
+        }, 5000);
     } else {
         bannerEl.style.display = 'none';
     }
