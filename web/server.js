@@ -5,7 +5,7 @@ const Database = require('better-sqlite3');
 const { Connection, PublicKey } = require('@solana/web3.js');
 const WebSocket = require('ws');
 
-const PORT = 3434;
+const PORT = 3535;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const STATUS_FILE = path.join(__dirname, '..', 'market_status.json');
 const DB_FILE = path.join(__dirname, 'price_history.db');
@@ -1484,17 +1484,26 @@ const server = http.createServer((req, res) => {
         try {
             const { PointsDB } = require('../points/points.js');
             const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
-            const masterPubkey = req.url.split('/api/points/user/')[1];
+            const pubkeyParam = req.url.split('/api/points/user/')[1];
 
-            if (!masterPubkey || masterPubkey.length < 32) {
+            if (!pubkeyParam || pubkeyParam.length < 6) {
                 res.writeHead(400, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
                 res.end(JSON.stringify({ error: 'Invalid pubkey' }));
                 pointsDb.close();
                 return;
             }
 
-            const user = pointsDb.getUser(masterPubkey);
-            const rank = pointsDb.getUserRank(masterPubkey);
+            // Try exact match first, then prefix match (6 chars)
+            let user = pointsDb.getUser(pubkeyParam);
+            let rank = user ? pointsDb.getUserRank(pubkeyParam) : null;
+
+            // If no exact match, try prefix (first 6 chars) - for session wallet lookup
+            if (!user && pubkeyParam.length >= 6) {
+                const prefix = pubkeyParam.slice(0, 6);
+                user = pointsDb.getUser(prefix);
+                rank = user ? pointsDb.getUserRank(prefix) : null;
+            }
+
             pointsDb.close();
 
             res.writeHead(200, {

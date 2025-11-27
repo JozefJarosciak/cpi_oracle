@@ -451,7 +451,7 @@
 
         .settlement-row {
             display: grid;
-            grid-template-columns: 80px 60px 100px 1fr;
+            grid-template-columns: 60px 50px 110px 70px 1fr;
             padding: 10px 12px;
             background: var(--bg-tertiary);
             border-radius: 4px;
@@ -484,6 +484,14 @@
 
         .settlement-amount.positive { color: var(--green); }
         .settlement-amount.negative { color: var(--red); }
+
+        .settlement-roi {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-weight: 600;
+        }
+
+        .settlement-roi.positive { color: var(--green); }
+        .settlement-roi.negative { color: var(--red); }
 
         .settlement-side {
             color: var(--text-secondary);
@@ -722,15 +730,32 @@
                     const rows = stats.recentSettlements.map(s => {
                         const isWin = s.result === 'WIN';
                         const resultClass = isWin ? 'win' : 'loss';
-                        const amountClass = isWin ? 'positive' : 'negative';
-                        const amountPrefix = isWin ? '+' : '-';
                         const side = s.side === 'YES' ? 'UP' : 'DOWN';
+
+                        // For wins: profit = payout - cost (amount is payout, net_spent is cost)
+                        // For losses: profit = -net_spent (they lost what they put in)
+                        let profit, roi;
+                        if (isWin) {
+                            const payout = s.amount || 0;
+                            const cost = s.net_spent || 0;
+                            profit = payout - cost;
+                            roi = cost > 0 ? ((profit / cost) * 100).toFixed(0) : 0;
+                        } else {
+                            const cost = s.net_spent || s.amount || 0;
+                            profit = -cost;
+                            roi = -100; // Lost everything
+                        }
+
+                        const profitClass = profit >= 0 ? 'positive' : 'negative';
+                        const profitPrefix = profit >= 0 ? '+' : '';
+                        const roiPrefix = roi >= 0 ? '+' : '';
 
                         return `
                             <div class="settlement-row">
                                 <div class="settlement-result ${resultClass}">${s.result}</div>
                                 <div class="settlement-side">${side}</div>
-                                <div class="settlement-amount ${amountClass}">${amountPrefix}${formatXnt(s.amount)} XNT</div>
+                                <div class="settlement-amount ${profitClass}">${profitPrefix}${formatXnt(profit)} XNT</div>
+                                <div class="settlement-roi ${profitClass}">${roiPrefix}${roi}%</div>
                                 <div class="settlement-time">${formatTimeAgo(s.timestamp)}</div>
                             </div>
                         `;

@@ -1,8 +1,8 @@
 // Configuration - Updated for v5 market
 const CONFIG = {
-    RPC_URL: 'https://rpc.testnet.x1.xyz',
+    RPC_URL: 'https://rpc.mainnet.x1.xyz',
     PROGRAM_ID: 'EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF',
-    ORACLE_STATE: '4KYeNyv1B9YjjQkfJk2C6Uqo71vKzFZriRe5NXg6GyCq',
+    ORACLE_STATE: 'ErU8byy8jYDZg5NjsF7eacK2khJ7jfUjsoQZ2E28baJA',
     AMM_SEED: 'amm_btc_v6',  // v6: time-based trading lockout
     LAMPORTS_PER_E6: 100,
     STATUS_URL: '/market_status.json',
@@ -276,7 +276,7 @@ function addLog(message, type = 'info') {
     if (type === 'tx' && message.startsWith('TX: ')) {
         const signature = message.substring(4); // Remove 'TX: ' prefix
         const link = document.createElement('a');
-        link.href = `https://explorer.testnet.x1.xyz/tx/${signature}`;
+        link.href = `https://explorer.mainnet.x1.xyz/tx/${signature}`;
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
         link.textContent = message;
@@ -6718,7 +6718,7 @@ function displayFilledOrders(orders) {
         });
         const txShort = orderData.filled_tx ? orderData.filled_tx.slice(0, 8) + '...' : '-';
         const txLink = orderData.filled_tx
-            ? `https://explorer.testnet.x1.xyz/tx/${orderData.filled_tx}`
+            ? `https://explorer.mainnet.x1.xyz/tx/${orderData.filled_tx}`
             : '#';
 
         const row = document.createElement('div');
@@ -7136,8 +7136,8 @@ async function loadPositions() {
     console.log('[POSITIONS] 🔄 Loading positions for wallet:', walletPubkey);
 
     try {
-        // Fetch ONLY from position API - single source of truth
-        const positionUrl = `https://vero.testnet.x1.xyz/api/position/${walletPubkey}`;
+        // Fetch ONLY from position API - single source of truth (use relative URL for same-origin)
+        const positionUrl = `/api/position/${walletPubkey}`;
         console.log('[POSITIONS] 📡 Fetching:', positionUrl);
 
         const positionResponse = await fetch(positionUrl);
@@ -8280,8 +8280,10 @@ async function fetchUserPoints() {
     }
 
     try {
-        const masterPubkey = backpackWallet.publicKey.toString();
-        const response = await fetch(`/api/points/user/${masterPubkey}`);
+        // Use session wallet for points lookup (points are tracked by session wallet prefix)
+        const cached = getCachedSessionWallet();
+        const sessionPubkey = cached ? cached.address : backpackWallet.publicKey.toString();
+        const response = await fetch(`/api/points/user/${sessionPubkey}`);
 
         if (!response.ok) {
             console.error('[POINTS] Failed to fetch points:', response.status);
@@ -8297,7 +8299,7 @@ async function fetchUserPoints() {
             pointsElement.textContent = formatPointsNumber(points);
         }
 
-        console.log(`[POINTS] User ${masterPubkey.slice(0,6)} has ${points} points`);
+        console.log(`[POINTS] User ${sessionPubkey.slice(0,6)} has ${points} points`);
     } catch (err) {
         console.error('[POINTS] Error fetching points:', err);
     }
