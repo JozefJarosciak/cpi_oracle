@@ -163,7 +163,7 @@
 
         .leaderboard-header {
             display: grid;
-            grid-template-columns: 50px 1fr 100px 120px;
+            grid-template-columns: 50px 1fr 70px 100px 120px;
             padding: 12px 16px;
             background: var(--bg-tertiary);
             border-bottom: 1px solid var(--border-color);
@@ -178,7 +178,7 @@
 
         .leaderboard-row {
             display: grid;
-            grid-template-columns: 50px 1fr 100px 120px;
+            grid-template-columns: 50px 1fr 70px 100px 120px;
             padding: 14px 16px;
             border-bottom: 1px solid var(--border-color);
             align-items: center;
@@ -257,6 +257,13 @@
             color: var(--text-secondary);
         }
 
+        .winrate-col {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-align: right;
+        }
+
         .points-col {
             font-family: 'SF Mono', Monaco, Consolas, monospace;
             font-size: 13px;
@@ -313,7 +320,7 @@
                 grid-template-columns: repeat(2, 1fr);
             }
 
-            .points-col, .pnl-col {
+            .winrate-col, .points-col, .pnl-col {
                 font-size: 12px;
             }
         }
@@ -590,6 +597,7 @@
             <div class="leaderboard-header">
                 <div>Rank</div>
                 <div>Wallet</div>
+                <div style="text-align: right;">Win%</div>
                 <div style="text-align: right;">Points</div>
                 <div style="text-align: right;">Net P&L</div>
             </div>
@@ -798,6 +806,9 @@
                     const pnlClass = netPnl > 0 ? 'positive' : netPnl < 0 ? 'negative' : '';
                     const pnlPrefix = netPnl > 0 ? '+' : '';
                     const points = user.total_points || 0;
+                    const wins = user.wins || 0;
+                    const totalRounds = user.total_rounds || 0;
+                    const winRate = totalRounds > 0 ? ((wins / totalRounds) * 100).toFixed(0) : '0';
 
                     return `
                         <div class="leaderboard-row clickable-row" onclick="selectUser('${user.user_prefix}')">
@@ -805,6 +816,7 @@
                             <div class="wallet-address">
                                 <span class="wallet-link">${user.user_prefix}</span>
                             </div>
+                            <div class="winrate-col">${winRate}%</div>
                             <div class="points-col">${formatNumber(points)}</div>
                             <div class="pnl-col ${pnlClass}">${pnlPrefix}${formatXnt(netPnl)}</div>
                         </div>
