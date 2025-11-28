@@ -474,7 +474,8 @@ function addSettlementHistory(userPrefix, result, amount, side, snapshotPrice = 
         // This ensures we only count trades from the CURRENT market cycle
         let cycleStartTime = 0;
         try {
-            const marketStatus = JSON.parse(fs.readFileSync('./market_status.json', 'utf8'));
+            const marketStatusPath = path.join(__dirname, '..', 'market_status.json');
+            const marketStatus = JSON.parse(fs.readFileSync(marketStatusPath, 'utf8'));
             if (marketStatus && marketStatus.cycleStartTime) {
                 cycleStartTime = marketStatus.cycleStartTime;
                 console.log(`Using market cycle start time: ${cycleStartTime} (${new Date(cycleStartTime).toISOString()})`);
@@ -497,10 +498,16 @@ function addSettlementHistory(userPrefix, result, amount, side, snapshotPrice = 
         // Map side parameter to trading_history side format (YES->UP, NO->DOWN)
         const tradingSide = (side === 'YES') ? 'UP' : (side === 'NO') ? 'DOWN' : side;
 
-        const tradingStmt = db.prepare('SELECT action, cost_usd, shares, side FROM trading_history WHERE user_prefix = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC');
+        const tradingStmt = db.prepare('SELECT action, cost_usd, shares, side, timestamp FROM trading_history WHERE user_prefix = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC');
         const trades = tradingStmt.all(userPrefix, cycleStartTime, timestamp);
 
+        // Debug: Log all trades being summed for this settlement
+        console.log(`📊 Settlement calculation for ${userPrefix}:`);
+        console.log(`   Cycle window: ${new Date(cycleStartTime).toISOString()} to ${new Date(timestamp).toISOString()}`);
+        console.log(`   Found ${trades.length} trades in this cycle:`);
+
         for (const trade of trades) {
+            console.log(`   - ${trade.action} ${trade.side}: ${trade.shares?.toFixed(4) || 0} shares, $${trade.cost_usd?.toFixed(4) || 0} at ${new Date(trade.timestamp).toISOString()}`);
             if (trade.action === 'BUY') {
                 totalBuys += trade.cost_usd;
                 // Only count shares for the settled side
@@ -517,6 +524,7 @@ function addSettlementHistory(userPrefix, result, amount, side, snapshotPrice = 
         }
 
         const netSpent = totalBuys - totalSells;
+        console.log(`   Total: buys=$${totalBuys.toFixed(4)}, sells=$${totalSells.toFixed(4)}, netSpent=$${netSpent.toFixed(4)}, netShares=${netShares.toFixed(4)}`);
 
         // For losses, payout (amount) is 0. net_spent column tracks what they spent.
         const finalAmount = (result === 'LOSE' || result === 'LOSS') ? 0 : amount;

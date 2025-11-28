@@ -2065,6 +2065,11 @@ pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
         assert_fresh(ts)?;
 
         let start = amm.start_price_e6;
+
+        // DEBUG: Log price comparison before determining winner
+        msg!("🔍 SETTLE DEBUG: start_price={} curr_price={} ge_wins_yes={} comparison={}",
+             start, curr_e6, ge_wins_yes, if ge_wins_yes { curr_e6 >= start } else { curr_e6 > start });
+
         let winner = if ge_wins_yes {
             if curr_e6 >= start { 1 } else { 2 }
         } else {
