@@ -562,14 +562,12 @@ function getUserStats(userPrefix) {
             total_trades: 0, buys: 0, sells: 0, total_bought: 0, total_sold: 0, total_shares: 0
         };
 
-        // Get recent settlements (last 10)
-        const recentSettlementsStmt = db.prepare(`
-            SELECT * FROM settlement_history
-            WHERE user_prefix = ?
-            ORDER BY timestamp DESC
-            LIMIT 10
+        // Get total settlement count for this user
+        const countStmt = db.prepare(`
+            SELECT COUNT(*) as total FROM settlement_history WHERE user_prefix = ?
         `);
-        const recentSettlements = recentSettlementsStmt.all(userPrefix);
+        const countResult = countStmt.get(userPrefix);
+        const totalSettlements = countResult ? countResult.total : 0;
 
         return {
             userPrefix,
@@ -592,7 +590,8 @@ function getUserStats(userPrefix) {
                 totalSold: tradingStats.total_sold || 0,
                 totalShares: tradingStats.total_shares || 0
             },
-            recentSettlements
+            totalSettlements,
+            recentSettlements: [] // Fetched separately via pagination API
         };
     } catch (err) {
         console.error('Failed to get user stats:', err.message);
@@ -1923,6 +1922,61 @@ const server = http.createServer((req, res) => {
                 ...SECURITY_HEADERS
             });
             res.end(JSON.stringify({ error: 'Invalid user prefix (minimum 5 characters)' }));
+        }
+        return;
+    }
+
+    // API: Get paginated user settlements
+    if (req.url.startsWith('/api/user-settlements/') && req.method === 'GET') {
+        try {
+            const urlObj = new URL(req.url, `http://${req.headers.host}`);
+            const pathParts = urlObj.pathname.split('/api/user-settlements/')[1];
+            const userPrefix = pathParts ? pathParts.split('?')[0] : null;
+            const offset = parseInt(urlObj.searchParams.get('offset')) || 0;
+            const limit = Math.min(parseInt(urlObj.searchParams.get('limit')) || 50, 100);
+
+            if (!userPrefix || userPrefix.length < 5) {
+                res.writeHead(400, {
+                    'Content-Type': 'application/json',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify({ error: 'Invalid user prefix (minimum 5 characters)' }));
+                return;
+            }
+
+            // Get total count
+            const countStmt = db.prepare('SELECT COUNT(*) as total FROM settlement_history WHERE user_prefix = ?');
+            const countResult = countStmt.get(userPrefix);
+            const total = countResult ? countResult.total : 0;
+
+            // Get paginated settlements
+            const stmt = db.prepare(`
+                SELECT * FROM settlement_history
+                WHERE user_prefix = ?
+                ORDER BY timestamp DESC
+                LIMIT ? OFFSET ?
+            `);
+            const settlements = stmt.all(userPrefix, limit, offset);
+
+            res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify({
+                settlements,
+                total,
+                offset,
+                limit,
+                hasMore: offset + settlements.length < total
+            }));
+        } catch (err) {
+            console.error('Failed to get user settlements:', err.message);
+            res.writeHead(500, {
+                'Content-Type': 'application/json',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify({ error: 'Failed to fetch settlements' }));
         }
         return;
     }

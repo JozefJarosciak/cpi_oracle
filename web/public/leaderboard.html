@@ -508,6 +508,48 @@
             color: var(--text-secondary);
         }
 
+        /* ===== PAGINATION ===== */
+        .pagination-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+        }
+
+        .pagination-info {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .pagination-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .pagination-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 6px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
         /* Custom tooltips - work on hover and click */
         .tooltip {
             position: relative;
@@ -625,6 +667,12 @@
 
     <script>
         const EXPLORER_BASE = 'https://explorer.x1.xyz/address/';
+        const SETTLEMENTS_PER_PAGE = 50;
+
+        // Current user pagination state
+        let currentUserPrefix = null;
+        let currentOffset = 0;
+        let currentTotal = 0;
 
         function formatNumber(n) {
             if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
@@ -662,12 +710,100 @@
             document.getElementById('myStatsSection').style.display = 'none';
         }
 
+        // Render settlement rows
+        function renderSettlementRows(settlements) {
+            return settlements.map(s => {
+                const isWin = s.result === 'WIN';
+                const resultClass = isWin ? 'win' : 'loss';
+                const side = s.side === 'YES' ? 'UP' : 'DOWN';
+
+                // For wins: profit = payout - cost (amount is payout, net_spent is cost)
+                // For losses: profit = -net_spent (they lost what they put in)
+                let profit, roi;
+                if (isWin) {
+                    const payout = s.amount || 0;
+                    const cost = s.net_spent || 0;
+                    profit = payout - cost;
+                    roi = cost > 0 ? ((profit / cost) * 100).toFixed(0) : 0;
+                } else {
+                    const cost = s.net_spent || s.amount || 0;
+                    profit = -cost;
+                    roi = -100; // Lost everything
+                }
+
+                const profitClass = profit >= 0 ? 'positive' : 'negative';
+                const profitPrefix = profit >= 0 ? '+' : '';
+                const roiPrefix = roi >= 0 ? '+' : '';
+
+                return `
+                    <div class="settlement-row">
+                        <div class="settlement-result ${resultClass}">${s.result}</div>
+                        <div class="settlement-side">${side}</div>
+                        <div class="settlement-amount ${profitClass}">${profitPrefix}${formatXnt(profit)} XNT</div>
+                        <div class="settlement-roi ${profitClass}">${roiPrefix}${roi}%</div>
+                        <div class="settlement-time">${formatTimeAgo(s.timestamp)}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Load settlements for current user with pagination
+        async function loadUserSettlements(offset = 0) {
+            if (!currentUserPrefix) return;
+
+            const settlementsDiv = document.getElementById('recentSettlements');
+
+            try {
+                const res = await fetch(`/api/user-settlements/${currentUserPrefix}?offset=${offset}&limit=${SETTLEMENTS_PER_PAGE}`);
+                if (!res.ok) throw new Error('Failed to fetch settlements');
+
+                const data = await res.json();
+                currentOffset = offset;
+                currentTotal = data.total;
+
+                if (data.settlements && data.settlements.length > 0) {
+                    const rows = renderSettlementRows(data.settlements);
+                    const startNum = offset + 1;
+                    const endNum = offset + data.settlements.length;
+                    const hasPrev = offset > 0;
+                    const hasNext = data.hasMore;
+
+                    settlementsDiv.innerHTML = `
+                        <div class="recent-settlements-title">Settlement History</div>
+                        ${rows}
+                        <div class="pagination-controls">
+                            <div class="pagination-info">
+                                Showing ${startNum}-${endNum} of ${data.total} settlements
+                            </div>
+                            <div class="pagination-buttons">
+                                <button class="pagination-btn" onclick="loadUserSettlements(0)" ${!hasPrev ? 'disabled' : ''}>First</button>
+                                <button class="pagination-btn" onclick="loadUserSettlements(${offset - SETTLEMENTS_PER_PAGE})" ${!hasPrev ? 'disabled' : ''}>Previous</button>
+                                <button class="pagination-btn" onclick="loadUserSettlements(${offset + SETTLEMENTS_PER_PAGE})" ${!hasNext ? 'disabled' : ''}>Next</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    settlementsDiv.innerHTML = `
+                        <div class="no-data-message">No settlement history found</div>
+                    `;
+                }
+            } catch (err) {
+                console.error('Failed to load settlements:', err);
+                settlementsDiv.innerHTML = `<div class="no-data-message">Failed to load settlements</div>`;
+            }
+        }
+
         // Select user from leaderboard and show their stats
         async function selectUser(userPrefix) {
             const section = document.getElementById('myStatsSection');
             const statsGrid = document.getElementById('userStatsGrid');
             const settlementsDiv = document.getElementById('recentSettlements');
             const userPrefixEl = document.getElementById('statsUserPrefix');
+
+            // Reset pagination state
+            currentUserPrefix = userPrefix;
+            currentOffset = 0;
+            currentTotal = 0;
 
             // Show section immediately with loading state
             section.style.display = 'block';
@@ -725,51 +861,8 @@
                     </div>
                 `;
 
-                // Build recent settlements
-                if (stats.recentSettlements && stats.recentSettlements.length > 0) {
-                    const rows = stats.recentSettlements.map(s => {
-                        const isWin = s.result === 'WIN';
-                        const resultClass = isWin ? 'win' : 'loss';
-                        const side = s.side === 'YES' ? 'UP' : 'DOWN';
-
-                        // For wins: profit = payout - cost (amount is payout, net_spent is cost)
-                        // For losses: profit = -net_spent (they lost what they put in)
-                        let profit, roi;
-                        if (isWin) {
-                            const payout = s.amount || 0;
-                            const cost = s.net_spent || 0;
-                            profit = payout - cost;
-                            roi = cost > 0 ? ((profit / cost) * 100).toFixed(0) : 0;
-                        } else {
-                            const cost = s.net_spent || s.amount || 0;
-                            profit = -cost;
-                            roi = -100; // Lost everything
-                        }
-
-                        const profitClass = profit >= 0 ? 'positive' : 'negative';
-                        const profitPrefix = profit >= 0 ? '+' : '';
-                        const roiPrefix = roi >= 0 ? '+' : '';
-
-                        return `
-                            <div class="settlement-row">
-                                <div class="settlement-result ${resultClass}">${s.result}</div>
-                                <div class="settlement-side">${side}</div>
-                                <div class="settlement-amount ${profitClass}">${profitPrefix}${formatXnt(profit)} XNT</div>
-                                <div class="settlement-roi ${profitClass}">${roiPrefix}${roi}%</div>
-                                <div class="settlement-time">${formatTimeAgo(s.timestamp)}</div>
-                            </div>
-                        `;
-                    }).join('');
-
-                    settlementsDiv.innerHTML = `
-                        <div class="recent-settlements-title">Recent Settlements</div>
-                        ${rows}
-                    `;
-                } else {
-                    settlementsDiv.innerHTML = `
-                        <div class="no-data-message">No settlement history found</div>
-                    `;
-                }
+                // Load settlements with pagination
+                await loadUserSettlements(0);
 
             } catch (err) {
                 console.error('Failed to lookup user stats:', err);
@@ -861,6 +954,14 @@
 
         // Initial load
         loadData();
+
+        // Check for user parameter in URL (for direct linking from other pages)
+        const urlParams = new URLSearchParams(window.location.search);
+        const userParam = urlParams.get('user');
+        if (userParam) {
+            // Wait for initial load, then select the user
+            setTimeout(() => selectUser(userParam), 100);
+        }
 
         // Auto-refresh every 30 seconds
         setInterval(loadData, 30000);
