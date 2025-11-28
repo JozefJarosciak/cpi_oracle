@@ -6282,7 +6282,7 @@ function displaySettlementHistory(history) {
         row.className = 'settlement-table-row';
         row.innerHTML = `
             <div class="col-time">${dateStr} ${timeStr}</div>
-            <div class="col-user">${item.user_prefix}</div>
+            <div class="col-user"><a href="/leaderboard.html?user=${item.user_prefix}" class="user-link">${item.user_prefix}</a></div>
             <div class="col-btcmove ${btcMoveClass}">${btcMove}</div>
             <div class="col-spent">${netSpent.toFixed(4)}</div>
             <div class="col-payout">${payout}</div>

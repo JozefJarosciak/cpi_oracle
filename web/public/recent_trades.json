@@ -6,8 +6,8 @@
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762321271218,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
+    "timestamp": 1763402177515,
+    "user": "4yPYM5eXqYB64RJe54MZagByns4Zt81ceEgDJagQUkFp"
   },
   {
     "side": "YES",
@@ -16,78 +16,18 @@
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762321935536,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
-  },
-  {
-    "side": "YES",
-    "action": "REDEEM",
-    "amount": "10.2611",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762322600413,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
+    "timestamp": 1763402178316,
+    "user": "61NRSd2F9qw9zjY5rc1FzR5KYnbwc6oVNV2E83MpEdfX"
   },
   {
     "side": "NO",
     "action": "REDEEM",
-    "amount": "0.0000",
+    "amount": "3.0000",
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762323264662,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
-  },
-  {
-    "side": "YES",
-    "action": "REDEEM",
-    "amount": "200.4663",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762324593647,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
-  },
-  {
-    "side": "YES",
-    "action": "REDEEM",
-    "amount": "2.0000",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762355135735,
-    "user": "L6Ve4Yu6FRBND466DTzPnrHJqy9SaNJXbtMSFsYTabc"
-  },
-  {
-    "side": "YES",
-    "action": "REDEEM",
-    "amount": "2.2000",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762357791404,
-    "user": "9Y8bBZzoyynkbicGBhnX7yRQTQHT1eBeacqgNaZJd77G"
-  },
-  {
-    "side": "YES",
-    "action": "REDEEM",
-    "amount": "0.0000",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762365095658,
-    "user": "9Rp2j5GAzpp9dt7A6DraoY8ND9qXKmppL8qDHaDo1S86"
-  },
-  {
-    "side": "YES",
-    "action": "REDEEM",
-    "amount": "0.0000",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762365096444,
-    "user": "DTgHxc6XeqVS1KdGWnt2eyNg5mnciM58ZhNVQhkZE7nF"
+    "timestamp": 1763402179408,
+    "user": "6UP8btBE8pyiMUMJLYNRPuBUvkg7D7mCzoq8qN1SEeHQ"
   },
   {
     "side": "NO",
@@ -96,28 +36,18 @@
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762365097473,
-    "user": "2HM6ux72kADEViear4cbYVMBtnb5FJPuwqtqKLGc7nzX"
+    "timestamp": 1763402180166,
+    "user": "E6is7badxxYvojhLxe2z89FS1FyAmTgXuPynp42AwZFo"
   },
   {
-    "side": "YES",
+    "side": "NO",
     "action": "REDEEM",
-    "amount": "138.6924",
+    "amount": "2.0000",
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762365761451,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
-  },
-  {
-    "side": "YES",
-    "action": "REDEEM",
-    "amount": "0.0000",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762371073571,
-    "user": "6E7DLdh1h5waXrU7WQVorLXoBP6Vj6gNE1qtD9M124JT"
+    "timestamp": 1763402181219,
+    "user": "J9f7WdxcbeneDX2WxDdSXo6rZiECFaUHVvJP2JdTJVnP"
   },
   {
     "side": "YES",
@@ -126,8 +56,48 @@
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762372402644,
-    "user": "EcMSarVseervoMctkbRcfniD77AcV5bHMyXU5eMvEq2B"
+    "timestamp": 1763402182255,
+    "user": "o51WRMEUgstrBxsb9pRZkXddzboqA95FjrAgoNzGLeq"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763402846616,
+    "user": "92FAnUaqVR1y9VnfomuS8NvZ9HKT7yYxpWYtPUeKabmb"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "1.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763402847395,
+    "user": "9NUrt6GBHpDjKY72dtRymjwHgEr6UN4DdDKq3NPUqofM"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.6000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763402848439,
+    "user": "7U8MRMZeSLA5MSFR5zcufRox7mCJUASA5ewqtLcVaANf"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.2000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763402849137,
+    "user": "Hq2JCUhmD3waSi5867r8GgCduCzbXpkFZ3RJ9VZBmBKY"
   },
   {
     "side": "NO",
@@ -136,8 +106,8 @@
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762372403341,
-    "user": "CuUeZUvSfUpGvFyETZ3NCuo8FjYG26Xs5VEaSTib9oen"
+    "timestamp": 1763403513617,
+    "user": "Hq2JCUhmD3waSi5867r8GgCduCzbXpkFZ3RJ9VZBmBKY"
   },
   {
     "side": "YES",
@@ -146,8 +116,68 @@
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762373067686,
-    "user": "EcMSarVseervoMctkbRcfniD77AcV5bHMyXU5eMvEq2B"
+    "timestamp": 1763414138544,
+    "user": "BqAiyiSUu1kkD68DnUxTRp6kqhWfyhpiB2gV7qzMtjqh"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "5.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763414139596,
+    "user": "6cePo5iEvvKTJUUapNRri3r431rTucrP2EmxK3F4ZQyL"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763414804746,
+    "user": "5iAmc9vmjMp1e65u7a9HF8WLhqYbu1ogH6QXeSWbut5g"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "1000.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763414805472,
+    "user": "6cePo5iEvvKTJUUapNRri3r431rTucrP2EmxK3F4ZQyL"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "1000.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763415469588,
+    "user": "6cePo5iEvvKTJUUapNRri3r431rTucrP2EmxK3F4ZQyL"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "1.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763437380594,
+    "user": "3wYEr3AZzrkL5HLzCP1YW1SAgfE8z4wwvuekGZuMgNrn"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "4.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763458629496,
+    "user": "m6STA6TX658WvqDA7HGos67vPP21aLqc4rrkrufMxfw"
   },
   {
     "side": "NO",
@@ -156,78 +186,8 @@
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762373732733,
-    "user": "FEhZvc5oAJ168LmmzhdBrc7BPmyqM3Mh1rjgbLBCsXKn"
-  },
-  {
-    "side": "YES",
-    "action": "REDEEM",
-    "amount": "7.8361",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762373733484,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
-  },
-  {
-    "side": "YES",
-    "action": "REDEEM",
-    "amount": "789.4868",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762373734549,
-    "user": "EcMSarVseervoMctkbRcfniD77AcV5bHMyXU5eMvEq2B"
-  },
-  {
-    "side": "YES",
-    "action": "REDEEM",
-    "amount": "0.0000",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762374399543,
-    "user": "9XL3p8oz6ZR6DQZGuh7msySSY7qjYe79mzFtD8Qjirza"
-  },
-  {
-    "side": "YES",
-    "action": "REDEEM",
-    "amount": "0.0000",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762374400679,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
-  },
-  {
-    "side": "NO",
-    "action": "REDEEM",
-    "amount": "896.0346",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762374401627,
-    "user": "EcMSarVseervoMctkbRcfniD77AcV5bHMyXU5eMvEq2B"
-  },
-  {
-    "side": "YES",
-    "action": "REDEEM",
-    "amount": "0.0000",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762375066628,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
-  },
-  {
-    "side": "NO",
-    "action": "REDEEM",
-    "amount": "999.9471",
-    "shares": "0.00",
-    "avgPrice": "0.0000",
-    "signature": "auto-redeem",
-    "timestamp": 1762375067711,
-    "user": "EcMSarVseervoMctkbRcfniD77AcV5bHMyXU5eMvEq2B"
+    "timestamp": 1763458630540,
+    "user": "CxmDHe8hAQkbgTbbjyFUPdVZZYAVG55gBg6nwUBtYF2S"
   },
   {
     "side": "NO",
@@ -236,28 +196,28 @@
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762375732669,
-    "user": "EcMSarVseervoMctkbRcfniD77AcV5bHMyXU5eMvEq2B"
+    "timestamp": 1763459295753,
+    "user": "CxmDHe8hAQkbgTbbjyFUPdVZZYAVG55gBg6nwUBtYF2S"
   },
   {
     "side": "NO",
     "action": "REDEEM",
-    "amount": "300.0000",
+    "amount": "0.0000",
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762377061701,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
+    "timestamp": 1763459960885,
+    "user": "3wYEr3AZzrkL5HLzCP1YW1SAgfE8z4wwvuekGZuMgNrn"
   },
   {
     "side": "YES",
     "action": "REDEEM",
-    "amount": "20.0000",
+    "amount": "161.0000",
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762377726559,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
+    "timestamp": 1763459961941,
+    "user": "CxmDHe8hAQkbgTbbjyFUPdVZZYAVG55gBg6nwUBtYF2S"
   },
   {
     "side": "YES",
@@ -266,8 +226,8 @@
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762378391436,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
+    "timestamp": 1763460626480,
+    "user": "CxmDHe8hAQkbgTbbjyFUPdVZZYAVG55gBg6nwUBtYF2S"
   },
   {
     "side": "YES",
@@ -276,28 +236,98 @@
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762379055031,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
+    "timestamp": 1763461290544,
+    "user": "CxmDHe8hAQkbgTbbjyFUPdVZZYAVG55gBg6nwUBtYF2S"
   },
   {
     "side": "YES",
     "action": "REDEEM",
-    "amount": "110.0000",
+    "amount": "0.0000",
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762379719636,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
+    "timestamp": 1763471251784,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "1.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763471916527,
+    "user": "FnrtejMWhkvDU8aP6CM4B5jJKvoCCXvCHMVNA6a6sETB"
   },
   {
     "side": "NO",
     "action": "REDEEM",
-    "amount": "201.0000",
+    "amount": "0.0000",
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762380384677,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
+    "timestamp": 1763471917277,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763497148711,
+    "user": "CxmDHe8hAQkbgTbbjyFUPdVZZYAVG55gBg6nwUBtYF2S"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "115.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763497813437,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "141.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763498477657,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "164.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763499806555,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "13.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763556910676,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "23.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763560231409,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
   },
   {
     "side": "YES",
@@ -306,7 +336,667 @@
     "shares": "0.00",
     "avgPrice": "0.0000",
     "signature": "auto-redeem",
-    "timestamp": 1762381049659,
-    "user": "D5nZJGyuqdop8WVVP2vHaBGiG8bpMUWf2cqMFkmWrjP9"
+    "timestamp": 1763582807653,
+    "user": "4XUcvkHtBZ4Z7Qn4sEzHBxKYXvHph3bFNmWZsFPzeBjh"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763582808356,
+    "user": "BuyxNWvehkfsKgYYeKGLRSi26m7tN86nvhXVeUDK843y"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "3.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763582809149,
+    "user": "HXtDh3L36mt2V79DTHDkn3bxNsybS4cHpo1JPQtKyFtU"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "2.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763582809850,
+    "user": "B5oEYgpYh2vB7T9XeugNxAYrs9DFBsTvvk6VZPSYDvE9"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "1.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763584138483,
+    "user": "4XUcvkHtBZ4Z7Qn4sEzHBxKYXvHph3bFNmWZsFPzeBjh"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "1.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763588786696,
+    "user": "BuyxNWvehkfsKgYYeKGLRSi26m7tN86nvhXVeUDK843y"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "16.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763588787694,
+    "user": "4t2wrCvRyRHNnqsxDQEWp9h6UcbnJQD8P24rQXFASPbh"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "1500.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763588788434,
+    "user": "6cePo5iEvvKTJUUapNRri3r431rTucrP2EmxK3F4ZQyL"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "1.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763588789135,
+    "user": "ABNmXE2vq62zPXffFE12LTVe8gE2xed3SDXwRtrhvvAQ"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "2.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763588789944,
+    "user": "78ENtKfjk4tebLJYj9P23bJMhL1CJb6RDwWJwnVgbhd6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "2.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763588791024,
+    "user": "GE9ARz8QkRxxt6CpnVhPPTiyA6pn2ysUrU7Jyi1g7Hyf"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "1500.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763589455416,
+    "user": "6cePo5iEvvKTJUUapNRri3r431rTucrP2EmxK3F4ZQyL"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "3.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763598087761,
+    "user": "8DErDuzmAM6h4d5tgJVHRYZnNm6TiDt3KV5CJXLTdRSE"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763598088519,
+    "user": "FRAY7Qfz2dsk6qyHF3po7KxZE3Sn4WDTrgX275QBFo5P"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763598753765,
+    "user": "6BgxB4H5kyFgcsNx3G1GDTEwQ2vHdJvHMHL2MnBLbHBs"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763598754553,
+    "user": "6GLF7yLtQUxM8ZGErbaQQQdvf6p25poVHLWYwWU7qmEL"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "5.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763598755587,
+    "user": "2waF7zRpLZxvDfLaMFMK2uhR8t97P3o533k2dv78MxX2"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763626643594,
+    "user": "Ewb9n3HjDsZ1ogo4o4fx5ZWUbCJR59r6urS2N7tjZHd6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "79.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763626644305,
+    "user": "4hPnpPoUZNz3ufM7UH6WbnsJhWauuAjkBj2oDjQ9BFSD"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763626645032,
+    "user": "7L5pPUWgH8TBsTJWhkr6V4Rc8QrMYRdasXxbwyacxM1e"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763626645929,
+    "user": "24Nk1QLXDHzFbdT3fy3PSjiNfTmthXfm9m4xPm82Qw47"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763631294512,
+    "user": "4hPnpPoUZNz3ufM7UH6WbnsJhWauuAjkBj2oDjQ9BFSD"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763631959873,
+    "user": "4hPnpPoUZNz3ufM7UH6WbnsJhWauuAjkBj2oDjQ9BFSD"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "31.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763632624610,
+    "user": "4hPnpPoUZNz3ufM7UH6WbnsJhWauuAjkBj2oDjQ9BFSD"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "43.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763641921488,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "83.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763675120439,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763675784509,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763679769530,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "2.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763692387644,
+    "user": "Ca6Xgqn77PXqpadi6Y4wgXyPXYs1zmfnBFvY4eJEovf1"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "43.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763813901417,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "70.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763815229497,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "83.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763815893399,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "3.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763866357637,
+    "user": "HWm7L1LLsAqBWayVpt1UhwvRTnPU31BGdtSzrRcPZ7Vy"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "4.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763866358688,
+    "user": "DiFARue2j6JLJqDWuGK9P1X6HaPJM3MjGPCJyRqf5r8h"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763866359743,
+    "user": "DijchKrS3V88qoR8GoqPkRQADhDPQ1tPHQZu9h32y8DR"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763866360691,
+    "user": "D5CRwGfQpEu1MTRfKueMkvZAEA9MZRzrRxPRVScrR3eS"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "3.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763866361492,
+    "user": "FX428EHgkdU5jsNtiY4XzQwYrbKDmYjStGNXpcNyiRWJ"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "83.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763908192619,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "45.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763908857495,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "85.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763923465581,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763928114446,
+    "user": "6sSrkb2wW6sjPU9x2ZMjDAMSesr7LGpYNED4dxTzz3uy"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "19.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763928115188,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "17.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763928779692,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "43.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763929444662,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "43.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763930109613,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "43.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763931438520,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "26.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763932103673,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "43.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763979246560,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "47.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763980575775,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "58.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763985888693,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "86.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1763986553560,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "30.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764063003552,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764064803543,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "36.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764066603861,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "36.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764068403374,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764072003423,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "58.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764073803460,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "17.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764077403460,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "17.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764081003569,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "129.4538",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764099003396,
+    "user": "aVuLr2twoecnZGWqHFVtRtPM6W5iwSPfHRr9cpp9mMf"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "117.1528",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764100803883,
+    "user": "aVuLr2twoecnZGWqHFVtRtPM6W5iwSPfHRr9cpp9mMf"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "8.5722",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764102603765,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
+  },
+  {
+    "side": "NO",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764104403914,
+    "user": "H9p8Q1uCpDuAZwUC6zLkysBnKVdrRuvaxhk6Av5QLE3r"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "344.4106",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764104404962,
+    "user": "aVuLr2twoecnZGWqHFVtRtPM6W5iwSPfHRr9cpp9mMf"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "7.6759",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764109502624,
+    "user": "3ZVStYMvAD9TmgqQqgw7JBuA2oksvU2AZj1nGzrqGoJy"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "0.0000",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764109803641,
+    "user": "3ZVStYMvAD9TmgqQqgw7JBuA2oksvU2AZj1nGzrqGoJy"
+  },
+  {
+    "side": "YES",
+    "action": "REDEEM",
+    "amount": "16.3052",
+    "shares": "0.00",
+    "avgPrice": "0.0000",
+    "signature": "auto-redeem",
+    "timestamp": 1764111603702,
+    "user": "9BsgxTtbCPN5mVrH9hE6i7JDEgwY73fahpFdgKxG6mw6"
   }
 ]

@@ -1786,11 +1786,15 @@ pub mod cpi_oracle {
         let w = if winner == 1 { amm.q_yes } else { amm.q_no };
         amm.w_total_e6 = w.max(0);
 
-        // pps = min(1e6, floor(vault / W)) with exact integers
+        // pps = min(1e6, floor((vault - reserve) / W)) with exact integers
         let pps_e6 = if amm.w_total_e6 <= 0 {
             0
         } else {
-            let num: i128 = (amm.vault_e6.max(0) as i128) * 1_000_000i128;
+            // CRITICAL FIX: Exclude the 1 XNT reserve from payout pool
+            // This ensures all winners get paid before the reserve kicks in
+            let reserve_e6: i64 = lamports_to_e6(MIN_VAULT_LAMPORTS);
+            let distributable_e6 = (amm.vault_e6 - reserve_e6).max(0);
+            let num: i128 = (distributable_e6 as i128) * 1_000_000i128;
             let den: i128 = amm.w_total_e6 as i128;
             let floored: i64 = (num / den) as i64;
             floored.min(1_000_000)
@@ -2079,7 +2083,11 @@ pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
         let pps_e6 = if amm.w_total_e6 <= 0 {
             0
         } else {
-            let num: i128 = (amm.vault_e6.max(0) as i128) * 1_000_000i128;
+            // CRITICAL FIX: Exclude the 1 XNT reserve from payout pool
+            // This ensures all winners get paid before the reserve kicks in
+            let reserve_e6: i64 = lamports_to_e6(MIN_VAULT_LAMPORTS);
+            let distributable_e6 = (amm.vault_e6 - reserve_e6).max(0);
+            let num: i128 = (distributable_e6 as i128) * 1_000_000i128;
             let den: i128 = amm.w_total_e6 as i128;
             let floored: i64 = (num / den) as i64;
             floored.min(1_000_000)

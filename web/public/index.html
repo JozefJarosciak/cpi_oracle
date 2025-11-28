@@ -1141,7 +1141,7 @@
             row.className = shouldSave ? 'live-table-row fade-in' : 'live-table-row';
             row.innerHTML = `
                 <div class="col-time">${timeStr}</div>
-                <div class="col-user">${shortAddr}</div>
+                <div class="col-user"><a href="/leaderboard.html?user=${shortAddr}" class="user-link">${shortAddr}</a></div>
                 <div class="col-type ${typeClass}">${sideDisplay}</div>
                 <div class="col-direction ${directionClass}">${directionText}</div>
                 <div class="col-price">${avgPrice}</div>
