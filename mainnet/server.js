@@ -489,25 +489,40 @@ function addSettlementHistory(userPrefix, result, amount, side, snapshotPrice = 
             }
         }
 
-        // Calculate total buys, sells, and net spent from trading history WITHIN THIS CYCLE
+        // Calculate total buys, sells, net spent, and shares from trading history WITHIN THIS CYCLE
         let totalBuys = 0;
         let totalSells = 0;
+        let netShares = 0;
 
-        const tradingStmt = db.prepare('SELECT action, cost_usd FROM trading_history WHERE user_prefix = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC');
+        // Map side parameter to trading_history side format (YES->UP, NO->DOWN)
+        const tradingSide = (side === 'YES') ? 'UP' : (side === 'NO') ? 'DOWN' : side;
+
+        const tradingStmt = db.prepare('SELECT action, cost_usd, shares, side FROM trading_history WHERE user_prefix = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC');
         const trades = tradingStmt.all(userPrefix, cycleStartTime, timestamp);
 
         for (const trade of trades) {
             if (trade.action === 'BUY') {
                 totalBuys += trade.cost_usd;
+                // Only count shares for the settled side
+                if (trade.side === tradingSide) {
+                    netShares += trade.shares || 0;
+                }
             } else if (trade.action === 'SELL') {
                 totalSells += trade.cost_usd;
+                // Only count shares for the settled side
+                if (trade.side === tradingSide) {
+                    netShares -= trade.shares || 0;
+                }
             }
         }
 
         const netSpent = totalBuys - totalSells;
 
-        const stmt = db.prepare('INSERT INTO settlement_history (user_prefix, result, amount, side, timestamp, snapshot_price, settle_price, net_spent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-        stmt.run(userPrefix, result, amount, side, timestamp, snapshotPrice, settlePrice, netSpent);
+        // For losses, payout (amount) is 0. net_spent column tracks what they spent.
+        const finalAmount = (result === 'LOSE' || result === 'LOSS') ? 0 : amount;
+
+        const stmt = db.prepare('INSERT INTO settlement_history (user_prefix, result, amount, side, timestamp, snapshot_price, settle_price, net_spent, shares) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        stmt.run(userPrefix, result, finalAmount, side, timestamp, snapshotPrice, settlePrice, netSpent, netShares);
         return true;
     } catch (err) {
         console.error('Failed to add settlement:', err.message);
@@ -521,6 +536,172 @@ function getSettlementHistory(limit = 100) {
         return stmt.all(limit);
     } catch (err) {
         console.error('Failed to get settlement history:', err.message);
+        return [];
+    }
+}
+
+function getUserStats(userPrefix) {
+    try {
+        // Get settlement stats (wins/losses)
+        const settlementStmt = db.prepare(`
+            SELECT
+                COUNT(*) as total_rounds,
+                SUM(CASE WHEN result = 'WIN' THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN result = 'WIN' THEN amount ELSE 0 END) as total_won,
+                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN COALESCE(net_spent, 0) ELSE 0 END) as total_lost,
+                SUM(CASE WHEN result = 'WIN' THEN amount ELSE -COALESCE(net_spent, 0) END) as net_pnl
+            FROM settlement_history
+            WHERE user_prefix = ?
+        `);
+        const settlementStats = settlementStmt.get(userPrefix) || {
+            total_rounds: 0, wins: 0, losses: 0, total_won: 0, total_lost: 0, net_pnl: 0
+        };
+
+        // Get trading stats
+        const tradingStmt = db.prepare(`
+            SELECT
+                COUNT(*) as total_trades,
+                SUM(CASE WHEN action = 'BUY' THEN 1 ELSE 0 END) as buys,
+                SUM(CASE WHEN action = 'SELL' THEN 1 ELSE 0 END) as sells,
+                SUM(CASE WHEN action = 'BUY' THEN cost_usd ELSE 0 END) as total_bought,
+                SUM(CASE WHEN action = 'SELL' THEN cost_usd ELSE 0 END) as total_sold,
+                SUM(shares) as total_shares
+            FROM trading_history
+            WHERE user_prefix = ?
+        `);
+        const tradingStats = tradingStmt.get(userPrefix) || {
+            total_trades: 0, buys: 0, sells: 0, total_bought: 0, total_sold: 0, total_shares: 0
+        };
+
+        // Get total settlement count for this user
+        const countStmt = db.prepare(`
+            SELECT COUNT(*) as total FROM settlement_history WHERE user_prefix = ?
+        `);
+        const countResult = countStmt.get(userPrefix);
+        const totalSettlements = countResult ? countResult.total : 0;
+
+        return {
+            userPrefix,
+            settlement: {
+                totalRounds: settlementStats.total_rounds || 0,
+                wins: settlementStats.wins || 0,
+                losses: settlementStats.losses || 0,
+                winRate: settlementStats.total_rounds > 0
+                    ? ((settlementStats.wins / settlementStats.total_rounds) * 100).toFixed(1)
+                    : '0.0',
+                totalWon: settlementStats.total_won || 0,
+                totalLost: settlementStats.total_lost || 0,
+                netPnl: settlementStats.net_pnl || 0
+            },
+            trading: {
+                totalTrades: tradingStats.total_trades || 0,
+                buys: tradingStats.buys || 0,
+                sells: tradingStats.sells || 0,
+                totalBought: tradingStats.total_bought || 0,
+                totalSold: tradingStats.total_sold || 0,
+                totalShares: tradingStats.total_shares || 0
+            },
+            totalSettlements,
+            recentSettlements: [] // Fetched separately via pagination API
+        };
+    } catch (err) {
+        console.error('Failed to get user stats:', err.message);
+        return null;
+    }
+}
+
+function getSettlementLeaderboard(limit = 100) {
+    try {
+        // Get settlement stats
+        const stmt = db.prepare(`
+            SELECT
+                user_prefix,
+                COUNT(*) as total_rounds,
+                SUM(CASE WHEN result = 'WIN' THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN result = 'WIN' THEN amount ELSE 0 END) as total_won,
+                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN COALESCE(net_spent, 0) ELSE 0 END) as total_lost,
+                SUM(CASE WHEN result = 'WIN' THEN amount ELSE -COALESCE(net_spent, 0) END) as net_pnl
+            FROM settlement_history
+            GROUP BY user_prefix
+        `);
+        const settlements = stmt.all();
+
+        // Create a map of all users keyed by prefix
+        const usersMap = {};
+
+        // Add settlement users
+        for (const s of settlements) {
+            usersMap[s.user_prefix] = {
+                user_prefix: s.user_prefix,
+                total_rounds: s.total_rounds || 0,
+                wins: s.wins || 0,
+                losses: s.losses || 0,
+                total_won: s.total_won || 0,
+                total_lost: s.total_lost || 0,
+                net_pnl: s.net_pnl || 0,
+                total_points: 0,
+                full_pubkey: null
+            };
+        }
+
+        // Try to get points data and merge
+        try {
+            const { PointsDB } = require('../points/points.js');
+            const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
+            const pointsLeaderboard = pointsDb.getLeaderboard(500);
+            pointsDb.close();
+
+            // Merge points into existing users by matching prefix
+            for (const p of pointsLeaderboard) {
+                if (p.master_pubkey.startsWith('TestUser')) continue; // Skip test users
+
+                const pubkey = p.master_pubkey;
+                const prefix = pubkey.slice(0, 6);
+
+                // Try to find matching user by prefix (partial match)
+                let matched = false;
+                for (const userPrefix of Object.keys(usersMap)) {
+                    if (pubkey.startsWith(userPrefix) || userPrefix.startsWith(prefix)) {
+                        // User exists from settlements, add points
+                        usersMap[userPrefix].total_points = (usersMap[userPrefix].total_points || 0) + (p.total_points || 0);
+                        usersMap[userPrefix].full_pubkey = pubkey;
+                        matched = true;
+                        break;
+                    }
+                }
+
+                if (!matched) {
+                    // New user with only points, no settlements
+                    usersMap[prefix] = {
+                        user_prefix: prefix,
+                        total_rounds: 0,
+                        wins: 0,
+                        losses: 0,
+                        total_won: 0,
+                        total_lost: 0,
+                        net_pnl: 0,
+                        total_points: p.total_points || 0,
+                        full_pubkey: pubkey
+                    };
+                }
+            }
+        } catch (pointsErr) {
+            console.warn('Points DB not available:', pointsErr.message);
+        }
+
+        // Convert to array and sort by net_pnl DESC, then by points DESC
+        const result = Object.values(usersMap)
+            .sort((a, b) => {
+                if (b.net_pnl !== a.net_pnl) return b.net_pnl - a.net_pnl;
+                return b.total_points - a.total_points;
+            })
+            .slice(0, limit);
+
+        return result;
+    } catch (err) {
+        console.error('Failed to get settlement leaderboard:', err.message);
         return [];
     }
 }
@@ -831,7 +1012,7 @@ const SECURITY_HEADERS = {
     'X-XSS-Protection': '1; mode=block',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
-    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://rpc.mainnet.x1.xyz wss://rpc.mainnet.x1.xyz https://vero.mainnet.x1.xyz https://explorer.mainnet.x1.xyz ws://localhost:3536 wss://localhost:3536 http://127.0.0.1:8899 http://localhost:8899; img-src 'self' data:; font-src 'self'"
+    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://rpc.mainnet.x1.xyz wss://rpc.mainnet.x1.xyz https://rpc.testnet.x1.xyz wss://rpc.testnet.x1.xyz ws://localhost:3536 wss://localhost:3536 http://127.0.0.1:8899 http://localhost:8899; img-src 'self' data:; font-src 'self'"
 };
 
 const MIME_TYPES = {
@@ -1314,17 +1495,26 @@ const server = http.createServer((req, res) => {
         try {
             const { PointsDB } = require('../points/points.js');
             const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
-            const masterPubkey = req.url.split('/api/points/user/')[1];
+            const pubkeyParam = req.url.split('/api/points/user/')[1];
 
-            if (!masterPubkey || masterPubkey.length < 32) {
+            if (!pubkeyParam || pubkeyParam.length < 6) {
                 res.writeHead(400, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
                 res.end(JSON.stringify({ error: 'Invalid pubkey' }));
                 pointsDb.close();
                 return;
             }
 
-            const user = pointsDb.getUser(masterPubkey);
-            const rank = pointsDb.getUserRank(masterPubkey);
+            // Try exact match first, then prefix match (6 chars)
+            let user = pointsDb.getUser(pubkeyParam);
+            let rank = user ? pointsDb.getUserRank(pubkeyParam) : null;
+
+            // If no exact match, try prefix (first 6 chars) - for session wallet lookup
+            if (!user && pubkeyParam.length >= 6) {
+                const prefix = pubkeyParam.slice(0, 6);
+                user = pointsDb.getUser(prefix);
+                rank = user ? pointsDb.getUserRank(prefix) : null;
+            }
+
             pointsDb.close();
 
             res.writeHead(200, {
@@ -1705,6 +1895,104 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // API: Get settlement leaderboard (from trading history)
+    if (req.url.startsWith('/api/settlement-leaderboard') && req.method === 'GET') {
+        const urlParams = new URL(req.url, `http://${req.headers.host}`);
+        const limit = parseInt(urlParams.searchParams.get('limit')) || 100;
+        const leaderboard = getSettlementLeaderboard(limit);
+        res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            ...SECURITY_HEADERS
+        });
+        res.end(JSON.stringify(leaderboard));
+        return;
+    }
+
+    // API: Get user stats (combined wins/losses)
+    if (req.url.startsWith('/api/user-stats/') && req.method === 'GET') {
+        const userPrefix = req.url.split('/api/user-stats/')[1];
+        if (userPrefix && userPrefix.length >= 5) {
+            const stats = getUserStats(userPrefix);
+            if (stats) {
+                res.writeHead(200, {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify(stats));
+            } else {
+                res.writeHead(500, {
+                    'Content-Type': 'application/json',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify({ error: 'Failed to fetch user stats' }));
+            }
+        } else {
+            res.writeHead(400, {
+                'Content-Type': 'application/json',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify({ error: 'Invalid user prefix (minimum 5 characters)' }));
+        }
+        return;
+    }
+
+    // API: Get paginated user settlements
+    if (req.url.startsWith('/api/user-settlements/') && req.method === 'GET') {
+        try {
+            const urlObj = new URL(req.url, `http://${req.headers.host}`);
+            const pathParts = urlObj.pathname.split('/api/user-settlements/')[1];
+            const userPrefix = pathParts ? pathParts.split('?')[0] : null;
+            const offset = parseInt(urlObj.searchParams.get('offset')) || 0;
+            const limit = Math.min(parseInt(urlObj.searchParams.get('limit')) || 50, 100);
+
+            if (!userPrefix || userPrefix.length < 5) {
+                res.writeHead(400, {
+                    'Content-Type': 'application/json',
+                    ...SECURITY_HEADERS
+                });
+                res.end(JSON.stringify({ error: 'Invalid user prefix (minimum 5 characters)' }));
+                return;
+            }
+
+            // Get total count
+            const countStmt = db.prepare('SELECT COUNT(*) as total FROM settlement_history WHERE user_prefix = ?');
+            const countResult = countStmt.get(userPrefix);
+            const total = countResult ? countResult.total : 0;
+
+            // Get paginated settlements
+            const stmt = db.prepare(`
+                SELECT * FROM settlement_history
+                WHERE user_prefix = ?
+                ORDER BY timestamp DESC
+                LIMIT ? OFFSET ?
+            `);
+            const settlements = stmt.all(userPrefix, limit, offset);
+
+            res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify({
+                settlements,
+                total,
+                offset,
+                limit,
+                hasMore: offset + settlements.length < total
+            }));
+        } catch (err) {
+            console.error('Failed to get user settlements:', err.message);
+            res.writeHead(500, {
+                'Content-Type': 'application/json',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify({ error: 'Failed to fetch settlements' }));
+        }
+        return;
+    }
+
     // API: Add settlement to history
     if (req.url === '/api/settlement-history' && req.method === 'POST') {
         let body = '';
@@ -1998,24 +2286,28 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // Route handling
+    // Route handling - strip query params for static file serving
+    const urlPath = req.url.split('?')[0];
     let filePath;
-    if (req.url === '/') {
+    if (urlPath === '/') {
         filePath = '/index.html';
-    } else if (req.url === '/hl' || req.url === '/hyperliquid') {
+    } else if (urlPath === '/hl' || urlPath === '/hyperliquid') {
         filePath = '/index.html';
-    } else if (req.url === '/proto1') {
+    } else if (urlPath === '/proto1') {
         filePath = '/index.html';
-    } else if (req.url === '/index') {
+    } else if (urlPath === '/index') {
         filePath = '/index.html';
-    } else if (req.url === '/proto1-original') {
+    } else if (urlPath === '/proto1-original') {
         filePath = '/proto1_original.html';
-    } else if (req.url === '/proto2') {
+    } else if (urlPath === '/proto2') {
         filePath = '/proto2.html';
-    } else if (req.url === '/logs') {
+    } else if (urlPath === '/logs') {
         filePath = '/logs.html';
+    } else if (urlPath.startsWith('/leaderboard/') && !urlPath.includes('.')) {
+        // Clean URL: /leaderboard/USERNAME -> serve leaderboard.html (JS reads username from path)
+        filePath = '/leaderboard.html';
     } else {
-        filePath = req.url;
+        filePath = urlPath;
     }
     filePath = path.join(PUBLIC_DIR, filePath);
 

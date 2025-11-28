@@ -5253,7 +5253,11 @@ async function fetchCycleStatus() {
 let lastShownResolutionTimestamp = null;
 
 function updateWinnerBanner(status) {
+    // Winner banner disabled
     const bannerEl = document.getElementById('winnerBanner');
+    if (bannerEl) bannerEl.style.display = 'none';
+    return;
+
     const outcomeEl = document.getElementById('winnerOutcome');
     const reasonEl = document.getElementById('winnerReason');
 
@@ -5731,8 +5735,8 @@ function updateCycleDisplay(status) {
             const now = new Date();
 
             // If the next cycle start time is in the past, calculate the next future occurrence
-            // Market cycles are 15 minutes (900000ms)
-            const CYCLE_DURATION = 15 * 60 * 1000; // 15 minutes in milliseconds
+            // Market cycles are 5 minutes (300000ms)
+            const CYCLE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
             while (nextStartTime <= now) {
                 nextStartTime = new Date(nextStartTime.getTime() + CYCLE_DURATION);
             }
@@ -5764,8 +5768,8 @@ function updateCycleDisplay(status) {
             const now = new Date();
 
             // If the next cycle start time is in the past, calculate the next future occurrence
-            // Market cycles are 15 minutes (900000ms)
-            const CYCLE_DURATION = 15 * 60 * 1000; // 15 minutes in milliseconds
+            // Market cycles are 5 minutes (300000ms)
+            const CYCLE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
             while (nextStartTime <= now) {
                 nextStartTime = new Date(nextStartTime.getTime() + CYCLE_DURATION);
             }
@@ -6146,8 +6150,10 @@ function displaySettlementHistory(history) {
         <div class="settlement-table-header">
             <div class="col-time">TIME</div>
             <div class="col-user">USER</div>
+            <div class="col-market">MARKET</div>
             <div class="col-btcmove">BTC MOVE</div>
             <div class="col-spent">SPENT</div>
+            <div class="col-shares">SHARES</div>
             <div class="col-payout">PAYOUT</div>
             <div class="col-profit">PROFIT</div>
             <div class="col-roi">ROI</div>
@@ -6235,6 +6241,24 @@ function displaySettlementHistory(history) {
             }
         }
 
+        // Determine which side won the market (based on BTC movement)
+        let marketWinner = '?';
+        let marketWinnerClass = 'market-unknown';
+        if (item.snapshot_price && item.settle_price) {
+            const snapshotPrice = parseFloat(item.snapshot_price);
+            const settlePrice = parseFloat(item.settle_price);
+            if (settlePrice > snapshotPrice) {
+                marketWinner = '↑ UP';
+                marketWinnerClass = 'market-up';
+            } else if (settlePrice < snapshotPrice) {
+                marketWinner = '↓ DOWN';
+                marketWinnerClass = 'market-down';
+            } else {
+                marketWinner = '→ FLAT';
+                marketWinnerClass = 'market-flat';
+            }
+        }
+
         // Format profit/loss with color
         let profitClass = 'profit-neutral';
         let profitDisplay = profit.toFixed(2);
@@ -6274,13 +6298,19 @@ function displaySettlementHistory(history) {
             roiDisplay
         });
 
+        // Format shares with side indicator (UP/DOWN)
+        const shares = parseFloat(item.shares || 0);
+        const sharesDisplay = shares > 0 ? `${shares.toFixed(2)} ${sideDisplay}` : '-';
+
         const row = document.createElement('div');
         row.className = 'settlement-table-row';
         row.innerHTML = `
             <div class="col-time">${dateStr} ${timeStr}</div>
-            <div class="col-user">${item.user_prefix}</div>
+            <div class="col-user"><a href="/leaderboard/${item.user_prefix}" class="user-link">${item.user_prefix}</a></div>
+            <div class="col-market ${marketWinnerClass}">${marketWinner}</div>
             <div class="col-btcmove ${btcMoveClass}">${btcMove}</div>
             <div class="col-spent">${netSpent.toFixed(4)}</div>
+            <div class="col-shares">${sharesDisplay}</div>
             <div class="col-payout">${payout}</div>
             <div class="col-profit ${profitClass}">${profitDisplay}</div>
             <div class="col-roi ${roiClass}">${roiDisplay}</div>
@@ -8280,8 +8310,10 @@ async function fetchUserPoints() {
     }
 
     try {
-        const masterPubkey = backpackWallet.publicKey.toString();
-        const response = await fetch(`/api/points/user/${masterPubkey}`);
+        // Use session wallet for points lookup (points are tracked by session wallet prefix)
+        const cached = getCachedSessionWallet();
+        const sessionPubkey = cached ? cached.address : backpackWallet.publicKey.toString();
+        const response = await fetch(`/api/points/user/${sessionPubkey}`);
 
         if (!response.ok) {
             console.error('[POINTS] Failed to fetch points:', response.status);
@@ -8297,7 +8329,7 @@ async function fetchUserPoints() {
             pointsElement.textContent = formatPointsNumber(points);
         }
 
-        console.log(`[POINTS] User ${masterPubkey.slice(0,6)} has ${points} points`);
+        console.log(`[POINTS] User ${sessionPubkey.slice(0,6)} has ${points} points`);
     } catch (err) {
         console.error('[POINTS] Error fetching points:', err);
     }

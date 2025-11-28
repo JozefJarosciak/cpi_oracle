@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X1 Markets - Leaderboard</title>
+    <style>
+        /* ===== HYPERLIQUID STYLE ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #141414;
+            --bg-tertiary: #1a1a1a;
+            --bg-hover: #202020;
+            --border-color: #252525;
+            --border-light: #2a2a2a;
+            --text-primary: #e8e8e8;
+            --text-secondary: #888888;
+            --text-dim: #555555;
+            --green: #3fb68b;
+            --green-bg: rgba(63, 182, 139, 0.1);
+            --red: #ff5353;
+            --red-bg: rgba(255, 83, 83, 0.1);
+            --blue: #5b9eff;
+            --gold: #ffd700;
+            --silver: #c0c0c0;
+            --bronze: #cd7f32;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 13px;
+            line-height: 1.4;
+            min-height: 100vh;
+        }
+
+        /* ===== TOP BAR ===== */
+        .top-bar {
+            height: 48px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 16px;
+        }
+
+        .top-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .top-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .brand {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--green);
+            letter-spacing: -0.5px;
+            text-decoration: none;
+        }
+
+        .brand-subtitle {
+            font-size: 14px;
+            font-weight: 400;
+            color: var(--text-secondary);
+            letter-spacing: 0;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 13px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            transition: all 0.15s;
+        }
+
+        .nav-link:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }
+
+        .nav-link.active {
+            color: var(--green);
+            background: var(--green-bg);
+        }
+
+        /* ===== MAIN CONTENT ===== */
+        .main-content {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 32px 16px;
+        }
+
+        .page-header {
+            margin-bottom: 32px;
+            text-align: center;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .page-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        /* ===== STATS CARDS ===== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--green);
+            margin-bottom: 4px;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* ===== LEADERBOARD TABLE ===== */
+        .leaderboard-container {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .leaderboard-header {
+            display: grid;
+            grid-template-columns: 50px 1fr 70px 100px 120px;
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: relative;
+            overflow: visible;
+        }
+
+        .leaderboard-row {
+            display: grid;
+            grid-template-columns: 50px 1fr 70px 100px 120px;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border-color);
+            align-items: center;
+            transition: background 0.15s;
+        }
+
+        .leaderboard-row:hover {
+            background: var(--bg-hover);
+        }
+
+        .leaderboard-row.clickable-row {
+            cursor: pointer;
+        }
+
+        .leaderboard-row.clickable-row:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .leaderboard-row.clickable-row:active {
+            background: var(--border-color);
+        }
+
+        .wallet-link {
+            color: var(--text-primary);
+            transition: color 0.15s;
+        }
+
+        .clickable-row:hover .wallet-link {
+            color: var(--blue);
+        }
+
+        .leaderboard-row:last-child {
+            border-bottom: none;
+        }
+
+        .rank {
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .rank-1 { color: var(--gold); }
+        .rank-2 { color: var(--silver); }
+        .rank-3 { color: var(--bronze); }
+
+        .rank-medal {
+            font-size: 18px;
+        }
+
+        .wallet-address {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 13px;
+            color: var(--text-primary);
+        }
+
+        .wallet-address a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .wallet-address a:hover {
+            color: var(--blue);
+        }
+
+        .points-value {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 13px;
+            text-align: right;
+        }
+
+        .points-total {
+            color: var(--green);
+            font-weight: 600;
+        }
+
+        .points-breakdown {
+            color: var(--text-secondary);
+        }
+
+        .winrate-col {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-align: right;
+        }
+
+        .points-col {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-align: right;
+        }
+
+        .pnl-col {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: right;
+        }
+
+        .positive { color: var(--green); }
+        .negative { color: var(--red); }
+
+        /* ===== LOADING STATE ===== */
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        .loading-spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--green);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ===== EMPTY STATE ===== */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .leaderboard-header,
+            .leaderboard-row {
+                grid-template-columns: 40px 1fr 80px 100px;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .winrate-col, .points-col, .pnl-col {
+                font-size: 12px;
+            }
+        }
+
+        /* ===== REFRESH BUTTON ===== */
+        .refresh-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+
+        .refresh-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .last-updated {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        /* ===== MY STATS SECTION ===== */
+        .my-stats-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 32px;
+            position: relative;
+        }
+
+        .my-stats-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .my-stats-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .my-stats-user {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 14px;
+            color: var(--blue);
+            background: var(--bg-tertiary);
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+
+        .close-stats-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+        }
+
+        .close-stats-btn:hover {
+            background: var(--red);
+            border-color: var(--red);
+            color: white;
+        }
+
+        .user-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .user-stat-card {
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 14px;
+            text-align: center;
+        }
+
+        .user-stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            margin-bottom: 4px;
+        }
+
+        .user-stat-value.positive { color: var(--green); }
+        .user-stat-value.negative { color: var(--red); }
+        .user-stat-value.neutral { color: var(--text-primary); }
+
+        .user-stat-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .recent-settlements {
+            margin-top: 16px;
+        }
+
+        .recent-settlements-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .settlement-row {
+            display: grid;
+            grid-template-columns: 60px 50px 110px 70px 1fr;
+            padding: 10px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-size: 12px;
+            align-items: center;
+        }
+
+        .settlement-result {
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 3px;
+            text-align: center;
+            width: fit-content;
+        }
+
+        .settlement-result.win {
+            background: var(--green-bg);
+            color: var(--green);
+        }
+
+        .settlement-result.loss {
+            background: var(--red-bg);
+            color: var(--red);
+        }
+
+        .settlement-amount {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        }
+
+        .settlement-amount.positive { color: var(--green); }
+        .settlement-amount.negative { color: var(--red); }
+
+        .settlement-roi {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-weight: 600;
+        }
+
+        .settlement-roi.positive { color: var(--green); }
+        .settlement-roi.negative { color: var(--red); }
+
+        .settlement-side {
+            color: var(--text-secondary);
+        }
+
+        .settlement-time {
+            color: var(--text-dim);
+            text-align: right;
+        }
+
+        .no-data-message {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-secondary);
+        }
+
+        /* ===== PAGINATION ===== */
+        .pagination-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+        }
+
+        .pagination-info {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .pagination-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .pagination-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 6px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Custom tooltips - work on hover and click */
+        .tooltip {
+            position: relative;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .tooltip .tooltip-icon {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            opacity: 0;
+            position: fixed;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-light);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 9999;
+            transition: opacity 0.2s, visibility 0.2s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            pointer-events: none;
+        }
+
+        .tooltip:hover .tooltip-text,
+        .tooltip.active .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-left">
+            <a href="/" class="brand">X1 <span class="brand-subtitle">Vero Prediction Markets</span></a>
+        </div>
+        <div class="top-right">
+            <a href="/" class="nav-link">Trade</a>
+            <a href="/leaderboard.html" class="nav-link active">Leaderboard</a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="page-header">
+            <h1 class="page-title">Leaderboard</h1>
+            <p class="page-subtitle">Track wins, losses, and earnings</p>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalUsers">-</div>
+                <div class="stat-label">Traders</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalXnt">-</div>
+                <div class="stat-label">Total XNT Won</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalRounds">-</div>
+                <div class="stat-label">Rounds</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalPts">-</div>
+                <div class="stat-label">Total Points</div>
+            </div>
+        </div>
+
+        <!-- My Stats Section (hidden by default, shown when clicking a user) -->
+        <div id="myStatsSection" class="my-stats-section" style="display: none;">
+            <button class="close-stats-btn" onclick="closeUserStats()" title="Close">&times;</button>
+            <div class="my-stats-header">
+                <span class="my-stats-title">User Stats</span>
+                <span class="my-stats-user" id="statsUserPrefix"></span>
+            </div>
+            <div class="user-stats-grid" id="userStatsGrid">
+                <!-- Stats will be populated here -->
+            </div>
+            <div class="recent-settlements" id="recentSettlements">
+                <!-- Recent settlements will be populated here -->
+            </div>
+        </div>
+
+        <!-- Leaderboard -->
+        <div class="leaderboard-container">
+            <div class="leaderboard-header">
+                <div>Rank</div>
+                <div>Wallet</div>
+                <div style="text-align: right;">Win%</div>
+                <div style="text-align: right;">Points</div>
+                <div style="text-align: right;">Net P&L</div>
+            </div>
+            <div id="leaderboardBody">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div>Loading leaderboard...</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px;">
+            <span class="last-updated" id="lastUpdated"></span>
+            <button class="refresh-btn" onclick="loadData()">Refresh</button>
+        </div>
+    </div>
+
+    <script>
+        const EXPLORER_BASE = 'https://explorer.x1.xyz/address/';
+        const SETTLEMENTS_PER_PAGE = 50;
+
+        // Current user pagination state
+        let currentUserPrefix = null;
+        let currentOffset = 0;
+        let currentTotal = 0;
+
+        function formatNumber(n) {
+            if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return n.toLocaleString();
+        }
+
+        function truncateAddress(addr) {
+            if (!addr || addr.length < 12) return addr;
+            return addr.slice(0, 6) + '...' + addr.slice(-4);
+        }
+
+        function formatXnt(amount) {
+            if (amount === null || amount === undefined || isNaN(amount)) return '0.00';
+            const num = parseFloat(amount);
+            // Format with 2 decimals and thousands separator
+            return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function formatTimeAgo(timestamp) {
+            const now = Date.now();
+            const diff = now - timestamp;
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(diff / 3600000);
+            const days = Math.floor(diff / 86400000);
+
+            if (minutes < 1) return 'just now';
+            if (minutes < 60) return `${minutes}m ago`;
+            if (hours < 24) return `${hours}h ago`;
+            return `${days}d ago`;
+        }
+
+        // Close user stats and return to default view
+        function closeUserStats() {
+            document.getElementById('myStatsSection').style.display = 'none';
+        }
+
+        // Render settlement rows
+        function renderSettlementRows(settlements) {
+            return settlements.map(s => {
+                const isWin = s.result === 'WIN';
+                const resultClass = isWin ? 'win' : 'loss';
+                const side = s.side === 'YES' ? 'UP' : 'DOWN';
+
+                // For wins: profit = payout - cost (amount is payout, net_spent is cost)
+                // For losses: profit = -net_spent (they lost what they put in)
+                let profit, roi;
+                if (isWin) {
+                    const payout = s.amount || 0;
+                    const cost = s.net_spent || 0;
+                    profit = payout - cost;
+                    roi = cost > 0 ? ((profit / cost) * 100).toFixed(0) : 0;
+                } else {
+                    const cost = s.net_spent || s.amount || 0;
+                    profit = -cost;
+                    roi = -100; // Lost everything
+                }
+
+                const profitClass = profit >= 0 ? 'positive' : 'negative';
+                const profitPrefix = profit >= 0 ? '+' : '';
+                const roiPrefix = roi >= 0 ? '+' : '';
+
+                return `
+                    <div class="settlement-row">
+                        <div class="settlement-result ${resultClass}">${s.result}</div>
+                        <div class="settlement-side">${side}</div>
+                        <div class="settlement-amount ${profitClass}">${profitPrefix}${formatXnt(profit)} XNT</div>
+                        <div class="settlement-roi ${profitClass}">${roiPrefix}${roi}%</div>
+                        <div class="settlement-time">${formatTimeAgo(s.timestamp)}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Load settlements for current user with pagination
+        async function loadUserSettlements(offset = 0) {
+            if (!currentUserPrefix) return;
+
+            const settlementsDiv = document.getElementById('recentSettlements');
+
+            try {
+                const res = await fetch(`/api/user-settlements/${currentUserPrefix}?offset=${offset}&limit=${SETTLEMENTS_PER_PAGE}`);
+                if (!res.ok) throw new Error('Failed to fetch settlements');
+
+                const data = await res.json();
+                currentOffset = offset;
+                currentTotal = data.total;
+
+                if (data.settlements && data.settlements.length > 0) {
+                    const rows = renderSettlementRows(data.settlements);
+                    const startNum = offset + 1;
+                    const endNum = offset + data.settlements.length;
+                    const hasPrev = offset > 0;
+                    const hasNext = data.hasMore;
+
+                    settlementsDiv.innerHTML = `
+                        <div class="recent-settlements-title">Settlement History</div>
+                        ${rows}
+                        <div class="pagination-controls">
+                            <div class="pagination-info">
+                                Showing ${startNum}-${endNum} of ${data.total} settlements
+                            </div>
+                            <div class="pagination-buttons">
+                                <button class="pagination-btn" onclick="loadUserSettlements(0)" ${!hasPrev ? 'disabled' : ''}>First</button>
+                                <button class="pagination-btn" onclick="loadUserSettlements(${offset - SETTLEMENTS_PER_PAGE})" ${!hasPrev ? 'disabled' : ''}>Previous</button>
+                                <button class="pagination-btn" onclick="loadUserSettlements(${offset + SETTLEMENTS_PER_PAGE})" ${!hasNext ? 'disabled' : ''}>Next</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    settlementsDiv.innerHTML = `
+                        <div class="no-data-message">No settlement history found</div>
+                    `;
+                }
+            } catch (err) {
+                console.error('Failed to load settlements:', err);
+                settlementsDiv.innerHTML = `<div class="no-data-message">Failed to load settlements</div>`;
+            }
+        }
+
+        // Select user from leaderboard and show their stats
+        async function selectUser(userPrefix) {
+            const section = document.getElementById('myStatsSection');
+            const statsGrid = document.getElementById('userStatsGrid');
+            const settlementsDiv = document.getElementById('recentSettlements');
+            const userPrefixEl = document.getElementById('statsUserPrefix');
+
+            // Reset pagination state
+            currentUserPrefix = userPrefix;
+            currentOffset = 0;
+            currentTotal = 0;
+
+            // Show section immediately with loading state
+            section.style.display = 'block';
+            userPrefixEl.textContent = userPrefix;
+            statsGrid.innerHTML = '<div class="no-data-message">Loading...</div>';
+            settlementsDiv.innerHTML = '';
+
+            // Scroll to section
+            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            try {
+                const res = await fetch(`/api/user-stats/${userPrefix}`);
+                if (!res.ok) {
+                    throw new Error('Failed to fetch stats');
+                }
+                const stats = await res.json();
+
+                // Build stats grid
+                const netPnl = stats.settlement.netPnl || 0;
+                const netPnlClass = netPnl > 0 ? 'positive' : netPnl < 0 ? 'negative' : 'neutral';
+                const netPnlPrefix = netPnl > 0 ? '+' : '';
+
+                statsGrid.innerHTML = `
+                    <div class="user-stat-card">
+                        <div class="user-stat-value neutral">${stats.settlement.totalRounds}</div>
+                        <div class="user-stat-label">Rounds Played</div>
+                    </div>
+                    <div class="user-stat-card">
+                        <div class="user-stat-value positive">${stats.settlement.wins}</div>
+                        <div class="user-stat-label">Wins</div>
+                    </div>
+                    <div class="user-stat-card">
+                        <div class="user-stat-value negative">${stats.settlement.losses}</div>
+                        <div class="user-stat-label">Losses</div>
+                    </div>
+                    <div class="user-stat-card">
+                        <div class="user-stat-value neutral">${stats.settlement.winRate}%</div>
+                        <div class="user-stat-label">Win Rate</div>
+                    </div>
+                    <div class="user-stat-card">
+                        <div class="user-stat-value positive">+${formatXnt(stats.settlement.totalWon)}</div>
+                        <div class="user-stat-label">Total Won</div>
+                    </div>
+                    <div class="user-stat-card">
+                        <div class="user-stat-value negative">-${formatXnt(stats.settlement.totalLost)}</div>
+                        <div class="user-stat-label">Total Lost</div>
+                    </div>
+                    <div class="user-stat-card">
+                        <div class="user-stat-value ${netPnlClass}">${netPnlPrefix}${formatXnt(netPnl)}</div>
+                        <div class="user-stat-label">Net P&L</div>
+                    </div>
+                    <div class="user-stat-card">
+                        <div class="user-stat-value neutral">${stats.trading.totalTrades}</div>
+                        <div class="user-stat-label">Total Trades</div>
+                    </div>
+                `;
+
+                // Load settlements with pagination
+                await loadUserSettlements(0);
+
+            } catch (err) {
+                console.error('Failed to lookup user stats:', err);
+                statsGrid.innerHTML = `<div class="no-data-message">No data found for this user</div>`;
+                settlementsDiv.innerHTML = '';
+            }
+        }
+
+        function getRankDisplay(rank) {
+            if (rank === 1) return '<span class="rank-medal">🥇</span>';
+            if (rank === 2) return '<span class="rank-medal">🥈</span>';
+            if (rank === 3) return '<span class="rank-medal">🥉</span>';
+            return `#${rank}`;
+        }
+
+        async function loadStats() {
+            try {
+                const res = await fetch('/api/settlement-leaderboard?limit=100');
+                const users = await res.json();
+
+                if (!users || users.length === 0) {
+                    document.getElementById('totalUsers').textContent = '0';
+                    document.getElementById('totalXnt').textContent = '0';
+                    document.getElementById('totalRounds').textContent = '0';
+                    document.getElementById('totalPts').textContent = '0';
+                    return;
+                }
+
+                const totalUsers = users.length;
+                const totalWon = users.reduce((sum, u) => sum + (u.total_won || 0), 0);
+                const totalRounds = users.reduce((sum, u) => sum + (u.total_rounds || 0), 0);
+                const totalPoints = users.reduce((sum, u) => sum + (u.total_points || 0), 0);
+
+                document.getElementById('totalUsers').textContent = formatNumber(totalUsers);
+                document.getElementById('totalXnt').textContent = formatXnt(totalWon);
+                document.getElementById('totalRounds').textContent = formatNumber(totalRounds);
+                document.getElementById('totalPts').textContent = formatNumber(totalPoints);
+            } catch (err) {
+                console.error('Failed to load stats:', err);
+            }
+        }
+
+        async function loadLeaderboard() {
+            const body = document.getElementById('leaderboardBody');
+
+            try {
+                const res = await fetch('/api/settlement-leaderboard?limit=100');
+                const users = await res.json();
+
+                if (!users || users.length === 0) {
+                    body.innerHTML = '<div class="empty-state">No users yet. Start trading to earn points!</div>';
+                    return;
+                }
+
+                body.innerHTML = users.map((user, index) => {
+                    const rank = index + 1;
+                    const rankClass = rank <= 3 ? `rank-${rank}` : '';
+                    const netPnl = user.net_pnl || 0;
+                    const pnlClass = netPnl > 0 ? 'positive' : netPnl < 0 ? 'negative' : '';
+                    const pnlPrefix = netPnl > 0 ? '+' : '';
+                    const points = user.total_points || 0;
+                    const wins = user.wins || 0;
+                    const totalRounds = user.total_rounds || 0;
+                    const winRate = totalRounds > 0 ? ((wins / totalRounds) * 100).toFixed(0) : '0';
+
+                    return `
+                        <div class="leaderboard-row clickable-row" onclick="selectUser('${user.user_prefix}')">
+                            <div class="rank ${rankClass}">${getRankDisplay(rank)}</div>
+                            <div class="wallet-address">
+                                <span class="wallet-link">${user.user_prefix}</span>
+                            </div>
+                            <div class="winrate-col">${winRate}%</div>
+                            <div class="points-col">${formatNumber(points)}</div>
+                            <div class="pnl-col ${pnlClass}">${pnlPrefix}${formatXnt(netPnl)}</div>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (err) {
+                console.error('Failed to load leaderboard:', err);
+                body.innerHTML = '<div class="empty-state">Failed to load leaderboard</div>';
+            }
+        }
+
+        async function loadData() {
+            await Promise.all([loadStats(), loadLeaderboard()]);
+            document.getElementById('lastUpdated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+        }
+
+        // Check for user in URL - supports both:
+        // /leaderboard/HeFha8 (clean URL)
+        // /leaderboard.html?user=HeFha8 (query param)
+        function getUserFromUrl() {
+            // Check path-based URL first: /leaderboard/USERNAME
+            const pathMatch = window.location.pathname.match(/\/leaderboard\/([^\/\?]+)/);
+            if (pathMatch && pathMatch[1]) {
+                return pathMatch[1];
+            }
+            // Fall back to query param: ?user=USERNAME
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('user');
+        }
+
+        // Initial load, then check for user param
+        const userParam = getUserFromUrl();
+        loadData().then(() => {
+            if (userParam) {
+                selectUser(userParam);
+            }
+        });
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadData, 30000);
+
+        // Tooltip positioning
+        document.querySelectorAll('.tooltip').forEach(tooltip => {
+            const text = tooltip.querySelector('.tooltip-text');
+            if (!text) return;
+
+            function positionTooltip(e) {
+                const rect = tooltip.getBoundingClientRect();
+                text.style.top = (rect.bottom + 8) + 'px';
+                text.style.left = (rect.left + rect.width / 2) + 'px';
+                text.style.transform = 'translateX(-50%)';
+            }
+
+            tooltip.addEventListener('mouseenter', positionTooltip);
+            tooltip.addEventListener('click', positionTooltip);
+        });
+    </script>
+</body>
+</html>

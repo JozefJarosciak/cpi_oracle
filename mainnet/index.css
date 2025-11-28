@@ -3779,7 +3779,7 @@ button.disabled {
 
 .settlement-table-header {
     display: grid;
-    grid-template-columns: 85px 60px 70px 65px 65px 65px 55px;
+    grid-template-columns: 85px 60px 60px 70px 60px 70px 60px 60px 50px;
     gap: 4px;
     padding: 8px 10px;
     background: var(--bg-tertiary);
@@ -3797,6 +3797,7 @@ button.disabled {
 }
 
 .settlement-table-header .col-spent,
+.settlement-table-header .col-shares,
 .settlement-table-header .col-payout,
 .settlement-table-header .col-profit,
 .settlement-table-header .col-roi {
@@ -3810,7 +3811,7 @@ button.disabled {
 
 .settlement-table-row {
     display: grid;
-    grid-template-columns: 85px 60px 70px 65px 65px 65px 55px;
+    grid-template-columns: 85px 60px 60px 70px 60px 70px 60px 60px 50px;
     gap: 4px;
     padding: 7px 10px;
     border-bottom: 1px solid var(--border-color);
@@ -3827,6 +3828,17 @@ button.disabled {
 .settlement-table-row .col-user {
     font-size: 10px;
     color: var(--text-secondary);
+}
+
+.settlement-table-row .col-user .user-link {
+    color: var(--text-secondary);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.settlement-table-row .col-user .user-link:hover {
+    color: var(--text-primary);
+    text-decoration: underline;
     white-space: nowrap;
 }
 
@@ -3853,11 +3865,42 @@ button.disabled {
     color: #555555;
 }
 
+.settlement-table-row .col-market {
+    font-weight: 700;
+    font-size: 11px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.settlement-table-row .col-market.market-up {
+    color: #00ff88;
+}
+
+.settlement-table-row .col-market.market-down {
+    color: #ff4444;
+}
+
+.settlement-table-row .col-market.market-flat {
+    color: #888888;
+}
+
+.settlement-table-row .col-market.market-unknown {
+    color: #555555;
+}
+
 .settlement-table-row .col-spent {
     font-size: 10px;
     color: var(--text-secondary);
     text-align: right;
     font-weight: 500;
+}
+
+.settlement-table-row .col-shares {
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-align: right;
+    font-weight: 500;
+    white-space: nowrap;
 }
 
 .settlement-table-row .col-payout {
