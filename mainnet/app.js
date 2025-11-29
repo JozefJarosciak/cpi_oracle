@@ -7331,17 +7331,113 @@ async function getCostBasisAndEntry(userPrefix, side) {
     }
 }
 
+// Load all positions for current cycle (all players)
+async function loadAllPositions() {
+    const feed = document.getElementById('allPositionsFeed');
+    if (!feed) return;
+
+    try {
+        const response = await fetch(`${CONFIG.API_PREFIX}/cycle-positions`);
+        if (!response.ok) throw new Error('Failed to fetch all positions');
+
+        const data = await response.json();
+        const positions = data.positions || [];
+
+        if (positions.length === 0) {
+            feed.innerHTML = `
+                <div class="trade-feed-empty">
+                    <span class="empty-icon">👥</span>
+                    <span class="empty-text">No positions in current cycle</span>
+                </div>
+            `;
+            return;
+        }
+
+        // Sort by total position value (up_cost + down_cost absolute values)
+        positions.sort((a, b) => {
+            const aTotal = Math.abs(a.up_cost) + Math.abs(a.down_cost);
+            const bTotal = Math.abs(b.up_cost) + Math.abs(b.down_cost);
+            return bTotal - aTotal;
+        });
+
+        let html = `<div class="all-positions-header" style="padding: 8px 12px; font-size: 11px; color: rgba(255,255,255,0.5); border-bottom: 1px solid rgba(255,255,255,0.1);">
+            <span>Cycle: ${data.cycleId || 'Current'}</span>
+            <span style="float: right;">${positions.length} player${positions.length !== 1 ? 's' : ''}</span>
+        </div>`;
+
+        for (const pos of positions) {
+            const userPrefix = pos.user_prefix || 'Unknown';
+            const upShares = pos.up_shares || 0;
+            const downShares = pos.down_shares || 0;
+            const upCost = pos.up_cost || 0;
+            const downCost = pos.down_cost || 0;
+
+            // Determine which side they're on
+            let sideClass = '';
+            let sideText = '';
+            let shares = 0;
+            let cost = 0;
+
+            if (Math.abs(upShares) > Math.abs(downShares)) {
+                sideClass = upShares > 0 ? 'side-yes' : 'side-no';
+                sideText = upShares > 0 ? 'UP' : 'UP (SHORT)';
+                shares = upShares;
+                cost = upCost;
+            } else if (Math.abs(downShares) > 0) {
+                sideClass = downShares > 0 ? 'side-no' : 'side-yes';
+                sideText = downShares > 0 ? 'DOWN' : 'DOWN (SHORT)';
+                shares = downShares;
+                cost = downCost;
+            } else {
+                sideClass = '';
+                sideText = 'NEUTRAL';
+                shares = 0;
+                cost = 0;
+            }
+
+            const sharesDisplay = Math.abs(shares).toFixed(2);
+            const costDisplay = Math.abs(cost).toFixed(4);
+
+            html += `
+                <div class="position-item" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="user-badge" style="font-family: monospace; font-size: 12px; color: #5b9eff;">${userPrefix}</span>
+                        <span class="${sideClass}" style="font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 3px; ${sideClass === 'side-yes' ? 'background: rgba(0,200,83,0.2); color: #00c853;' : sideClass === 'side-no' ? 'background: rgba(255,82,82,0.2); color: #ff5252;' : 'background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.5);'}">${sideText}</span>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 13px; font-weight: 500; color: #fff;">${sharesDisplay} shares</div>
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.5);">${costDisplay} XNT</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        feed.innerHTML = html;
+
+    } catch (err) {
+        console.error('Failed to load all positions:', err);
+        feed.innerHTML = `
+            <div class="trade-feed-empty">
+                <span class="empty-icon">⚠️</span>
+                <span class="empty-text">Failed to load positions</span>
+            </div>
+        `;
+    }
+}
+
 // ============= END POSITIONS =============
 
 function switchFeedTab(tab) {
     const liveFeedTab = document.getElementById('liveFeedTab');
     const positionsFeedTab = document.getElementById('positionsFeedTab');
+    const allPositionsFeedTab = document.getElementById('allPositionsFeedTab');
     const settlementFeedTab = document.getElementById('settlementFeedTab');
     const tradingFeedTab = document.getElementById('tradingFeedTab');
     const ordersFeedTab = document.getElementById('ordersFeedTab');
     const filledFeedTab = document.getElementById('filledFeedTab');
     const tradeFeed = document.getElementById('tradeFeed');
     const positionsFeed = document.getElementById('positionsFeed');
+    const allPositionsFeed = document.getElementById('allPositionsFeed');
     const settlementFeed = document.getElementById('settlementFeed');
     const tradingFeed = document.getElementById('tradingFeed');
     const ordersFeed = document.getElementById('ordersFeed');
@@ -7350,12 +7446,14 @@ function switchFeedTab(tab) {
     // Reset all tabs
     liveFeedTab.classList.remove('active');
     positionsFeedTab.classList.remove('active');
+    allPositionsFeedTab.classList.remove('active');
     settlementFeedTab.classList.remove('active');
     tradingFeedTab.classList.remove('active');
     ordersFeedTab.classList.remove('active');
     filledFeedTab.classList.remove('active');
     tradeFeed.classList.add('hidden');
     positionsFeed.classList.add('hidden');
+    allPositionsFeed.classList.add('hidden');
     settlementFeed.classList.add('hidden');
     tradingFeed.classList.add('hidden');
     ordersFeed.classList.add('hidden');
@@ -7384,6 +7482,17 @@ function switchFeedTab(tab) {
                 loadPositions();
             }
         }, 3000);
+    } else if (tab === 'allPositions') {
+        allPositionsFeedTab.classList.add('active');
+        allPositionsFeed.classList.remove('hidden');
+        loadAllPositions();
+
+        // Auto-refresh all positions every 5 seconds
+        positionsRefreshInterval = setInterval(() => {
+            if (currentFeedTab === 'allPositions') {
+                loadAllPositions();
+            }
+        }, 5000);
     } else if (tab === 'settlement') {
         settlementFeedTab.classList.add('active');
         settlementFeed.classList.remove('hidden');

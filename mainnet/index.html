@@ -404,6 +404,7 @@
                         <div class="feed-tabs">
                             <button class="feed-tab active" id="liveFeedTab" onclick="switchFeedTab('live')">LIVE</button>
                             <button class="feed-tab" id="positionsFeedTab" onclick="switchFeedTab('positions')">POSITIONS</button>
+                            <button class="feed-tab" id="allPositionsFeedTab" onclick="switchFeedTab('allPositions')">ALL POSITIONS</button>
                             <button class="feed-tab" id="settlementFeedTab" onclick="switchFeedTab('settlement')">SETTLEMENT</button>
                             <button class="feed-tab" id="tradingFeedTab" onclick="switchFeedTab('trading')">HISTORY</button>
                             <button class="feed-tab" id="ordersFeedTab" onclick="switchFeedTab('orders')">OPEN ORDERS</button>
@@ -427,6 +428,12 @@
                         <div class="trade-feed-empty">
                             <span class="empty-icon">💼</span>
                             <span class="empty-text">Connect wallet to view your positions</span>
+                        </div>
+                    </div>
+                    <div class="trade-feed-list hidden" id="allPositionsFeed">
+                        <div class="trade-feed-empty">
+                            <span class="empty-icon">👥</span>
+                            <span class="empty-text">Loading all positions...</span>
                         </div>
                     </div>
                     <div class="trade-feed-list hidden" id="settlementFeed">
