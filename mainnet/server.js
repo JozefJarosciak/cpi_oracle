@@ -106,6 +106,21 @@ db.exec(`
     CREATE INDEX IF NOT EXISTS idx_trading_user_timestamp ON trading_history(user_prefix, timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_trading_cycle ON trading_history(cycle_id, user_prefix);
 
+    CREATE TABLE IF NOT EXISTS cycle_positions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_prefix TEXT NOT NULL,
+        wallet_pubkey TEXT,
+        cycle_id TEXT NOT NULL,
+        up_shares REAL DEFAULT 0,
+        down_shares REAL DEFAULT 0,
+        up_cost REAL DEFAULT 0,
+        down_cost REAL DEFAULT 0,
+        last_update INTEGER NOT NULL,
+        UNIQUE(user_prefix, cycle_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_cycle_positions_cycle ON cycle_positions(cycle_id);
+    CREATE INDEX IF NOT EXISTS idx_cycle_positions_user ON cycle_positions(user_prefix);
+
     CREATE TABLE IF NOT EXISTS volume_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         cycle_id TEXT NOT NULL UNIQUE,
@@ -735,16 +750,108 @@ function cleanupOldSettlements() {
 }
 
 // Trading history functions
-function addTradingHistory(userPrefix, action, side, shares, costUsd, avgPrice, pnl = null, cycleId = null) {
+function addTradingHistory(userPrefix, action, side, shares, costUsd, avgPrice, pnl = null, cycleId = null, walletPubkey = null) {
     try {
         // Use current cycle_id if not provided
         const marketCycleId = cycleId || cumulativeVolume.cycleId;
+        const timestamp = Date.now();
+
+        // Insert trade record
         const stmt = db.prepare('INSERT INTO trading_history (user_prefix, action, side, shares, cost_usd, avg_price, pnl, timestamp, cycle_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        stmt.run(userPrefix, action, side, shares, costUsd, avgPrice, pnl, Date.now(), marketCycleId);
+        stmt.run(userPrefix, action, side, shares, costUsd, avgPrice, pnl, timestamp, marketCycleId);
+
+        // Update cycle_positions table
+        updateCyclePosition(userPrefix, walletPubkey, marketCycleId, action, side, shares, costUsd);
+
         return true;
     } catch (err) {
         console.error('Failed to add trading history:', err.message);
         return false;
+    }
+}
+
+// Update user's position in current cycle
+function updateCyclePosition(userPrefix, walletPubkey, cycleId, action, side, shares, cost) {
+    try {
+        const timestamp = Date.now();
+
+        // Get or create position record
+        const existingStmt = db.prepare('SELECT * FROM cycle_positions WHERE user_prefix = ? AND cycle_id = ?');
+        const existing = existingStmt.get(userPrefix, cycleId);
+
+        let upShares = existing?.up_shares || 0;
+        let downShares = existing?.down_shares || 0;
+        let upCost = existing?.up_cost || 0;
+        let downCost = existing?.down_cost || 0;
+
+        // Update based on action and side
+        const sharesDelta = action === 'BUY' ? shares : -shares;
+        const costDelta = action === 'BUY' ? cost : -cost;
+
+        if (side === 'UP') {
+            upShares += sharesDelta;
+            upCost += costDelta;
+        } else if (side === 'DOWN') {
+            downShares += sharesDelta;
+            downCost += costDelta;
+        }
+
+        // Upsert position
+        const upsertStmt = db.prepare(`
+            INSERT INTO cycle_positions (user_prefix, wallet_pubkey, cycle_id, up_shares, down_shares, up_cost, down_cost, last_update)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_prefix, cycle_id) DO UPDATE SET
+                wallet_pubkey = COALESCE(excluded.wallet_pubkey, wallet_pubkey),
+                up_shares = excluded.up_shares,
+                down_shares = excluded.down_shares,
+                up_cost = excluded.up_cost,
+                down_cost = excluded.down_cost,
+                last_update = excluded.last_update
+        `);
+        upsertStmt.run(userPrefix, walletPubkey, cycleId, upShares, downShares, upCost, downCost, timestamp);
+
+        console.log(`📊 Position updated: ${userPrefix} cycle=${cycleId} UP=${upShares.toFixed(2)} DOWN=${downShares.toFixed(2)}`);
+        return true;
+    } catch (err) {
+        console.error('Failed to update cycle position:', err.message);
+        return false;
+    }
+}
+
+// Get all positions for current cycle
+function getCyclePositions(cycleId = null) {
+    try {
+        const targetCycleId = cycleId || cumulativeVolume.cycleId;
+        const stmt = db.prepare('SELECT * FROM cycle_positions WHERE cycle_id = ? ORDER BY last_update DESC');
+        return stmt.all(targetCycleId);
+    } catch (err) {
+        console.error('Failed to get cycle positions:', err.message);
+        return [];
+    }
+}
+
+// Get specific user's position for current cycle
+function getUserCyclePosition(userPrefix, cycleId = null) {
+    try {
+        const targetCycleId = cycleId || cumulativeVolume.cycleId;
+        const stmt = db.prepare('SELECT * FROM cycle_positions WHERE user_prefix = ? AND cycle_id = ?');
+        return stmt.get(userPrefix, targetCycleId);
+    } catch (err) {
+        console.error('Failed to get user cycle position:', err.message);
+        return null;
+    }
+}
+
+// Clear positions for a cycle (called when cycle ends)
+function clearCyclePositions(cycleId) {
+    try {
+        const stmt = db.prepare('DELETE FROM cycle_positions WHERE cycle_id = ?');
+        const result = stmt.run(cycleId);
+        console.log(`🗑️ Cleared ${result.changes} positions for cycle ${cycleId}`);
+        return result.changes;
+    } catch (err) {
+        console.error('Failed to clear cycle positions:', err.message);
+        return 0;
     }
 }
 
@@ -2058,6 +2165,33 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // API: Get all cycle positions for current cycle
+    if (req.url === '/api/cycle-positions' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+        const positions = getCyclePositions();
+        res.end(JSON.stringify({
+            cycleId: cumulativeVolume.cycleId,
+            positions: positions
+        }));
+        return;
+    }
+
+    // API: Get cycle position for specific user
+    if (req.url.startsWith('/api/cycle-positions/') && req.method === 'GET') {
+        const userPrefix = req.url.split('/api/cycle-positions/')[1];
+        res.writeHead(200, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+        if (userPrefix && userPrefix.length >= 5) {
+            const position = getUserCyclePosition(userPrefix);
+            res.end(JSON.stringify({
+                cycleId: cumulativeVolume.cycleId,
+                position: position || { up_shares: 0, down_shares: 0, up_cost: 0, down_cost: 0 }
+            }));
+        } else {
+            res.end(JSON.stringify({ error: 'Invalid user prefix' }));
+        }
+        return;
+    }
+
     // API: Get trading history for a user
     if (req.url.startsWith('/api/trading-history/') && req.method === 'GET') {
         const urlParts = req.url.split('/api/trading-history/')[1].split('?');
@@ -2140,7 +2274,9 @@ const server = http.createServer((req, res) => {
                         data.shares,
                         data.costUsd,
                         data.avgPrice,
-                        data.pnl || null
+                        data.pnl || null,
+                        null, // cycleId - will use current
+                        data.walletPubkey || null // wallet pubkey for position tracking
                     );
 
                     // Cost basis is now calculated on-demand from trading_history
