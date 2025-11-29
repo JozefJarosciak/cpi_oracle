@@ -7337,7 +7337,7 @@ async function loadAllPositions() {
     if (!feed) return;
 
     try {
-        const response = await fetch(`${CONFIG.API_PREFIX}/cycle-positions`);
+        const response = await fetch('/api/cycle-positions');
         if (!response.ok) throw new Error('Failed to fetch all positions');
 
         const data = await response.json();
