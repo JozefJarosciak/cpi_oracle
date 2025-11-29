@@ -19,7 +19,7 @@ const RPC_URL = process.env.RPC_URL || 'https://rpc.mainnet.x1.xyz';
 const PROGRAM_ID = new PublicKey('EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF');
 const AMM_SEED = Buffer.from('amm_btc_v6');
 const POS_SEED = Buffer.from('pos');
-const WS_PORT = 3536;
+const WS_PORT = 3538;
 
 // Cache for session wallet -> master wallet mapping
 const masterWalletCache = new Map();
@@ -418,15 +418,12 @@ async function awardTradePoints(connection, sessionWallet, sharesE6, side, direc
             return;
         }
 
-        const masterWallet = await getMasterWallet(connection, sessionWallet);
-        if (!masterWallet) {
-            console.log(`[POINTS] Skipping trade - no master wallet for ${sessionWallet.slice(0,8)}`);
-            return;
-        }
+        // Use session wallet prefix (6 chars) to match settlement history
+        const userPrefix = sessionWallet.slice(0, 6);
 
-        const result = pointsDb.recordTrade(masterWallet, sharesE6, side, direction, txSignature);
+        const result = pointsDb.recordTrade(userPrefix, sharesE6, side, direction, txSignature);
         if (result.points > 0) {
-            console.log(`[POINTS] +${result.points} trade points to ${masterWallet.slice(0,8)} (${direction} ${side})`);
+            console.log(`[POINTS] +${result.points} trade points to ${userPrefix} (${direction} ${side})`);
         }
     } catch (err) {
         console.error('[POINTS] Failed to award trade points:', err.message);
@@ -554,8 +551,8 @@ async function awardWinPoints(connection, sessionWallet, payoutLamports, txSigna
     try {
         if (pointsDb.txExists(txSignature)) return;
 
-        const masterWallet = await getMasterWallet(connection, sessionWallet);
-        if (!masterWallet) return;
+        // Use session wallet prefix (6 chars) to match settlement history
+        const userPrefix = sessionWallet.slice(0, 6);
 
         // Get cost basis for current cycle
         const costBasis = getCostBasisForWallet(sessionWallet);
@@ -583,9 +580,9 @@ async function awardWinPoints(connection, sessionWallet, payoutLamports, txSigna
 
         // Convert profit to lamports for recordWin
         const profitLamports = Math.floor(profitXnt * LAMPORTS_PER_XNT);
-        const result = pointsDb.recordWin(masterWallet, profitLamports, txSignature);
+        const result = pointsDb.recordWin(userPrefix, profitLamports, txSignature);
         if (result.points > 0) {
-            console.log(`[POINTS] +${result.points} win points to ${masterWallet.slice(0,8)} (${winningSide} profit: ${profitXnt.toFixed(2)} XNT, payout: ${payoutXnt.toFixed(2)} XNT, cost: ${costXnt.toFixed(2)} XNT)`);
+            console.log(`[POINTS] +${result.points} win points to ${userPrefix} (${winningSide} profit: ${profitXnt.toFixed(2)} XNT, payout: ${payoutXnt.toFixed(2)} XNT, cost: ${costXnt.toFixed(2)} XNT)`);
         }
     } catch (err) {
         console.error('[POINTS] Failed to award win points:', err.message);
@@ -634,6 +631,31 @@ function parseTradesFromLogs(logs, signature) {
     return trades.length > 0 ? trades : null;
 }
 
+// Retry logic for getTransaction to handle race condition where logs arrive before tx is indexed
+async function getTransactionWithRetry(connection, signature, maxRetries = 5) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            const tx = await connection.getTransaction(signature, {
+                maxSupportedTransactionVersion: 0
+            });
+            if (tx) return tx;
+
+            // Wait before retry: 100ms, 200ms, 400ms, 800ms, 1600ms
+            const delay = 100 * Math.pow(2, i);
+            if (i < maxRetries - 1) {
+                await new Promise(r => setTimeout(r, delay));
+            }
+        } catch (err) {
+            console.error(`[RETRY ${i + 1}/${maxRetries}] Failed to fetch tx ${signature.slice(0, 8)}:`, err.message);
+            if (i < maxRetries - 1) {
+                await new Promise(r => setTimeout(r, 100 * Math.pow(2, i)));
+            }
+        }
+    }
+    console.error(`[RETRY] All ${maxRetries} attempts failed for tx ${signature.slice(0, 8)}`);
+    return null;
+}
+
 // Listen for program logs
 async function startMonitoring() {
     const connection = new Connection(RPC_URL, 'confirmed');
@@ -655,19 +677,13 @@ async function startMonitoring() {
             // Parse trades from logs (can be multiple for ClosePosition)
             const parsedTrades = parseTradesFromLogs(logs.logs, logs.signature);
             if (parsedTrades) {
-                // Fetch transaction once to get the user's public key (fee payer)
+                // Fetch transaction with retry to handle race condition (logs arrive before tx is indexed)
                 let userPubkey = 'Unknown';
-                try {
-                    const tx = await connection.getTransaction(logs.signature, {
-                        maxSupportedTransactionVersion: 0
-                    });
-                    if (tx && tx.transaction && tx.transaction.message) {
-                        const accountKeys = tx.transaction.message.getAccountKeys();
-                        const feePayer = accountKeys.get(0);
-                        userPubkey = feePayer ? feePayer.toString() : 'Unknown';
-                    }
-                } catch (err) {
-                    console.error('Failed to fetch transaction:', err.message);
+                const tx = await getTransactionWithRetry(connection, logs.signature);
+                if (tx && tx.transaction && tx.transaction.message) {
+                    const accountKeys = tx.transaction.message.getAccountKeys();
+                    const feePayer = accountKeys.get(0);
+                    userPubkey = feePayer ? feePayer.toString() : 'Unknown';
                 }
 
                 // Skip deployer/keeper wallet trades entirely
