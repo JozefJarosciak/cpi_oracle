@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// app/settlement_bot.js — Automated settlement bot for 30-minute market cycles
-// Cycles: 5 mins pre-market -> snapshot -> 25 mins active -> settle -> restart
-// Markets start at :00 and :30 minutes past the hour (e.g., 01:00, 01:30, 02:00, etc.)
+// app/settlement_bot.js — Automated settlement bot for 15-minute market cycles
+// Cycles: 1 min pre-market -> snapshot -> 14 mins active -> settle -> restart
+// Markets start at :00, :15, :30, :45 minutes past the hour (e.g., 01:00, 01:15, 01:30, 01:45, etc.)
 
 const fs = require("fs");
 const crypto = require("crypto");
@@ -28,9 +28,9 @@ const USER_VAULT_SEED = Buffer.from("user_vault");
 const POS_SEED = Buffer.from("pos");
 
 // === TIMING CONSTANTS ===
-const PREMARKET_DURATION_MS = 1 * 60 * 1000;  // 1 minute pre-market (no snapshot yet)
-const ACTIVE_DURATION_MS = 4 * 60 * 1000;     // 4 minutes active (after snapshot)
-const CYCLE_DURATION_MS = 5 * 60 * 1000;      // 5 minutes total (for testing)
+const PREMARKET_DURATION_MS = 1 * 60 * 1000;   // 1 minute pre-market (no snapshot yet)
+const ACTIVE_DURATION_MS = 14 * 60 * 1000;     // 14 minutes active (after snapshot)
+const CYCLE_DURATION_MS = 15 * 60 * 1000;      // 15 minutes total cycle (:00, :15, :30, :45)
 
 // === LAMPORTS CONVERSION ===
 const LAMPORTS_PER_E6 = 100;                   // Must match Rust program constant
@@ -782,22 +782,22 @@ function getNextStartTime() {
   logInfo(C.bold("📅 Calculating next market cycle start time:"));
   logInfo(`  Current time: ${formatTime(now)}`);
 
-  // Round to next 5-minute boundary (:00, :05, :10, :15, etc.)
+  // Round to next 15-minute boundary (:00, :15, :30, :45)
   const nextStart = new Date(now);
   const currentMinute = nextStart.getMinutes();
   const currentSecond = nextStart.getSeconds();
 
-  // Find next 5-minute boundary
-  const nextMinute = Math.ceil((currentMinute + (currentSecond > 0 ? 1 : 0)) / 5) * 5;
+  // Find next 15-minute boundary
+  const nextMinute = Math.ceil((currentMinute + (currentSecond > 0 ? 1 : 0)) / 15) * 15;
   if (nextMinute >= 60) {
     nextStart.setHours(nextStart.getHours() + 1, 0, 0, 0);
   } else {
     nextStart.setMinutes(nextMinute, 0, 0);
   }
 
-  // If we're already past the calculated time (race condition), add 5 minutes
+  // If we're already past the calculated time (race condition), add 15 minutes
   if (nextStart.getTime() <= now.getTime()) {
-    nextStart.setTime(nextStart.getTime() + 5 * 60 * 1000);
+    nextStart.setTime(nextStart.getTime() + 15 * 60 * 1000);
   }
 
   const waitTime = nextStart.getTime() - now.getTime();
@@ -819,14 +819,14 @@ function formatCountdown(ms) {
 
 /* ---------------- Main Cycle Loop ---------------- */
 async function runCycle(conn, kp, ammPda, vaultPda) {
-  // Get current 5-minute window (:00, :05, :10, etc.)
+  // Get current 15-minute window (:00, :15, :30, :45)
   // This ensures markets stay aligned to clock boundaries
   const now = new Date();
   const currentMinute = now.getMinutes();
 
-  // Calculate the start of the current 5-minute window
+  // Calculate the start of the current 15-minute window
   const cycleStart = new Date(now);
-  const windowStart = Math.floor(currentMinute / 5) * 5;
+  const windowStart = Math.floor(currentMinute / 15) * 15;
   cycleStart.setMinutes(windowStart, 0, 0);
 
   const cycleStartTime = cycleStart.getTime();
@@ -1094,7 +1094,7 @@ async function wipeAllPositions(conn, kp, ammPda) {
 /* ---------------- Main ---------------- */
 async function main() {
   console.log(C.bold("\n╔═══════════════════════════════════════════════╗"));
-  console.log(C.bold("║     AUTOMATED SETTLEMENT BOT - 30 MIN CYCLES  ║"));
+  console.log(C.bold("║     AUTOMATED SETTLEMENT BOT - 15 MIN CYCLES  ║"));
   console.log(C.bold("╚═══════════════════════════════════════════════╝\n"));
 
   logInfo(`Oracle: ${ORACLE_STATE.toString()}`);
@@ -1370,7 +1370,7 @@ if (command === 'force-settle') {
 ${C.bold('Settlement Bot Commands:')}
 
   ${C.y('node app/settlement_bot.js')}
-    Run the automated settlement bot (30-minute cycles starting at :00 and :30)
+    Run the automated settlement bot (15-minute cycles starting at :00, :15, :30, :45)
 
   ${C.y('node app/settlement_bot.js force-settle')}
     Manually trigger settlement for a stopped market
