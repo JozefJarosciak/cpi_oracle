@@ -5176,23 +5176,8 @@ async function displaySettledMarketWinner(winner, startPriceE6) {
         const winnerText = winner === 1 ? 'UP' : 'DOWN';
         const arrow = settlePrice > startPrice ? '↗' : settlePrice < startPrice ? '↘' : '→';
 
-        // Update banner content - just show winner, no "sideways" text
-        outcomeEl.textContent = `${winnerText} WON!`;
-        reasonEl.textContent = `$${startPriceStr} ${arrow} $${settlePriceStr}`;
-
-        // Add appropriate class
-        if (winner === 2) {
-            bannerEl.classList.add('no-winner');
-        } else {
-            bannerEl.classList.remove('no-winner');
-        }
-
-        bannerEl.style.display = 'block';
-
-        // Hide banner after 5 seconds
-        setTimeout(() => {
-            bannerEl.style.display = 'none';
-        }, 5000);
+        // Winner banner disabled - no longer showing "UP WON" / "DOWN WON" messages
+        bannerEl.style.display = 'none';
     } catch (err) {
         console.error('Failed to display winner banner:', err);
     }
@@ -5285,27 +5270,8 @@ function updateWinnerBanner(status) {
         // Mark this resolution as being shown
         lastShownResolutionTimestamp = res.timestamp;
 
-        // Calculate correct winner based on price movement
-        // UP or SAME → UP wins, DOWN → DOWN wins
-        const displayWinner = settlePriceNum >= startPriceNum ? 'UP' : 'DOWN';
-
-        // Update banner content - just show winner
-        outcomeEl.textContent = `${displayWinner} WON`;
-        reasonEl.textContent = '';
-
-        // Add appropriate class
-        if (displayWinner === 'DOWN') {
-            bannerEl.classList.add('no-winner');
-        } else {
-            bannerEl.classList.remove('no-winner');
-        }
-
-        bannerEl.style.display = 'block';
-
-        // Hide banner after 5 seconds
-        setTimeout(() => {
-            bannerEl.style.display = 'none';
-        }, 5000);
+        // Winner banner disabled - no longer showing "UP WON" / "DOWN WON" messages
+        bannerEl.style.display = 'none';
     } else {
         bannerEl.style.display = 'none';
     }
