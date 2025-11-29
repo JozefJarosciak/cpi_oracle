@@ -493,10 +493,8 @@ function addSettlementHistory(userPrefix, result, amount, side, snapshotPrice = 
         // Calculate total buys, sells, net spent, and shares from trading history WITHIN THIS CYCLE
         let totalBuys = 0;
         let totalSells = 0;
-        let netShares = 0;
-
-        // Map side parameter to trading_history side format (YES->UP, NO->DOWN)
-        const tradingSide = (side === 'YES') ? 'UP' : (side === 'NO') ? 'DOWN' : side;
+        let upShares = 0;
+        let downShares = 0;
 
         const tradingStmt = db.prepare('SELECT action, cost_usd, shares, side, timestamp FROM trading_history WHERE user_prefix = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC');
         const trades = tradingStmt.all(userPrefix, cycleStartTime, timestamp);
@@ -510,21 +508,28 @@ function addSettlementHistory(userPrefix, result, amount, side, snapshotPrice = 
             console.log(`   - ${trade.action} ${trade.side}: ${trade.shares?.toFixed(4) || 0} shares, $${trade.cost_usd?.toFixed(4) || 0} at ${new Date(trade.timestamp).toISOString()}`);
             if (trade.action === 'BUY') {
                 totalBuys += trade.cost_usd;
-                // Only count shares for the settled side
-                if (trade.side === tradingSide) {
-                    netShares += trade.shares || 0;
+                // Count shares by side
+                if (trade.side === 'UP') {
+                    upShares += trade.shares || 0;
+                } else if (trade.side === 'DOWN') {
+                    downShares += trade.shares || 0;
                 }
             } else if (trade.action === 'SELL') {
                 totalSells += trade.cost_usd;
-                // Only count shares for the settled side
-                if (trade.side === tradingSide) {
-                    netShares -= trade.shares || 0;
+                // Count shares by side
+                if (trade.side === 'UP') {
+                    upShares -= trade.shares || 0;
+                } else if (trade.side === 'DOWN') {
+                    downShares -= trade.shares || 0;
                 }
             }
         }
 
+        // Use the larger of UP or DOWN shares as the user's position
+        // This captures what they actually traded, regardless of which side won
+        const netShares = Math.max(Math.abs(upShares), Math.abs(downShares));
         const netSpent = totalBuys - totalSells;
-        console.log(`   Total: buys=$${totalBuys.toFixed(4)}, sells=$${totalSells.toFixed(4)}, netSpent=$${netSpent.toFixed(4)}, netShares=${netShares.toFixed(4)}`);
+        console.log(`   Total: buys=$${totalBuys.toFixed(4)}, sells=$${totalSells.toFixed(4)}, netSpent=$${netSpent.toFixed(4)}, upShares=${upShares.toFixed(4)}, downShares=${downShares.toFixed(4)}, netShares=${netShares.toFixed(4)}`);
 
         // For losses, payout (amount) is 0. net_spent column tracks what they spent.
         const finalAmount = (result === 'LOSE' || result === 'LOSS') ? 0 : amount;
