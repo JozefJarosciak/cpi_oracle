@@ -7360,9 +7360,37 @@ async function loadAllPositions() {
             return bTotal - aTotal;
         });
 
+        // Calculate totals for UP and DOWN
+        let totalUpShares = 0;
+        let totalDownShares = 0;
+        let totalUpCost = 0;
+        let totalDownCost = 0;
+        for (const pos of positions) {
+            totalUpShares += Math.abs(pos.up_shares || 0);
+            totalDownShares += Math.abs(pos.down_shares || 0);
+            totalUpCost += Math.abs(pos.up_cost || 0);
+            totalDownCost += Math.abs(pos.down_cost || 0);
+        }
+
         let html = `<div class="all-positions-header" style="padding: 8px 12px; font-size: 11px; color: rgba(255,255,255,0.5); border-bottom: 1px solid rgba(255,255,255,0.1);">
             <span>Cycle: ${data.cycleId || 'Current'}</span>
             <span style="float: right;">${positions.length} player${positions.length !== 1 ? 's' : ''}</span>
+        </div>`;
+
+        // Add totals summary
+        html += `<div class="all-positions-totals" style="padding: 12px; background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.1);">
+            <div style="display: flex; justify-content: space-around; gap: 20px;">
+                <div style="text-align: center;">
+                    <div style="font-size: 10px; color: rgba(255,255,255,0.5); margin-bottom: 4px;">🟢 TOTAL UP</div>
+                    <div style="font-size: 16px; font-weight: 600; color: #00c853;">${totalUpShares.toFixed(2)}</div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.5);">${totalUpCost.toFixed(4)} XNT</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 10px; color: rgba(255,255,255,0.5); margin-bottom: 4px;">🔴 TOTAL DOWN</div>
+                    <div style="font-size: 16px; font-weight: 600; color: #ff5252;">${totalDownShares.toFixed(2)}</div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.5);">${totalDownCost.toFixed(4)} XNT</div>
+                </div>
+            </div>
         </div>`;
 
         for (const pos of positions) {
