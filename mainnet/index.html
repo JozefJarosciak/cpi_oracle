@@ -48,6 +48,9 @@
         <div id="depositModal" class="modal hidden">
             <div class="modal-overlay" onclick="closeDepositModal()"></div>
             <div class="modal-content">
+                <!-- Centered Info Tooltip -->
+                <div id="walletInfoDisplay" class="wallet-info-overlay"></div>
+
                 <div class="modal-header">
                     <div class="modal-title-section">
                         <h3 class="modal-title">Deposit</h3>
@@ -63,20 +66,23 @@
                                 <span class="balance-sublabel">Available</span>
                             </div>
                             <span class="balance-value" id="sessionWalletBalance">Loading...</span>
+                            <span class="info-icon" onmouseenter="showWalletInfo('Your main Backpack wallet. Funds come from here when depositing. Only this wallet can withdraw.')" onmouseleave="hideWalletInfo()">ⓘ</span>
                         </div>
-                        <div class="balance-row">
+                        <div class="balance-row selectable" id="depositTargetSession" onclick="selectDepositTarget('session')">
                             <div class="balance-label-section">
                                 <span class="balance-label">Session Wallet</span>
                                 <span class="balance-sublabel">TX Fees</span>
                             </div>
                             <span class="balance-value" id="tradingWalletBalance">Loading...</span>
+                            <span class="info-icon" onmouseenter="showWalletInfo('Derived wallet that pays transaction fees. Keep ~0.5 XNT here for smooth trading.')" onmouseleave="hideWalletInfo()">ⓘ</span>
                         </div>
-                        <div class="balance-row">
+                        <div class="balance-row selectable selected" id="depositTargetTrading" onclick="selectDepositTarget('trading')">
                             <div class="balance-label-section">
                                 <span class="balance-label">Trading Account</span>
                                 <span class="balance-sublabel">Current</span>
                             </div>
                             <span class="balance-value" id="currentVaultBalance">Loading...</span>
+                            <span class="info-icon" onmouseenter="showWalletInfo('On-chain vault holding your trading funds. Used for buying/selling positions.')" onmouseleave="hideWalletInfo()">ⓘ</span>
                         </div>
                     </div>
 
@@ -126,7 +132,6 @@
                     </div>
 
                     <div class="modal-actions-secondary">
-                        <button class="btn-fund-session" onclick="fundSessionWallet()">Fund Session Wallet</button>
                         <button class="btn-sweep-session" onclick="sweepSessionWallet()">Sweep Session Wallet</button>
                     </div>
 
@@ -1441,6 +1446,11 @@
                 }
 
                 modal.classList.remove('hidden');
+
+                // Reset deposit target selection to default (Trading Account)
+                if (typeof selectDepositTarget === 'function') {
+                    selectDepositTarget('trading');
+                }
             } else {
                 showError('Please connect your wallet first');
             }
@@ -1591,6 +1601,56 @@
                 showError('Deposit failed: ' + err.message);
             }
         }
+
+        // ============= WALLET INFO TOOLTIP FUNCTIONS =============
+        window.showWalletInfo = function(text) {
+            const display = document.getElementById('walletInfoDisplay');
+            if (display) {
+                display.textContent = text;
+                display.classList.add('visible');
+            }
+        };
+
+        window.hideWalletInfo = function() {
+            const display = document.getElementById('walletInfoDisplay');
+            if (display) {
+                display.classList.remove('visible');
+            }
+        };
+
+        // ============= DEPOSIT TARGET SELECTION =============
+        // Track which account is selected for deposit (default: trading)
+        let selectedDepositTarget = 'trading';
+
+        // Make function globally accessible
+        window.selectDepositTarget = function selectDepositTarget(target) {
+            selectedDepositTarget = target;
+
+            // Update UI - highlight selected row
+            const sessionRow = document.getElementById('depositTargetSession');
+            const tradingRow = document.getElementById('depositTargetTrading');
+
+            if (target === 'session') {
+                sessionRow.classList.add('selected');
+                tradingRow.classList.remove('selected');
+            } else {
+                sessionRow.classList.remove('selected');
+                tradingRow.classList.add('selected');
+            }
+        }
+
+        // Override executeDeposit to check selected target
+        // Note: This runs after the inline executeDeposit is defined, so we capture it
+        const originalExecuteDeposit = window.executeDeposit || executeDeposit;
+        window.executeDeposit = async function() {
+            if (selectedDepositTarget === 'session') {
+                // Fund session wallet instead
+                await fundSessionWallet();
+            } else {
+                // Deposit to trading account (original behavior)
+                await originalExecuteDeposit();
+            }
+        };
 
         async function fundSessionWallet() {
             if (!wallet || !wallet.publicKey || !backpackWallet) {
