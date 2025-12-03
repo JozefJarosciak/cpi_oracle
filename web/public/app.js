@@ -888,13 +888,32 @@ async function deriveSessionWalletFromBackpack(backpackWallet) {
         if (signature instanceof Uint8Array) {
             signatureBytes = signature;
         } else if (signature.signature) {
-            // Backpack returns {signature: Uint8Array, publicKey: PublicKey}
-            signatureBytes = signature.signature;
+            // Check if signature.signature is a base64 string (from X1 Wallet) or Uint8Array (from Backpack)
+            if (typeof signature.signature === 'string') {
+                // X1 Wallet returns base64 encoded signature
+                console.log('[DEBUG derive] Decoding base64 signature from X1 Wallet');
+                const binary = atob(signature.signature);
+                signatureBytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                    signatureBytes[i] = binary.charCodeAt(i);
+                }
+            } else {
+                // Backpack returns {signature: Uint8Array, publicKey: PublicKey}
+                signatureBytes = signature.signature;
+            }
         } else if (ArrayBuffer.isView(signature)) {
             signatureBytes = new Uint8Array(signature.buffer);
+        } else if (typeof signature === 'string') {
+            // Direct base64 string
+            console.log('[DEBUG derive] Decoding direct base64 signature');
+            const binary = atob(signature);
+            signatureBytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                signatureBytes[i] = binary.charCodeAt(i);
+            }
         } else {
             console.error('[DEBUG derive] Unexpected signature format:', signature);
-            throw new Error('Unexpected signature format from Backpack');
+            throw new Error('Unexpected signature format from wallet');
         }
 
         console.log('[DEBUG derive] Signature bytes length:', signatureBytes.length);
