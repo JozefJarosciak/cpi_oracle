@@ -16,7 +16,33 @@ console.log('[CONFIG] Using API endpoints:', CONFIG.API_PREFIX);
 
 // Global state
 let wallet = null; // Session wallet (Keypair)
-let backpackWallet = null; // Backpack wallet provider
+let backpackWallet = null; // Connected wallet provider (Phantom, Backpack, or X1)
+let activeWalletType = null; // Track which wallet type is connected: 'phantom', 'backpack', 'x1_wallet'
+
+// Multi-wallet detection - returns the first available wallet provider
+function detectWallet() {
+    // Check for X1 Wallet (mobile app WebView)
+    if (window.x1_wallet) {
+        console.log('[Wallet] X1 Wallet detected');
+        return { provider: window.x1_wallet, type: 'x1_wallet', name: 'X1 Wallet' };
+    }
+    // Check for Backpack
+    if (window.backpack) {
+        console.log('[Wallet] Backpack detected');
+        return { provider: window.backpack, type: 'backpack', name: 'Backpack' };
+    }
+    // Check for Phantom (window.phantom.solana or window.solana)
+    if (window.phantom?.solana) {
+        console.log('[Wallet] Phantom detected (window.phantom.solana)');
+        return { provider: window.phantom.solana, type: 'phantom', name: 'Phantom' };
+    }
+    if (window.solana?.isPhantom) {
+        console.log('[Wallet] Phantom detected (window.solana)');
+        return { provider: window.solana, type: 'phantom', name: 'Phantom' };
+    }
+    console.log('[Wallet] No wallet detected');
+    return null;
+}
 let currentFeeBps = 25; // Default fee in basis points (0.25%)
 let rapidFireMode = false; // Rapid fire trading mode (no confirmation)
 let debugMode = false; // Debug mode (console logging)
@@ -446,35 +472,40 @@ function getCachedWalletAddress() {
 
 async function restoreSession() {
     try {
-        // Check if Backpack is available
-        if (!window.backpack) {
-            console.log('Backpack not detected');
+        // Detect available wallet (X1, Backpack, or Phantom)
+        const detected = detectWallet();
+        if (!detected) {
+            console.log('No wallet detected');
             showNoWallet();
-            clearWalletCache(); // Clear cache if Backpack not available
+            clearWalletCache();
             return;
         }
+
+        const { provider, type, name } = detected;
+        console.log(`[Restore] Using ${name} wallet`);
 
         // Check for cached wallet preference
         const cachedAddress = getCachedWalletAddress();
 
-        // If Backpack is already connected, restore immediately
-        if (window.backpack.isConnected) {
-            console.log('[Restore] Backpack already connected, restoring session...');
+        // If wallet is already connected, restore immediately
+        if (provider.isConnected) {
+            console.log(`[Restore] ${name} already connected, restoring session...`);
             addLog('Restoring session...', 'info');
 
-            backpackWallet = window.backpack;
-            const backpackAddress = backpackWallet.publicKey.toString();
+            backpackWallet = provider;
+            activeWalletType = type;
+            const walletAddress = backpackWallet.publicKey.toString();
 
-            console.log('[Restore] Backpack address:', backpackAddress);
+            console.log('[Restore] Wallet address:', walletAddress);
 
-            // Verify cached address matches current Backpack wallet (if cached)
-            if (cachedAddress && cachedAddress !== backpackAddress) {
+            // Verify cached address matches current wallet (if cached)
+            if (cachedAddress && cachedAddress !== walletAddress) {
                 console.log('[Restore] Cached wallet mismatch, updating cache');
                 clearWalletCache();
             }
 
             // Cache the connection
-            cacheWalletConnection(backpackAddress);
+            cacheWalletConnection(walletAddress);
 
             // Derive session wallet (will request signature)
             addLog('Deriving session wallet...', 'info');
@@ -486,7 +517,7 @@ async function restoreSession() {
             addLog('Session restored: ' + sessionAddr.substring(0, 12) + '...', 'success');
 
             // Update UI
-            showHasWallet(backpackAddress);
+            showHasWallet(walletAddress);
             updateWalletBalance();
             fetchPositionData();
             showStatus('Session restored: ' + sessionAddr);
@@ -501,18 +532,19 @@ async function restoreSession() {
 
             try {
                 // Attempt silent reconnection
-                const response = await window.backpack.connect();
-                backpackWallet = window.backpack;
-                const backpackAddress = backpackWallet.publicKey.toString();
+                const response = await provider.connect();
+                backpackWallet = provider;
+                activeWalletType = type;
+                const walletAddress = backpackWallet.publicKey.toString();
 
                 // Verify it matches the cached address
-                if (backpackAddress !== cachedAddress) {
+                if (walletAddress !== cachedAddress) {
                     console.log('[Restore] Wallet address changed, clearing cache');
                     clearWalletCache();
                 }
 
                 // Update cache
-                cacheWalletConnection(backpackAddress);
+                cacheWalletConnection(walletAddress);
 
                 // Derive session wallet
                 addLog('Deriving session wallet...', 'info');
@@ -524,7 +556,7 @@ async function restoreSession() {
                 addLog('Wallet auto-reconnected: ' + sessionAddr.substring(0, 12) + '...', 'success');
 
                 // Update UI
-                showHasWallet(backpackAddress);
+                showHasWallet(walletAddress);
                 updateWalletBalance();
                 fetchPositionData();
                 showStatus('Auto-reconnected: ' + sessionAddr);
@@ -547,17 +579,26 @@ async function restoreSession() {
     }
 }
 
-// ============= BACKPACK ACCOUNT SWITCHING =============
+// ============= WALLET ACCOUNT SWITCHING =============
 
-function setupBackpackAccountListener() {
-    if (!window.backpack) {
-        console.log('Backpack not detected, account listener not set up');
+function setupWalletAccountListener() {
+    const detected = detectWallet();
+    if (!detected) {
+        console.log('No wallet detected, account listener not set up');
         return;
     }
 
-    // Listen for account changes in Backpack
-    window.backpack.on('accountChanged', async (publicKey) => {
-        console.log('[Account Switch] Backpack account changed to:', publicKey?.toString());
+    const { provider, type, name } = detected;
+
+    // Only set up listener if the wallet supports it (Backpack and Phantom do, X1 may not)
+    if (typeof provider.on !== 'function') {
+        console.log(`${name} does not support account change events`);
+        return;
+    }
+
+    // Listen for account changes
+    provider.on('accountChanged', async (publicKey) => {
+        console.log(`[Account Switch] ${name} account changed to:`, publicKey?.toString());
 
         if (!publicKey) {
             // User disconnected
@@ -572,12 +613,13 @@ function setupBackpackAccountListener() {
             return;
         }
 
-        const newBackpackAddress = publicKey.toString();
-        addLog('Wallet switched to: ' + newBackpackAddress.substring(0, 12) + '...', 'info');
+        const newWalletAddress = publicKey.toString();
+        addLog('Wallet switched to: ' + newWalletAddress.substring(0, 12) + '...', 'info');
 
         try {
-            // Update backpack wallet reference
-            backpackWallet = window.backpack;
+            // Update wallet reference
+            backpackWallet = provider;
+            activeWalletType = type;
 
             // Clear old session wallet cache before deriving new one
             clearSessionWalletCache();
@@ -595,10 +637,10 @@ function setupBackpackAccountListener() {
             addLog('This is the deterministic session wallet for your new account', 'info');
 
             // Update cache with new wallet address
-            cacheWalletConnection(newBackpackAddress);
+            cacheWalletConnection(newWalletAddress);
 
             // Update UI
-            showHasWallet(newBackpackAddress);
+            showHasWallet(newWalletAddress);
             updateWalletBalance();
             fetchPositionData();
             showStatus('Switched! Session wallet: ' + sessionAddr);
@@ -611,36 +653,45 @@ function setupBackpackAccountListener() {
         }
     });
 
-    console.log('Backpack account change listener installed');
+    console.log(`${name} account change listener installed`);
+}
+
+// Keep old function name for backwards compatibility
+function setupBackpackAccountListener() {
+    setupWalletAccountListener();
 }
 
 async function connectBackpack() {
-    console.log('[connectBackpack] Button clicked!');
+    console.log('[connectWallet] Button clicked!');
     try {
-        console.log('[connectBackpack] Checking for window.backpack...');
-        console.log('[connectBackpack] window.backpack exists?', !!window.backpack);
+        // Detect available wallet (X1, Backpack, or Phantom)
+        const detected = detectWallet();
+        console.log('[connectWallet] Detected wallet:', detected);
 
-        if (!window.backpack) {
-            console.error('[connectBackpack] Backpack wallet not found in window object');
+        if (!detected) {
+            console.error('[connectWallet] No wallet found in window object');
             addLog('ERROR: Wallet not found!', 'error');
             addLog('Please open this page in a supported wallet browser', 'info');
+            addLog('Supported: X1 Wallet, Backpack, Phantom', 'info');
             showError('Wallet not found! Please use a supported wallet browser');
             return;
         }
 
-        console.log('[connectBackpack] Backpack detected, attempting to connect...');
-        addLog('Connecting wallet...', 'info');
-        showStatus('Connecting wallet...');
+        const { provider, type, name } = detected;
+        console.log(`[connectWallet] ${name} detected, attempting to connect...`);
+        addLog(`Connecting ${name}...`, 'info');
+        showStatus(`Connecting ${name}...`);
 
-        // Connect Backpack
-        const response = await window.backpack.connect();
-        backpackWallet = window.backpack;
-        const backpackAddress = backpackWallet.publicKey.toString();
+        // Connect wallet
+        const response = await provider.connect();
+        backpackWallet = provider;
+        activeWalletType = type;
+        const walletAddress = backpackWallet.publicKey.toString();
 
-        addLog('Wallet connected: ' + backpackAddress.substring(0, 12) + '...', 'success');
+        addLog(`${name} connected: ` + walletAddress.substring(0, 12) + '...', 'success');
 
-        // Derive deterministic session wallet from Backpack signature
-        // Same Backpack = Same signature = Same session wallet, ALWAYS!
+        // Derive deterministic session wallet from wallet signature
+        // Same wallet = Same signature = Same session wallet, ALWAYS!
         // No localStorage needed - completely reproducible from signature alone
         console.log('[DEBUG] About to derive session wallet...');
         wallet = await deriveSessionWalletFromBackpack(backpackWallet);
@@ -656,10 +707,10 @@ async function connectBackpack() {
         addLog('Same wallet = Same session wallet, on any device!', 'info');
 
         // Cache the wallet connection for auto-reconnect on page navigation
-        cacheWalletConnection(backpackAddress);
+        cacheWalletConnection(walletAddress);
 
         console.log('[DEBUG] About to call showHasWallet...');
-        showHasWallet(backpackAddress);
+        showHasWallet(walletAddress);
         console.log('[DEBUG] showHasWallet completed');
 
         // Automatically initialize position with master_wallet security
@@ -673,7 +724,7 @@ async function connectBackpack() {
 
         updateWalletBalance();
         fetchPositionData();
-        showStatus('Connected! Session wallet: ' + sessionAddr);
+        showStatus(`Connected via ${name}! Session wallet: ` + sessionAddr);
 
     } catch (err) {
         addLog('Connection failed: ' + err.message, 'error');
@@ -686,20 +737,26 @@ async function connectBackpack() {
 function disconnectWallet() {
     addLog('Disconnecting wallet...', 'info');
 
+    // Try to disconnect the active wallet provider
+    const detected = detectWallet();
+    if (detected && detected.provider && typeof detected.provider.disconnect === 'function') {
+        try {
+            detected.provider.disconnect();
+        } catch (e) {
+            console.log('Wallet disconnect failed:', e);
+        }
+    }
+
     // Clear wallet references and cache
     wallet = null;
     backpackWallet = null;
+    activeWalletType = null;
 
     // Clear wallet cache to prevent auto-reconnect
     clearWalletCache();
 
     // Clear session wallet cache
     clearSessionWalletCache();
-
-    // Disconnect Backpack if connected
-    if (window.backpack && window.backpack.disconnect) {
-        window.backpack.disconnect();
-    }
 
     showNoWallet();
     addLog('Wallet disconnected.', 'success');
