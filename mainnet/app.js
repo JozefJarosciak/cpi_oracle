@@ -10,6 +10,16 @@ const CONFIG = {
     API_PREFIX: window.API_BASE || '/api'
 };
 
+// Remote logging function for mobile debugging
+function remoteLog(msg) {
+    console.log(msg); // Also log locally
+    fetch('/api/client-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg })
+    }).catch(() => {}); // Ignore errors
+}
+
 // Log the config on load to verify we're using the right version
 console.log('[CONFIG] Using AMM_SEED:', CONFIG.AMM_SEED);
 console.log('[CONFIG] Using API endpoints:', CONFIG.API_PREFIX);
@@ -7757,9 +7767,9 @@ function updateButtonStates() {
 // ============= DEPOSIT/WITHDRAW MODAL FUNCTIONS =============
 
 async function openDepositModal() {
-    console.log('[DEBUG] openDepositModal called');
+    remoteLog('[DEBUG] openDepositModal called');
     if (!backpackWallet || !wallet) {
-        console.log('[DEBUG] Wallet not connected - backpackWallet:', !!backpackWallet, 'wallet:', !!wallet);
+        remoteLog('[DEBUG] Wallet not connected - backpackWallet:' + !!backpackWallet + ' wallet:' + !!wallet);
         addLog('ERROR: Wallet not connected', 'error');
         showError('Connect wallet first');
         return;
@@ -7767,10 +7777,10 @@ async function openDepositModal() {
 
     // Show modal
     const modal = document.getElementById('depositModal');
-    console.log('[DEBUG] depositModal element:', modal);
+    remoteLog('[DEBUG] depositModal element: ' + (modal ? 'found' : 'NOT FOUND'));
     if (modal) {
         modal.classList.remove('hidden');
-        console.log('[DEBUG] Modal shown');
+        remoteLog('[DEBUG] Modal shown');
     }
 
     // Update balances
@@ -7991,11 +8001,11 @@ async function setMaxAmount() {
 }
 
 async function executeDeposit() {
-    console.log('[DEBUG] executeDeposit called');
+    remoteLog('[DEBUG] executeDeposit called');
     lastFocusedAction = 'deposit'; // Track action
 
     if (!backpackWallet || !wallet) {
-        console.log('[DEBUG] executeDeposit - wallet not connected');
+        remoteLog('[DEBUG] executeDeposit - wallet not connected');
         addLog('ERROR: Wallet not connected', 'error');
         showError('Connect wallet first');
         return;
@@ -8003,10 +8013,10 @@ async function executeDeposit() {
 
     const amountInput = document.getElementById('depositAmount');
     const amount = parseFloat(amountInput.value);
-    console.log('[DEBUG] executeDeposit - amount:', amount);
+    remoteLog('[DEBUG] executeDeposit - amount: ' + amount);
 
     if (isNaN(amount) || amount <= 0) {
-        console.log('[DEBUG] executeDeposit - invalid amount');
+        remoteLog('[DEBUG] executeDeposit - invalid amount');
         addLog('ERROR: Invalid deposit amount', 'error');
         showError('Invalid amount');
         return;
@@ -8074,21 +8084,21 @@ async function executeDeposit() {
 
         const { blockhash } = await connection.getLatestBlockhash();
         transaction.recentBlockhash = blockhash;
-        console.log('[DEBUG] executeDeposit - got blockhash:', blockhash);
+        remoteLog('[DEBUG] executeDeposit - got blockhash: ' + blockhash);
 
         // Sign with session wallet first
-        console.log('[DEBUG] executeDeposit - signing with session wallet...');
+        remoteLog('[DEBUG] executeDeposit - signing with session wallet...');
         transaction.sign(wallet);
-        console.log('[DEBUG] executeDeposit - session wallet signed');
+        remoteLog('[DEBUG] executeDeposit - session wallet signed');
 
         // Then sign with Backpack
-        console.log('[DEBUG] executeDeposit - calling backpackWallet.signTransaction...');
-        console.log('[DEBUG] backpackWallet type:', typeof backpackWallet);
-        console.log('[DEBUG] backpackWallet.signTransaction:', typeof backpackWallet.signTransaction);
+        remoteLog('[DEBUG] executeDeposit - calling backpackWallet.signTransaction...');
+        remoteLog('[DEBUG] backpackWallet type: ' + typeof backpackWallet);
+        remoteLog('[DEBUG] backpackWallet.signTransaction: ' + typeof backpackWallet.signTransaction);
         const signedTx = await backpackWallet.signTransaction(transaction);
-        console.log('[DEBUG] executeDeposit - got signed tx:', signedTx);
+        remoteLog('[DEBUG] executeDeposit - got signed tx: ' + (signedTx ? 'yes' : 'null'));
         const signature = await connection.sendRawTransaction(signedTx.serialize());
-        console.log('[DEBUG] executeDeposit - tx sent, signature:', signature);
+        remoteLog('[DEBUG] executeDeposit - tx sent, signature: ' + signature);
 
         addLog(`TX: ${signature}`, 'tx');
         showStatus('Confirming...');

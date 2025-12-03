@@ -1318,6 +1318,26 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // API: Client log endpoint (for mobile app debugging)
+    if (req.url === '/api/client-log' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+            try {
+                const data = JSON.parse(body);
+                const msg = data.message || data.msg || JSON.stringify(data);
+                logToBuffer(`[CLIENT] ${msg}`);
+                res.writeHead(200, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+                res.end(JSON.stringify({ ok: true }));
+            } catch (e) {
+                logToBuffer(`[CLIENT] ${body}`);
+                res.writeHead(200, { 'Content-Type': 'application/json', ...SECURITY_HEADERS });
+                res.end(JSON.stringify({ ok: true }));
+            }
+        });
+        return;
+    }
+
     // Log requests selectively (skip high-frequency chart endpoints to reduce overhead)
     const shouldLog = (req.url.startsWith('/api/') || req.url === '/' || req.url === '/proto2' || req.url === '/logs')
         && !req.url.includes('/api/quote-history/')
