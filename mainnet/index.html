@@ -26,7 +26,7 @@
             </div>
             <div class="top-right">
                 <div id="walletNavDisconnected" class="hidden">
-                    <button class="btn-wallet" onclick="connectBackpack()">Connect Wallet</button>
+                    <button class="btn-wallet" onclick="connectBackpack()" ontouchend="event.preventDefault(); connectBackpack();">Connect Wallet</button>
                 </div>
                 <div id="walletNavConnected" class="hidden">
                     <div class="wallet-info">
@@ -35,8 +35,8 @@
                             <span class="points-value" id="navUserPoints">0</span>
                             <span class="points-label">PTS</span>
                         </a>
-                        <button class="btn-deposit" onclick="openDepositModal()">Deposit</button>
-                        <button class="btn-withdraw-nav" onclick="openWithdrawModal()">Withdraw</button>
+                        <button class="btn-deposit" id="depositBtn" onclick="openDepositModal()" ontouchend="event.preventDefault(); openDepositModal();">Deposit</button>
+                        <button class="btn-withdraw-nav" id="withdrawNavBtn" onclick="openWithdrawModal()" ontouchend="event.preventDefault(); openWithdrawModal();">Withdraw</button>
                         <span class="balance" id="navWalletBal">0.00</span>
                         <span class="balance-unit">XNT</span>
                     </div>
@@ -46,7 +46,7 @@
 
         <!-- Deposit Modal -->
         <div id="depositModal" class="modal hidden">
-            <div class="modal-overlay" onclick="closeDepositModal()"></div>
+            <div class="modal-overlay" onclick="closeDepositModal()" ontouchend="event.preventDefault(); closeDepositModal();"></div>
             <div class="modal-content">
                 <!-- Centered Info Tooltip -->
                 <div id="walletInfoDisplay" class="wallet-info-overlay"></div>
@@ -56,7 +56,7 @@
                         <h3 class="modal-title">Deposit</h3>
                         <p class="modal-subtitle">Transfer funds to trading account</p>
                     </div>
-                    <button class="modal-close" onclick="closeDepositModal()">×</button>
+                    <button class="modal-close" onclick="closeDepositModal()" ontouchend="event.preventDefault(); closeDepositModal();">×</button>
                 </div>
                 <div class="modal-body">
                     <div class="balance-info">
@@ -68,7 +68,7 @@
                             <span class="balance-value" id="sessionWalletBalance">Loading...</span>
                             <span class="info-icon" onmouseenter="showWalletInfo('Your main Backpack wallet. Funds come from here when depositing. Only this wallet can withdraw.')" onmouseleave="hideWalletInfo()">ⓘ</span>
                         </div>
-                        <div class="balance-row selectable" id="depositTargetSession" onclick="selectDepositTarget('session')">
+                        <div class="balance-row selectable" id="depositTargetSession" onclick="selectDepositTarget('session')" ontouchend="event.preventDefault(); selectDepositTarget('session');">
                             <div class="balance-label-section">
                                 <span class="balance-label">Session Wallet</span>
                                 <span class="balance-sublabel">TX Fees</span>
@@ -76,7 +76,7 @@
                             <span class="balance-value" id="tradingWalletBalance">Loading...</span>
                             <span class="info-icon" onmouseenter="showWalletInfo('Derived wallet that pays transaction fees. Keep ~0.5 XNT here for smooth trading.')" onmouseleave="hideWalletInfo()">ⓘ</span>
                         </div>
-                        <div class="balance-row selectable selected" id="depositTargetTrading" onclick="selectDepositTarget('trading')">
+                        <div class="balance-row selectable selected" id="depositTargetTrading" onclick="selectDepositTarget('trading')" ontouchend="event.preventDefault(); selectDepositTarget('trading');">
                             <div class="balance-label-section">
                                 <span class="balance-label">Trading Account</span>
                                 <span class="balance-sublabel">Current</span>
@@ -121,18 +121,18 @@
                         <div class="input-wrapper">
                             <input type="number" id="depositAmount" placeholder="0.00" step="0.01" min="0.01">
                             <span class="input-currency">XNT</span>
-                            <button class="btn-max-deposit" onclick="setMaxAmount()">MAX</button>
+                            <button class="btn-max-deposit" onclick="setMaxAmount()" ontouchend="event.preventDefault(); setMaxAmount();">MAX</button>
                         </div>
                     </div>
 
                     <div class="modal-actions">
-                        <button class="btn-primary" id="depositBtn" onclick="executeDeposit()">Deposit</button>
-                        <button class="btn-withdraw" id="withdrawBtn" onclick="executeWithdraw()">Withdraw</button>
-                        <button class="btn-secondary" onclick="closeDepositModal()">Cancel</button>
+                        <button class="btn-primary" id="executeDepositBtn" onclick="executeDeposit()" ontouchend="event.preventDefault(); executeDeposit();">Deposit</button>
+                        <button class="btn-withdraw" id="executeWithdrawBtn" onclick="executeWithdraw()" ontouchend="event.preventDefault(); executeWithdraw();">Withdraw</button>
+                        <button class="btn-secondary" onclick="closeDepositModal()" ontouchend="event.preventDefault(); closeDepositModal();">Cancel</button>
                     </div>
 
                     <div class="modal-actions-secondary">
-                        <button class="btn-sweep-session" onclick="sweepSessionWallet()">Sweep Session Wallet</button>
+                        <button class="btn-sweep-session" onclick="sweepSessionWallet()" ontouchend="event.preventDefault(); sweepSessionWallet();">Sweep Session Wallet</button>
                     </div>
 
                     <div class="deposit-info-section">
@@ -155,14 +155,14 @@
 
         <!-- Close Position Confirmation Modal -->
         <div id="closePositionModal" class="modal hidden">
-            <div class="modal-overlay" onclick="closeClosePositionModal()"></div>
+            <div class="modal-overlay" onclick="closeClosePositionModal()" ontouchend="event.preventDefault(); closeClosePositionModal();"></div>
             <div class="modal-content">
                 <div class="modal-header">
                     <div class="modal-title-section">
                         <h3 class="modal-title">🔒 Close All Positions</h3>
                         <p class="modal-subtitle">Review estimated proceeds before closing</p>
                     </div>
-                    <button class="modal-close" onclick="closeClosePositionModal()">×</button>
+                    <button class="modal-close" onclick="closeClosePositionModal()" ontouchend="event.preventDefault(); closeClosePositionModal();">×</button>
                 </div>
                 <div class="modal-body">
                     <div class="balance-info">
@@ -205,10 +205,10 @@
                     </div>
 
                     <div class="modal-actions">
-                        <button class="btn-close-position-confirm" id="confirmCloseBtn" onclick="executeClosePosition()">
+                        <button class="btn-close-position-confirm" id="confirmCloseBtn" onclick="executeClosePosition()" ontouchend="event.preventDefault(); executeClosePosition();">
                             Confirm Close
                         </button>
-                        <button class="btn-secondary" onclick="closeClosePositionModal()">Cancel</button>
+                        <button class="btn-secondary" onclick="closeClosePositionModal()" ontouchend="event.preventDefault(); closeClosePositionModal();">Cancel</button>
                     </div>
                 </div>
             </div>
