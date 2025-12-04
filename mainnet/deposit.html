@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Deposit - Debug</title>
+    <title>Deposit - Full Test</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -23,13 +23,14 @@
             margin-bottom: 20px;
             font-family: monospace;
             font-size: 12px;
-            max-height: 200px;
+            max-height: 250px;
             overflow-y: auto;
         }
         .log-entry { margin: 4px 0; color: #aaa; }
         .log-entry.success { color: #00c853; }
         .log-entry.error { color: #ff5252; }
         .log-entry.info { color: #5b9eff; }
+        .log-entry.tx { color: #ffd700; }
         .btn {
             display: block;
             width: 100%;
@@ -45,6 +46,7 @@
         }
         .btn-connect { background: #5b9eff; color: #fff; }
         .btn-deposit { background: #00c853; color: #fff; }
+        .btn-init { background: #ff9800; color: #fff; }
         .btn:active { opacity: 0.8; transform: scale(0.98); }
         .btn:disabled { background: #555; cursor: not-allowed; }
         .input-group { margin: 15px 0; }
@@ -69,11 +71,29 @@
         .wallet-info .label { color: #888; }
         .wallet-info .value { color: #00c853; font-family: monospace; word-break: break-all; }
         .hidden { display: none; }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-left: 8px;
+        }
+        .status-badge.exists { background: #00c853; color: #000; }
+        .status-badge.missing { background: #ff5252; color: #fff; }
+        .back-btn {
+            display: inline-block;
+            color: #5b9eff;
+            text-decoration: none;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        .back-btn:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Deposit Test Page</h1>
+        <a href="https://vero.x1.xyz" class="back-btn" onclick="window.location.href='https://vero.x1.xyz'; return false;">&larr; Back to Main</a>
+        <h1>Deposit Test Page (Full)</h1>
 
         <div class="log-box" id="logBox">
             <div class="log-entry">Ready...</div>
@@ -93,10 +113,17 @@
                 <div><span class="label">Master Wallet:</span> <span class="value" id="masterWallet">-</span></div>
                 <div><span class="label">Session Wallet:</span> <span class="value" id="sessionWallet">-</span></div>
                 <div><span class="label">Session Balance:</span> <span class="value" id="sessionBalance">-</span></div>
+                <div><span class="label">Position Account:</span> <span class="value" id="positionStatus">-</span></div>
             </div>
 
+            <button class="btn btn-init" id="initPositionBtn"
+                    onclick="initPosition()"
+                    ontouchstart="handleTouch(event, initPosition)">
+                Initialize Position (+ Fund 1.01 XNT)
+            </button>
+
             <div class="input-group">
-                <label>Amount (XNT)</label>
+                <label>Additional Deposit Amount (XNT)</label>
                 <input type="number" id="depositAmount" value="0.1" step="0.01" min="0.01">
             </div>
 
@@ -110,6 +137,13 @@
 
 <script src="solana-web3.min.js"></script>
 <script>
+// Configuration
+const CONFIG = {
+    RPC_URL: 'https://rpc.mainnet.x1.xyz',
+    PROGRAM_ID: 'EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF',
+    AMM_SEED: 'amm_btc_v6'
+};
+
 // Remote logging
 function remoteLog(msg, type = 'info') {
     console.log(msg);
@@ -138,16 +172,125 @@ function handleTouch(event, callback) {
     callback();
 }
 
-// Global state
-let backpackWallet = null;
-let sessionWallet = null;
+// ============= BROWSER-COMPATIBLE BUFFER =============
+function stringToUint8Array(str) {
+    return new TextEncoder().encode(str);
+}
+
+function concatUint8Arrays(...arrays) {
+    const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const arr of arrays) {
+        result.set(arr, offset);
+        offset += arr.length;
+    }
+    return result;
+}
+
+// ============= SHA256 PURE JS IMPLEMENTATION =============
+function sha256Pure(data) {
+    const K = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+    ];
+
+    let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a;
+    let h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    const bitLen = bytes.length * 8;
+
+    const paddingLen = (bytes.length % 64 < 56) ? (56 - bytes.length % 64) : (120 - bytes.length % 64);
+    const padded = new Uint8Array(bytes.length + paddingLen + 8);
+    padded.set(bytes);
+    padded[bytes.length] = 0x80;
+
+    const view = new DataView(padded.buffer, padded.byteOffset + padded.length - 8, 8);
+    view.setUint32(0, 0, false);
+    view.setUint32(4, bitLen, false);
+
+    for (let chunk = 0; chunk < padded.length; chunk += 64) {
+        const w = new Uint32Array(64);
+        for (let i = 0; i < 16; i++) {
+            w[i] = (padded[chunk + i*4] << 24) | (padded[chunk + i*4 + 1] << 16) |
+                   (padded[chunk + i*4 + 2] << 8) | padded[chunk + i*4 + 3];
+        }
+        for (let i = 16; i < 64; i++) {
+            const s0 = ((w[i-15] >>> 7) | (w[i-15] << 25)) ^ ((w[i-15] >>> 18) | (w[i-15] << 14)) ^ (w[i-15] >>> 3);
+            const s1 = ((w[i-2] >>> 17) | (w[i-2] << 15)) ^ ((w[i-2] >>> 19) | (w[i-2] << 13)) ^ (w[i-2] >>> 10);
+            w[i] = (w[i-16] + s0 + w[i-7] + s1) | 0;
+        }
+
+        let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+
+        for (let i = 0; i < 64; i++) {
+            const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+            const ch = (e & f) ^ (~e & g);
+            const temp1 = (h + S1 + ch + K[i] + w[i]) | 0;
+            const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+            const maj = (a & b) ^ (a & c) ^ (b & c);
+            const temp2 = (S0 + maj) | 0;
+
+            h = g; g = f; f = e; e = (d + temp1) | 0;
+            d = c; c = b; b = a; a = (temp1 + temp2) | 0;
+        }
+
+        h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0;
+        h4 = (h4 + e) | 0; h5 = (h5 + f) | 0; h6 = (h6 + g) | 0; h7 = (h7 + h) | 0;
+    }
+
+    const hash = new Uint8Array(32);
+    [h0, h1, h2, h3, h4, h5, h6, h7].forEach((h, i) => {
+        hash[i*4] = (h >>> 24) & 0xff;
+        hash[i*4 + 1] = (h >>> 16) & 0xff;
+        hash[i*4 + 2] = (h >>> 8) & 0xff;
+        hash[i*4 + 3] = h & 0xff;
+    });
+
+    return hash;
+}
+
+async function createDiscriminator(name) {
+    const data = stringToUint8Array('global:' + name);
+
+    const cryptoObj = window.crypto || window.msCrypto || self.crypto;
+    if (cryptoObj && cryptoObj.subtle && window.isSecureContext) {
+        try {
+            const hashBuffer = await cryptoObj.subtle.digest('SHA-256', data);
+            const hashArray = new Uint8Array(hashBuffer);
+            return hashArray.slice(0, 8);
+        } catch (err) {
+            console.warn('Web Crypto API failed, using pure JS fallback:', err);
+        }
+    }
+
+    const hashArray = sha256Pure(data);
+    return hashArray.slice(0, 8);
+}
+
+function createComputeBudgetInstructions(units = 800000, microLamports = 1) {
+    const { ComputeBudgetProgram } = solanaWeb3;
+    return [
+        ComputeBudgetProgram.setComputeUnitLimit({ units }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports })
+    ];
+}
+
+// ============= GLOBAL STATE =============
+let backpackWallet = null;  // Master wallet (Backpack/Phantom/X1)
+let sessionWallet = null;   // Derived session keypair
 let activeWalletType = null;
 let connection = null;
+let ammPda = null;
 
-// Initialize connection
-const RPC_URL = 'https://rpc.mainnet.x1.xyz';
-
-// Detect wallet
+// ============= WALLET DETECTION =============
 function detectWallet() {
     if (window.x1_wallet) {
         remoteLog('X1 Wallet detected');
@@ -169,7 +312,7 @@ function detectWallet() {
     return null;
 }
 
-// Connect wallet
+// ============= CONNECT WALLET =============
 async function connectWallet() {
     remoteLog('connectWallet() called');
 
@@ -184,7 +327,7 @@ async function connectWallet() {
         remoteLog('Connecting to ' + name + '...');
 
         // Connect
-        const response = await provider.connect();
+        await provider.connect();
         backpackWallet = provider;
         activeWalletType = type;
 
@@ -195,6 +338,16 @@ async function connectWallet() {
         document.getElementById('walletType').textContent = name;
         document.getElementById('masterWallet').textContent = masterAddr;
 
+        // Initialize connection and calculate AMM PDA
+        connection = new solanaWeb3.Connection(CONFIG.RPC_URL);
+
+        const [amm] = solanaWeb3.PublicKey.findProgramAddressSync(
+            [stringToUint8Array(CONFIG.AMM_SEED)],
+            new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID)
+        );
+        ammPda = amm;
+        remoteLog('AMM PDA: ' + ammPda.toString().substring(0, 12) + '...');
+
         // Derive session wallet
         remoteLog('Deriving session wallet...');
         sessionWallet = await deriveSessionWallet(backpackWallet);
@@ -203,8 +356,9 @@ async function connectWallet() {
         remoteLog('Session wallet: ' + sessionAddr.substring(0, 12) + '...', 'success');
         document.getElementById('sessionWallet').textContent = sessionAddr;
 
-        // Get balance
+        // Get balance and check position
         await updateBalance();
+        await checkPositionExists();
 
         // Show deposit section
         document.getElementById('connectSection').classList.add('hidden');
@@ -215,13 +369,13 @@ async function connectWallet() {
     }
 }
 
-// Derive session wallet from signature
+// ============= DERIVE SESSION WALLET =============
 async function deriveSessionWallet(wallet) {
-    const message = "CPI Oracle Session Key Derivation v1";
-    const encodedMessage = new TextEncoder().encode(message);
+    // MUST match the message in app.js exactly!
+    const message = new TextEncoder().encode('x1-markets-deterministic-session-wallet-v1');
 
     remoteLog('Requesting signature...');
-    const signatureResult = await wallet.signMessage(encodedMessage);
+    const signatureResult = await wallet.signMessage(message);
     remoteLog('Signature received, type: ' + typeof signatureResult);
 
     let signatureBytes;
@@ -229,49 +383,50 @@ async function deriveSessionWallet(wallet) {
         signatureBytes = signatureResult;
     } else if (signatureResult.signature) {
         if (typeof signatureResult.signature === 'string') {
-            // Base64 decode for X1 Wallet
-            remoteLog('Decoding base64 signature');
-            const binaryString = atob(signatureResult.signature);
-            signatureBytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                signatureBytes[i] = binaryString.charCodeAt(i);
+            // X1 Wallet returns base64 encoded signature
+            remoteLog('Decoding base64 signature from X1 Wallet');
+            const binary = atob(signatureResult.signature);
+            signatureBytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                signatureBytes[i] = binary.charCodeAt(i);
             }
         } else {
-            signatureBytes = new Uint8Array(signatureResult.signature);
+            // Backpack returns {signature: Uint8Array, publicKey: PublicKey}
+            signatureBytes = signatureResult.signature;
         }
+    } else if (ArrayBuffer.isView(signatureResult)) {
+        signatureBytes = new Uint8Array(signatureResult.buffer);
     } else if (typeof signatureResult === 'string') {
         // Direct base64 string
         remoteLog('Decoding direct base64 signature');
-        const binaryString = atob(signatureResult);
-        signatureBytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            signatureBytes[i] = binaryString.charCodeAt(i);
+        const binary = atob(signatureResult);
+        signatureBytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            signatureBytes[i] = binary.charCodeAt(i);
         }
     } else {
-        signatureBytes = new Uint8Array(Object.values(signatureResult));
+        remoteLog('Unexpected signature format: ' + JSON.stringify(signatureResult), 'error');
+        throw new Error('Unexpected signature format from wallet');
     }
 
     remoteLog('Signature bytes length: ' + signatureBytes.length);
 
-    // Hash signature to get seed
-    const hashBuffer = await crypto.subtle.digest('SHA-256', signatureBytes);
-    const seed = new Uint8Array(hashBuffer);
+    // Use first 32 bytes of signature as Ed25519 seed (MUST match app.js!)
+    const seed = signatureBytes.slice(0, 32);
+    remoteLog('Seed created from first 32 bytes');
 
     // Create keypair from seed
     const keypair = solanaWeb3.Keypair.fromSeed(seed);
-    remoteLog('Session keypair created');
+    remoteLog('Session keypair created: ' + keypair.publicKey.toString().substring(0, 12) + '...');
 
     return keypair;
 }
 
-// Update session wallet balance
+// ============= UPDATE BALANCE =============
 async function updateBalance() {
     if (!sessionWallet) return;
 
     try {
-        if (!connection) {
-            connection = new solanaWeb3.Connection(RPC_URL);
-        }
         const balance = await connection.getBalance(sessionWallet.publicKey);
         const xnt = (balance / 1e9).toFixed(4);
         document.getElementById('sessionBalance').textContent = xnt + ' XNT';
@@ -281,7 +436,137 @@ async function updateBalance() {
     }
 }
 
-// Execute deposit
+// ============= CHECK IF POSITION EXISTS =============
+async function checkPositionExists() {
+    if (!sessionWallet || !ammPda) return false;
+
+    try {
+        const [posPda] = solanaWeb3.PublicKey.findProgramAddressSync(
+            [stringToUint8Array('pos'), ammPda.toBytes(), sessionWallet.publicKey.toBytes()],
+            new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID)
+        );
+
+        const accountInfo = await connection.getAccountInfo(posPda);
+        const exists = accountInfo !== null;
+
+        const statusEl = document.getElementById('positionStatus');
+        if (exists) {
+            statusEl.innerHTML = posPda.toString().substring(0, 12) + '... <span class="status-badge exists">EXISTS</span>';
+            document.getElementById('initPositionBtn').disabled = true;
+            document.getElementById('initPositionBtn').textContent = 'Position Already Initialized';
+        } else {
+            statusEl.innerHTML = posPda.toString().substring(0, 12) + '... <span class="status-badge missing">MISSING</span>';
+            document.getElementById('initPositionBtn').disabled = false;
+        }
+
+        remoteLog('Position ' + (exists ? 'EXISTS' : 'MISSING') + ': ' + posPda.toString().substring(0, 12) + '...');
+        return exists;
+
+    } catch (err) {
+        remoteLog('Check position error: ' + err.message, 'error');
+        return false;
+    }
+}
+
+// ============= INIT POSITION =============
+async function initPosition() {
+    remoteLog('initPosition() called');
+
+    if (!sessionWallet || !backpackWallet) {
+        remoteLog('Wallet not connected!', 'error');
+        return false;
+    }
+
+    try {
+        const [posPda] = solanaWeb3.PublicKey.findProgramAddressSync(
+            [stringToUint8Array('pos'), ammPda.toBytes(), sessionWallet.publicKey.toBytes()],
+            new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID)
+        );
+
+        // Check if position already exists
+        const accountInfo = await connection.getAccountInfo(posPda);
+        if (accountInfo) {
+            remoteLog('Position already exists', 'info');
+            return true;
+        }
+
+        remoteLog('Initializing position account...', 'info');
+
+        // Calculate user_vault PDA
+        const [userVaultPda] = solanaWeb3.PublicKey.findProgramAddressSync(
+            [stringToUint8Array('user_vault'), posPda.toBytes()],
+            new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID)
+        );
+        remoteLog('User vault PDA: ' + userVaultPda.toString().substring(0, 12) + '...');
+
+        const discriminator = await createDiscriminator('init_position');
+        remoteLog('Discriminator created');
+
+        // Convert master wallet pubkey to proper PublicKey
+        const masterPubkey = new solanaWeb3.PublicKey(backpackWallet.publicKey.toString());
+
+        const keys = [
+            { pubkey: ammPda, isSigner: false, isWritable: false },
+            { pubkey: posPda, isSigner: false, isWritable: true },
+            { pubkey: userVaultPda, isSigner: false, isWritable: false },
+            { pubkey: sessionWallet.publicKey, isSigner: true, isWritable: true },
+            { pubkey: masterPubkey, isSigner: true, isWritable: true },
+            { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
+        ];
+
+        const instruction = new solanaWeb3.TransactionInstruction({
+            programId: new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID),
+            keys,
+            data: discriminator
+        });
+
+        // Also fund session wallet with 1.01 XNT for transaction fees
+        const feeReserve = 1.01 * solanaWeb3.LAMPORTS_PER_SOL;
+        const fundSessionIx = solanaWeb3.SystemProgram.transfer({
+            fromPubkey: masterPubkey,
+            toPubkey: sessionWallet.publicKey,
+            lamports: feeReserve
+        });
+
+        remoteLog('Creating transaction...');
+        const budgetIxs = createComputeBudgetInstructions(200000, 0);
+        const transaction = new solanaWeb3.Transaction().add(...budgetIxs, fundSessionIx, instruction);
+        transaction.feePayer = masterPubkey;
+        transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+        // Sign with session wallet first
+        remoteLog('Signing with session wallet...');
+        transaction.sign(sessionWallet);
+
+        // Then sign with master wallet (Backpack/Phantom/X1)
+        remoteLog('Requesting master wallet signature...');
+        const signedTx = await backpackWallet.signTransaction(transaction);
+        remoteLog('Transaction signed');
+
+        // Send
+        remoteLog('Sending init_position transaction...', 'tx');
+        const signature = await connection.sendRawTransaction(signedTx.serialize());
+        remoteLog('TX: ' + signature.substring(0, 20) + '...', 'tx');
+
+        // Confirm
+        remoteLog('Confirming...');
+        await connection.confirmTransaction(signature, 'confirmed');
+        remoteLog('Position initialized! Session funded with 1.01 XNT', 'success');
+
+        // Update UI
+        await updateBalance();
+        await checkPositionExists();
+
+        return true;
+
+    } catch (err) {
+        remoteLog('Init Position FAILED: ' + err.message, 'error');
+        console.error('Init position error:', err);
+        return false;
+    }
+}
+
+// ============= EXECUTE DEPOSIT =============
 async function executeDeposit() {
     remoteLog('executeDeposit() called');
 
@@ -302,13 +587,9 @@ async function executeDeposit() {
     remoteLog('Depositing ' + amount + ' XNT (' + lamports + ' lamports)');
 
     try {
-        if (!connection) {
-            connection = new solanaWeb3.Connection(RPC_URL);
-        }
-
-        // Create transfer instruction - convert to proper PublicKey objects
+        // Convert to proper PublicKey objects
         const fromPubkey = new solanaWeb3.PublicKey(backpackWallet.publicKey.toString());
-        const toPubkey = sessionWallet.publicKey; // Already a proper Keypair
+        const toPubkey = sessionWallet.publicKey;
 
         remoteLog('From: ' + fromPubkey.toString().substring(0, 12) + '...');
         remoteLog('To: ' + toPubkey.toString().substring(0, 12) + '...');
@@ -334,9 +615,9 @@ async function executeDeposit() {
         remoteLog('Transaction signed');
 
         // Send
-        remoteLog('Sending transaction...');
+        remoteLog('Sending transaction...', 'tx');
         const signature = await connection.sendRawTransaction(signed.serialize());
-        remoteLog('TX sent: ' + signature.substring(0, 20) + '...', 'success');
+        remoteLog('TX: ' + signature.substring(0, 20) + '...', 'tx');
 
         // Confirm
         remoteLog('Confirming...');
@@ -357,7 +638,7 @@ async function executeDeposit() {
     }
 }
 
-// Initialize
+// ============= INITIALIZE =============
 window.addEventListener('DOMContentLoaded', () => {
     remoteLog('Page loaded');
     detectWallet();

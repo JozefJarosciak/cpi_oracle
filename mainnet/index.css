@@ -2838,6 +2838,46 @@ button.disabled {
     transform: translateY(1px);
 }
 
+.btn-create-user {
+    background: linear-gradient(135deg, #ff9800, #ff5722);
+    color: #fff;
+    border: none;
+    font-weight: 700;
+    transition: all 0.3s ease;
+}
+
+.btn-create-user:hover {
+    background: linear-gradient(135deg, #ffb74d, #ff7043);
+    box-shadow: 0 0 15px rgba(255, 152, 0, 0.3);
+    transform: translateY(-1px);
+}
+
+.btn-create-user:active {
+    transform: translateY(1px);
+}
+
+.btn-create-user-nav {
+    background: linear-gradient(135deg, #ff9800, #ff5722);
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-create-user-nav:hover {
+    background: linear-gradient(135deg, #ffb74d, #ff7043);
+    box-shadow: 0 0 10px rgba(255, 152, 0, 0.3);
+    transform: translateY(-1px);
+}
+
+.btn-create-user-nav:active {
+    transform: translateY(0);
+}
+
 /* Secondary Modal Actions */
 .modal-actions-secondary {
     display: flex;

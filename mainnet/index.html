@@ -36,7 +36,7 @@
                             <span class="points-label">PTS</span>
                         </a>
                         <button class="btn-deposit" id="depositBtn" onclick="openDepositModal()" ontouchend="event.preventDefault(); openDepositModal();">Deposit</button>
-                        <button class="btn-withdraw-nav" id="withdrawNavBtn" onclick="openWithdrawModal()" ontouchend="event.preventDefault(); openWithdrawModal();">Withdraw</button>
+                        <button class="btn-create-user-nav hidden" id="createUserNavBtn" onclick="openCreateUserModal()" ontouchend="event.preventDefault(); openCreateUserModal();">Create User</button>
                         <span class="balance" id="navWalletBal">0.00</span>
                         <span class="balance-unit">XNT</span>
                     </div>
@@ -127,7 +127,7 @@
 
                     <div class="modal-actions">
                         <button class="btn-primary" id="executeDepositBtn" onclick="executeDeposit()" ontouchend="event.preventDefault(); executeDeposit();">Deposit</button>
-                        <button class="btn-withdraw" id="executeWithdrawBtn" onclick="executeWithdraw()" ontouchend="event.preventDefault(); executeWithdraw();">Withdraw</button>
+                        <button class="btn-create-user hidden" id="createUserBtn" onclick="createUser()" ontouchend="event.preventDefault(); createUser();">Create User</button>
                         <button class="btn-secondary" onclick="closeDepositModal()" ontouchend="event.preventDefault(); closeDepositModal();">Cancel</button>
                     </div>
 

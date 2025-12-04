@@ -46,6 +46,11 @@ function setupMobileTouchHandlers() {
             try { await executeDeposit(); }
             catch(e) { remoteLog('[TOUCH ERROR] executeDepositBtn: ' + e.message); }
         },
+        'createUserBtn': async () => {
+            remoteLog('[TOUCH] createUserBtn touched');
+            try { await createUser(); }
+            catch(e) { remoteLog('[TOUCH ERROR] createUserBtn: ' + e.message); }
+        },
         'connectWalletBtn': async () => {
             remoteLog('[TOUCH] connectWalletBtn touched');
             try { await connectBackpack(); }
@@ -1361,6 +1366,9 @@ function showHasWallet(backpackAddr) {
 
     // Enable all action buttons when wallet connected
     enableActionButtons();
+
+    // Update Create User nav button visibility based on position existence
+    updateCreateUserNavButton();
 
     // Start fetching user points
     startPointsPolling();
@@ -7817,6 +7825,7 @@ function updateButtonStates() {
 
 async function openDepositModal() {
     remoteLog('[DEBUG] openDepositModal called');
+
     if (!backpackWallet || !wallet) {
         remoteLog('[DEBUG] Wallet not connected - backpackWallet:' + !!backpackWallet + ' wallet:' + !!wallet);
         addLog('ERROR: Wallet not connected', 'error');
@@ -7835,13 +7844,32 @@ async function openDepositModal() {
     // Update balances
     await updateDepositModalBalances();
 
+    // Check if position exists and show/hide Create User button
+    const createUserBtn = document.getElementById('createUserBtn');
+    const depositBtn = document.getElementById('executeDepositBtn');
+    remoteLog('[DEBUG] createUserBtn found: ' + !!createUserBtn + ', depositBtn found: ' + !!depositBtn);
+
+    if (createUserBtn && depositBtn) {
+        const positionExists = await checkPositionExists();
+        remoteLog('[DEBUG] Position exists check result: ' + positionExists);
+        if (positionExists) {
+            createUserBtn.classList.add('hidden');
+            depositBtn.classList.remove('hidden');
+            remoteLog('[DEBUG] Showing Deposit button, hiding Create User');
+        } else {
+            createUserBtn.classList.remove('hidden');
+            depositBtn.classList.add('hidden');
+            remoteLog('[DEBUG] Showing Create User button, hiding Deposit');
+        }
+    }
+
     // Add button hover tracking for smart MAX button
-    const depositBtn = document.getElementById('depositBtn');
+    const navDepositBtn = document.getElementById('depositBtn');
     const withdrawBtn = document.getElementById('withdrawBtn');
 
-    if (depositBtn) {
-        depositBtn.addEventListener('mouseenter', () => { lastFocusedAction = 'deposit'; });
-        depositBtn.addEventListener('focus', () => { lastFocusedAction = 'deposit'; });
+    if (navDepositBtn) {
+        navDepositBtn.addEventListener('mouseenter', () => { lastFocusedAction = 'deposit'; });
+        navDepositBtn.addEventListener('focus', () => { lastFocusedAction = 'deposit'; });
     }
 
     if (withdrawBtn) {
@@ -7851,6 +7879,129 @@ async function openDepositModal() {
 
     // Populate account addresses
     await populateAccountAddresses();
+}
+
+// Check if position account exists on-chain
+async function checkPositionExists() {
+    remoteLog('[DEBUG] checkPositionExists called, wallet: ' + !!wallet + ', ammPda: ' + !!ammPda);
+    if (!wallet || !ammPda) {
+        remoteLog('[DEBUG] checkPositionExists - no wallet or ammPda, returning false');
+        return false;
+    }
+
+    try {
+        const [posPda] = solanaWeb3.PublicKey.findProgramAddressSync(
+            [stringToUint8Array('pos'), ammPda.toBytes(), wallet.publicKey.toBytes()],
+            new solanaWeb3.PublicKey(CONFIG.PROGRAM_ID)
+        );
+        remoteLog('[DEBUG] Position PDA: ' + posPda.toString().substring(0, 12) + '...');
+
+        const accountInfo = await connection.getAccountInfo(posPda);
+        const exists = accountInfo !== null;
+        remoteLog('[DEBUG] Position exists: ' + exists);
+        return exists;
+    } catch (err) {
+        remoteLog('[DEBUG] Check position error: ' + err.message);
+        return false;
+    }
+}
+
+// Create User - Initialize position and fund session wallet
+async function createUser() {
+    remoteLog('[DEBUG] createUser called');
+
+    if (!backpackWallet || !wallet) {
+        addLog('ERROR: Wallet not connected', 'error');
+        showError('Connect wallet first');
+        return;
+    }
+
+    // Get amount from input (default to 1.0 XNT if empty)
+    const amountInput = document.getElementById('depositAmount');
+    let amount = parseFloat(amountInput?.value || '1.0');
+    if (isNaN(amount) || amount < 1.0) {
+        amount = 1.0;
+    }
+
+    addLog(`Creating user account with ${amount} XNT...`, 'info');
+
+    try {
+        // Initialize position (this also funds session wallet with 1.01 XNT)
+        const success = await initPosition();
+        if (!success) {
+            addLog('ERROR: Failed to create user account', 'error');
+            showError('Failed to create user account');
+            return;
+        }
+
+        addLog('User account created successfully!', 'success');
+        showStatus('User account created!');
+
+        // Refresh balances
+        await updateDepositModalBalances();
+        await fetchPositionData();
+
+        // Hide Create User button, show Deposit button
+        const createUserBtn = document.getElementById('createUserBtn');
+        const depositBtn = document.getElementById('executeDepositBtn');
+        if (createUserBtn) createUserBtn.classList.add('hidden');
+        if (depositBtn) depositBtn.classList.remove('hidden');
+
+        // Also hide the nav Create User button
+        const createUserNavBtn = document.getElementById('createUserNavBtn');
+        if (createUserNavBtn) createUserNavBtn.classList.add('hidden');
+
+    } catch (err) {
+        addLog('ERROR: ' + err.message, 'error');
+        showError(err.message);
+    }
+}
+
+// Open Create User Modal - same as deposit modal but focused on creating user
+async function openCreateUserModal() {
+    remoteLog('[DEBUG] openCreateUserModal called');
+
+    if (!backpackWallet || !wallet) {
+        addLog('ERROR: Wallet not connected', 'error');
+        showError('Connect wallet first');
+        return;
+    }
+
+    // Open the deposit modal
+    const modal = document.getElementById('depositModal');
+    if (modal) {
+        modal.classList.remove('hidden');
+    }
+
+    // Update balances
+    await updateDepositModalBalances();
+
+    // Force show Create User button, hide Deposit button
+    const createUserBtn = document.getElementById('createUserBtn');
+    const depositBtn = document.getElementById('executeDepositBtn');
+    if (createUserBtn) createUserBtn.classList.remove('hidden');
+    if (depositBtn) depositBtn.classList.add('hidden');
+
+    // Populate account addresses
+    await populateAccountAddresses();
+}
+
+// Update nav Create User button visibility based on position existence
+async function updateCreateUserNavButton() {
+    const createUserNavBtn = document.getElementById('createUserNavBtn');
+    if (!createUserNavBtn) return;
+
+    if (!wallet || !ammPda) {
+        createUserNavBtn.classList.add('hidden');
+        return;
+    }
+
+    const positionExists = await checkPositionExists();
+    if (positionExists) {
+        createUserNavBtn.classList.add('hidden');
+    } else {
+        createUserNavBtn.classList.remove('hidden');
+    }
 }
 
 async function toggleAccountsDisplay() {
