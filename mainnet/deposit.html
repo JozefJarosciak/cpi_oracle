@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Deposit - Debug</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0f;
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 400px; margin: 0 auto; }
+        h1 { font-size: 24px; margin-bottom: 20px; color: #00c853; }
+        .log-box {
+            background: #1a1a24;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 20px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .log-entry { margin: 4px 0; color: #aaa; }
+        .log-entry.success { color: #00c853; }
+        .log-entry.error { color: #ff5252; }
+        .log-entry.info { color: #5b9eff; }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            margin: 10px 0;
+            font-size: 18px;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        .btn-connect { background: #5b9eff; color: #fff; }
+        .btn-deposit { background: #00c853; color: #fff; }
+        .btn:active { opacity: 0.8; transform: scale(0.98); }
+        .btn:disabled { background: #555; cursor: not-allowed; }
+        .input-group { margin: 15px 0; }
+        .input-group label { display: block; margin-bottom: 8px; color: #888; }
+        .input-group input {
+            width: 100%;
+            padding: 14px;
+            font-size: 18px;
+            background: #1a1a24;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #fff;
+        }
+        .wallet-info {
+            background: #1a1a24;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 15px 0;
+            font-size: 13px;
+        }
+        .wallet-info div { margin: 6px 0; }
+        .wallet-info .label { color: #888; }
+        .wallet-info .value { color: #00c853; font-family: monospace; word-break: break-all; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Deposit Test Page</h1>
+
+        <div class="log-box" id="logBox">
+            <div class="log-entry">Ready...</div>
+        </div>
+
+        <div id="connectSection">
+            <button class="btn btn-connect" id="connectBtn"
+                    onclick="connectWallet()"
+                    ontouchstart="handleTouch(event, connectWallet)">
+                Connect Wallet
+            </button>
+        </div>
+
+        <div id="depositSection" class="hidden">
+            <div class="wallet-info">
+                <div><span class="label">Wallet Type:</span> <span class="value" id="walletType">-</span></div>
+                <div><span class="label">Master Wallet:</span> <span class="value" id="masterWallet">-</span></div>
+                <div><span class="label">Session Wallet:</span> <span class="value" id="sessionWallet">-</span></div>
+                <div><span class="label">Session Balance:</span> <span class="value" id="sessionBalance">-</span></div>
+            </div>
+
+            <div class="input-group">
+                <label>Amount (XNT)</label>
+                <input type="number" id="depositAmount" value="0.1" step="0.01" min="0.01">
+            </div>
+
+            <button class="btn btn-deposit" id="depositBtn"
+                    onclick="executeDeposit()"
+                    ontouchstart="handleTouch(event, executeDeposit)">
+                Deposit to Session Wallet
+            </button>
+        </div>
+    </div>
+
+<script src="solana-web3.min.js"></script>
+<script>
+// Remote logging
+function remoteLog(msg, type = 'info') {
+    console.log(msg);
+
+    // Add to local log box
+    const logBox = document.getElementById('logBox');
+    const entry = document.createElement('div');
+    entry.className = 'log-entry ' + type;
+    entry.textContent = new Date().toLocaleTimeString() + ' ' + msg;
+    logBox.appendChild(entry);
+    logBox.scrollTop = logBox.scrollHeight;
+
+    // Send to server
+    fetch('/api/client-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: '[DEPOSIT PAGE] ' + msg })
+    }).catch(() => {});
+}
+
+// Touch handler for mobile
+function handleTouch(event, callback) {
+    event.preventDefault();
+    event.stopPropagation();
+    remoteLog('Touch event fired');
+    callback();
+}
+
+// Global state
+let backpackWallet = null;
+let sessionWallet = null;
+let activeWalletType = null;
+let connection = null;
+
+// Initialize connection
+const RPC_URL = 'https://rpc.mainnet.x1.xyz';
+
+// Detect wallet
+function detectWallet() {
+    if (window.x1_wallet) {
+        remoteLog('X1 Wallet detected');
+        return { provider: window.x1_wallet, type: 'x1_wallet', name: 'X1 Wallet' };
+    }
+    if (window.backpack) {
+        remoteLog('Backpack detected');
+        return { provider: window.backpack, type: 'backpack', name: 'Backpack' };
+    }
+    if (window.phantom?.solana) {
+        remoteLog('Phantom detected');
+        return { provider: window.phantom.solana, type: 'phantom', name: 'Phantom' };
+    }
+    if (window.solana?.isPhantom) {
+        remoteLog('Phantom (legacy) detected');
+        return { provider: window.solana, type: 'phantom', name: 'Phantom' };
+    }
+    remoteLog('No wallet detected', 'error');
+    return null;
+}
+
+// Connect wallet
+async function connectWallet() {
+    remoteLog('connectWallet() called');
+
+    try {
+        const detected = detectWallet();
+        if (!detected) {
+            remoteLog('No wallet found!', 'error');
+            return;
+        }
+
+        const { provider, type, name } = detected;
+        remoteLog('Connecting to ' + name + '...');
+
+        // Connect
+        const response = await provider.connect();
+        backpackWallet = provider;
+        activeWalletType = type;
+
+        const masterAddr = backpackWallet.publicKey.toString();
+        remoteLog('Connected: ' + masterAddr.substring(0, 12) + '...', 'success');
+
+        // Update UI
+        document.getElementById('walletType').textContent = name;
+        document.getElementById('masterWallet').textContent = masterAddr;
+
+        // Derive session wallet
+        remoteLog('Deriving session wallet...');
+        sessionWallet = await deriveSessionWallet(backpackWallet);
+
+        const sessionAddr = sessionWallet.publicKey.toString();
+        remoteLog('Session wallet: ' + sessionAddr.substring(0, 12) + '...', 'success');
+        document.getElementById('sessionWallet').textContent = sessionAddr;
+
+        // Get balance
+        await updateBalance();
+
+        // Show deposit section
+        document.getElementById('connectSection').classList.add('hidden');
+        document.getElementById('depositSection').classList.remove('hidden');
+
+    } catch (err) {
+        remoteLog('Connect error: ' + err.message, 'error');
+    }
+}
+
+// Derive session wallet from signature
+async function deriveSessionWallet(wallet) {
+    const message = "CPI Oracle Session Key Derivation v1";
+    const encodedMessage = new TextEncoder().encode(message);
+
+    remoteLog('Requesting signature...');
+    const signatureResult = await wallet.signMessage(encodedMessage);
+    remoteLog('Signature received, type: ' + typeof signatureResult);
+
+    let signatureBytes;
+    if (signatureResult instanceof Uint8Array) {
+        signatureBytes = signatureResult;
+    } else if (signatureResult.signature) {
+        if (typeof signatureResult.signature === 'string') {
+            // Base64 decode for X1 Wallet
+            remoteLog('Decoding base64 signature');
+            const binaryString = atob(signatureResult.signature);
+            signatureBytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                signatureBytes[i] = binaryString.charCodeAt(i);
+            }
+        } else {
+            signatureBytes = new Uint8Array(signatureResult.signature);
+        }
+    } else if (typeof signatureResult === 'string') {
+        // Direct base64 string
+        remoteLog('Decoding direct base64 signature');
+        const binaryString = atob(signatureResult);
+        signatureBytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            signatureBytes[i] = binaryString.charCodeAt(i);
+        }
+    } else {
+        signatureBytes = new Uint8Array(Object.values(signatureResult));
+    }
+
+    remoteLog('Signature bytes length: ' + signatureBytes.length);
+
+    // Hash signature to get seed
+    const hashBuffer = await crypto.subtle.digest('SHA-256', signatureBytes);
+    const seed = new Uint8Array(hashBuffer);
+
+    // Create keypair from seed
+    const keypair = solanaWeb3.Keypair.fromSeed(seed);
+    remoteLog('Session keypair created');
+
+    return keypair;
+}
+
+// Update session wallet balance
+async function updateBalance() {
+    if (!sessionWallet) return;
+
+    try {
+        if (!connection) {
+            connection = new solanaWeb3.Connection(RPC_URL);
+        }
+        const balance = await connection.getBalance(sessionWallet.publicKey);
+        const xnt = (balance / 1e9).toFixed(4);
+        document.getElementById('sessionBalance').textContent = xnt + ' XNT';
+        remoteLog('Balance: ' + xnt + ' XNT');
+    } catch (err) {
+        remoteLog('Balance error: ' + err.message, 'error');
+    }
+}
+
+// Execute deposit
+async function executeDeposit() {
+    remoteLog('executeDeposit() called');
+
+    if (!backpackWallet || !sessionWallet) {
+        remoteLog('Wallet not connected!', 'error');
+        return;
+    }
+
+    const amountInput = document.getElementById('depositAmount');
+    const amount = parseFloat(amountInput.value);
+
+    if (isNaN(amount) || amount <= 0) {
+        remoteLog('Invalid amount', 'error');
+        return;
+    }
+
+    const lamports = Math.floor(amount * 1e9);
+    remoteLog('Depositing ' + amount + ' XNT (' + lamports + ' lamports)');
+
+    try {
+        if (!connection) {
+            connection = new solanaWeb3.Connection(RPC_URL);
+        }
+
+        // Create transfer instruction - convert to proper PublicKey objects
+        const fromPubkey = new solanaWeb3.PublicKey(backpackWallet.publicKey.toString());
+        const toPubkey = sessionWallet.publicKey; // Already a proper Keypair
+
+        remoteLog('From: ' + fromPubkey.toString().substring(0, 12) + '...');
+        remoteLog('To: ' + toPubkey.toString().substring(0, 12) + '...');
+
+        const instruction = solanaWeb3.SystemProgram.transfer({
+            fromPubkey: fromPubkey,
+            toPubkey: toPubkey,
+            lamports: lamports
+        });
+
+        // Create transaction
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+        remoteLog('Got blockhash: ' + blockhash.substring(0, 12) + '...');
+
+        const transaction = new solanaWeb3.Transaction({
+            recentBlockhash: blockhash,
+            feePayer: fromPubkey
+        }).add(instruction);
+
+        // Sign with wallet
+        remoteLog('Requesting transaction signature...');
+        const signed = await backpackWallet.signTransaction(transaction);
+        remoteLog('Transaction signed');
+
+        // Send
+        remoteLog('Sending transaction...');
+        const signature = await connection.sendRawTransaction(signed.serialize());
+        remoteLog('TX sent: ' + signature.substring(0, 20) + '...', 'success');
+
+        // Confirm
+        remoteLog('Confirming...');
+        await connection.confirmTransaction({
+            signature,
+            blockhash,
+            lastValidBlockHeight
+        });
+
+        remoteLog('Deposit confirmed!', 'success');
+
+        // Update balance
+        await updateBalance();
+
+    } catch (err) {
+        remoteLog('Deposit error: ' + err.message, 'error');
+        console.error(err);
+    }
+}
+
+// Initialize
+window.addEventListener('DOMContentLoaded', () => {
+    remoteLog('Page loaded');
+    detectWallet();
+});
+</script>
+</body>
+</html>

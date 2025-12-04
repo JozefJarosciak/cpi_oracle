@@ -20,6 +20,52 @@ function remoteLog(msg) {
     }).catch(() => {}); // Ignore errors
 }
 
+// Mobile/Android detection and touch event setup
+const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+const isAndroidWebView = /Android/i.test(navigator.userAgent) && /wv|WebView/i.test(navigator.userAgent);
+
+if (isMobileDevice) {
+    remoteLog('[MOBILE] Mobile device detected: ' + navigator.userAgent.substring(0, 50));
+}
+
+// Setup touch handlers for mobile WebView - called after DOM ready
+function setupMobileTouchHandlers() {
+    if (!isMobileDevice) return;
+
+    remoteLog('[MOBILE] Setting up touch handlers');
+
+    // Map of button IDs to their handler functions
+    const buttonHandlers = {
+        'depositBtn': async () => {
+            remoteLog('[TOUCH] depositBtn touched');
+            try { await openDepositModal(); }
+            catch(e) { remoteLog('[TOUCH ERROR] depositBtn: ' + e.message); }
+        },
+        'executeDepositBtn': async () => {
+            remoteLog('[TOUCH] executeDepositBtn touched');
+            try { await executeDeposit(); }
+            catch(e) { remoteLog('[TOUCH ERROR] executeDepositBtn: ' + e.message); }
+        },
+        'connectWalletBtn': async () => {
+            remoteLog('[TOUCH] connectWalletBtn touched');
+            try { await connectBackpack(); }
+            catch(e) { remoteLog('[TOUCH ERROR] connectWalletBtn: ' + e.message); }
+        }
+    };
+
+    for (const [btnId, handler] of Object.entries(buttonHandlers)) {
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handler();
+            }, { passive: false });
+            remoteLog('[MOBILE] Touch handler added for: ' + btnId);
+        }
+    }
+}
+
 // Log the config on load to verify we're using the right version
 console.log('[CONFIG] Using AMM_SEED:', CONFIG.AMM_SEED);
 console.log('[CONFIG] Using API endpoints:', CONFIG.API_PREFIX);
@@ -416,6 +462,9 @@ window.addEventListener('load', async () => {
 
     // Set up wallet account change listener (supports X1, Backpack, Phantom)
     setupWalletAccountListener();
+
+    // Set up mobile touch handlers for Android WebView
+    setupMobileTouchHandlers();
 });
 
 // Handle page visibility changes - reload chart data when tab becomes active

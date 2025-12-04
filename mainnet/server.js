@@ -2472,6 +2472,8 @@ const server = http.createServer((req, res) => {
         filePath = '/proto2.html';
     } else if (urlPath === '/logs') {
         filePath = '/logs.html';
+    } else if (urlPath === '/deposit') {
+        filePath = '/deposit.html';
     } else if (urlPath.startsWith('/leaderboard/') && !urlPath.includes('.')) {
         // Clean URL: /leaderboard/USERNAME -> serve leaderboard.html (JS reads username from path)
         filePath = '/leaderboard.html';
