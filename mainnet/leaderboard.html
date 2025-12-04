@@ -125,32 +125,118 @@
         /* ===== STATS CARDS ===== */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-            margin-bottom: 32px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
         }
 
         .stat-card {
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 20px;
+            border-radius: 6px;
+            padding: 16px;
             text-align: center;
         }
 
         .stat-value {
-            font-size: 28px;
+            font-size: 22px;
             font-weight: 700;
-            color: var(--green);
+            color: var(--text-primary);
             margin-bottom: 4px;
             font-family: 'SF Mono', Monaco, Consolas, monospace;
         }
 
         .stat-label {
-            font-size: 12px;
-            color: var(--text-secondary);
+            font-size: 10px;
+            color: var(--text-dim);
             text-transform: uppercase;
             letter-spacing: 0.5px;
+        }
+
+        /* Volume Stats Row */
+        .volume-row {
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .volume-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 16px;
+        }
+
+        .volume-card.up-card {
+            border-left: 3px solid var(--green);
+        }
+
+        .volume-card.down-card {
+            border-left: 3px solid var(--red);
+        }
+
+        .volume-card.total-card {
+            text-align: center;
+        }
+
+        .volume-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .volume-side {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .volume-side.up { color: var(--green); }
+        .volume-side.down { color: var(--red); }
+
+        .volume-trades {
+            font-size: 11px;
+            color: var(--text-dim);
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        }
+
+        .volume-amount {
+            font-size: 20px;
+            font-weight: 700;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        }
+
+        .volume-amount.up { color: var(--green); }
+        .volume-amount.down { color: var(--red); }
+
+        .volume-unit {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-left: 4px;
+        }
+
+        .total-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .total-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        }
+
+        .total-trades {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
         }
 
         /* ===== LEADERBOARD TABLE ===== */
@@ -317,7 +403,24 @@
             }
 
             .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
+                grid-template-columns: repeat(3, 1fr);
+            }
+
+            .volume-row {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .volume-card.total-card {
+                order: -1;
+            }
+
+            .volume-amount {
+                font-size: 18px;
+            }
+
+            .total-value {
+                font-size: 24px;
             }
 
             .winrate-col, .points-col, .pnl-col {
@@ -607,6 +710,31 @@
             <p class="page-subtitle">Track wins, losses, and earnings</p>
         </div>
 
+        <!-- Volume Stats -->
+        <div class="volume-row">
+            <div class="volume-card up-card">
+                <div class="volume-header">
+                    <span class="volume-side up">UP</span>
+                    <span class="volume-trades" id="upTrades">0 trades</span>
+                </div>
+                <div class="volume-amount up" id="upVolume">0.00</div>
+                <span class="volume-unit">XNT</span>
+            </div>
+            <div class="volume-card total-card">
+                <div class="total-label">Total Volume</div>
+                <div class="total-value"><span id="totalVolume">0.00</span> <span class="volume-unit">XNT</span></div>
+                <div class="total-trades" id="totalTrades">0 trades</div>
+            </div>
+            <div class="volume-card down-card">
+                <div class="volume-header">
+                    <span class="volume-side down">DOWN</span>
+                    <span class="volume-trades" id="downTrades">0 trades</span>
+                </div>
+                <div class="volume-amount down" id="downVolume">0.00</div>
+                <span class="volume-unit">XNT</span>
+            </div>
+        </div>
+
         <!-- Stats Cards -->
         <div class="stats-grid">
             <div class="stat-card">
@@ -614,12 +742,8 @@
                 <div class="stat-label">Traders</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" id="totalXnt">-</div>
-                <div class="stat-label">Total XNT Won</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="totalRounds">-</div>
-                <div class="stat-label">Rounds</div>
+                <div class="stat-value" id="totalCycles">-</div>
+                <div class="stat-label">Cycles</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="totalPts">-</div>
@@ -885,23 +1009,34 @@
 
                 if (!users || users.length === 0) {
                     document.getElementById('totalUsers').textContent = '0';
-                    document.getElementById('totalXnt').textContent = '0';
-                    document.getElementById('totalRounds').textContent = '0';
                     document.getElementById('totalPts').textContent = '0';
                     return;
                 }
 
                 const totalUsers = users.length;
-                const totalWon = users.reduce((sum, u) => sum + (u.total_won || 0), 0);
-                const totalRounds = users.reduce((sum, u) => sum + (u.total_rounds || 0), 0);
                 const totalPoints = users.reduce((sum, u) => sum + (u.total_points || 0), 0);
 
                 document.getElementById('totalUsers').textContent = formatNumber(totalUsers);
-                document.getElementById('totalXnt').textContent = formatXnt(totalWon);
-                document.getElementById('totalRounds').textContent = formatNumber(totalRounds);
                 document.getElementById('totalPts').textContent = formatNumber(totalPoints);
             } catch (err) {
                 console.error('Failed to load stats:', err);
+            }
+        }
+
+        async function loadVolumeStats() {
+            try {
+                const res = await fetch('/api/volume-stats');
+                const data = await res.json();
+
+                document.getElementById('totalTrades').textContent = formatNumber(data.total_trades || 0) + ' trades';
+                document.getElementById('totalVolume').textContent = formatXnt(data.total_volume || 0);
+                document.getElementById('upTrades').textContent = formatNumber(data.up_trades || 0) + ' trades';
+                document.getElementById('upVolume').textContent = formatXnt(data.up_volume || 0);
+                document.getElementById('downTrades').textContent = formatNumber(data.down_trades || 0) + ' trades';
+                document.getElementById('downVolume').textContent = formatXnt(data.down_volume || 0);
+                document.getElementById('totalCycles').textContent = formatNumber(data.total_cycles || 0);
+            } catch (err) {
+                console.error('Failed to load volume stats:', err);
             }
         }
 
@@ -948,7 +1083,7 @@
         }
 
         async function loadData() {
-            await Promise.all([loadStats(), loadLeaderboard()]);
+            await Promise.all([loadStats(), loadLeaderboard(), loadVolumeStats()]);
             document.getElementById('lastUpdated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
         }
 

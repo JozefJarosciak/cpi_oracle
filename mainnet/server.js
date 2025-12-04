@@ -2049,6 +2049,56 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // API: Get volume stats (total trades and volume by side)
+    // Use volume_history for accurate volume totals (includes all trades, not just settled)
+    if (req.url === '/api/volume-stats' && req.method === 'GET') {
+        try {
+            // Get volume from volume_history (all trades)
+            const volStmt = db.prepare(`
+                SELECT
+                    SUM(up_volume) as up_volume,
+                    SUM(down_volume) as down_volume,
+                    SUM(total_volume) as total_volume,
+                    COUNT(*) as total_cycles
+                FROM volume_history
+            `);
+            const volResult = volStmt.get();
+
+            // Get trade counts from settlement_history
+            const tradeStmt = db.prepare(`
+                SELECT
+                    COUNT(*) as total_trades,
+                    SUM(CASE WHEN side = 'YES' THEN 1 ELSE 0 END) as up_trades,
+                    SUM(CASE WHEN side = 'NO' THEN 1 ELSE 0 END) as down_trades
+                FROM settlement_history
+            `);
+            const tradeResult = tradeStmt.get();
+
+            res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify({
+                total_trades: tradeResult.total_trades || 0,
+                up_trades: tradeResult.up_trades || 0,
+                down_trades: tradeResult.down_trades || 0,
+                total_volume: volResult.total_volume || 0,
+                up_volume: volResult.up_volume || 0,
+                down_volume: volResult.down_volume || 0,
+                total_cycles: volResult.total_cycles || 0
+            }));
+        } catch (err) {
+            console.error('Error fetching volume stats:', err);
+            res.writeHead(500, {
+                'Content-Type': 'application/json',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify({ error: 'Failed to fetch volume stats' }));
+        }
+        return;
+    }
+
     // API: Get user stats (combined wins/losses)
     if (req.url.startsWith('/api/user-stats/') && req.method === 'GET') {
         const userPrefix = req.url.split('/api/user-stats/')[1];
