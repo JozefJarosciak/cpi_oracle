@@ -3765,13 +3765,13 @@ function showToast(type, title, message) {
 
     container.appendChild(toast);
 
-    // Auto-remove after 4 seconds
+    // Auto-remove after 2 seconds
     setTimeout(() => {
         toast.classList.add('hiding');
         setTimeout(() => {
             container.removeChild(toast);
         }, 300);
-    }, 4000);
+    }, 2000);
 }
 
 // ============= LIMIT ORDER FUNCTIONS =============
