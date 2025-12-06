@@ -589,6 +589,41 @@ pub struct AdminRedeem<'info> {
 }
 
 #[derive(Accounts)]
+pub struct AdminForceWithdraw<'info> {
+    #[account(seeds = [Amm::SEED], bump = amm.bump)]
+    pub amm: Account<'info, Amm>,
+
+    /// Admin signer (must be fee_dest)
+    #[account(
+        constraint = admin.key() == amm.fee_dest @ ReaderError::NotOwner
+    )]
+    pub admin: Signer<'info>,
+
+    /// The user who will receive the funds (NOT a signer)
+    /// CHECK: derived from position owner
+    #[account(mut)]
+    pub user: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        seeds = [Position::SEED, amm.key().as_ref(), user.key().as_ref()],
+        bump,
+        constraint = pos.owner == user.key() @ ReaderError::NotOwner
+    )]
+    pub pos: Account<'info, Position>,
+
+    /// CHECK: User's vault PDA that holds the funds
+    #[account(
+        mut,
+        seeds = [Position::USER_VAULT_SEED, pos.key().as_ref()],
+        bump = pos.vault_bump
+    )]
+    pub user_vault: UncheckedAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 pub struct CloseAmm<'info> {
     #[account(
         mut,
@@ -2013,6 +2048,46 @@ pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
         Ok(())
     }
 
+    // ---------- ADMIN FORCE WITHDRAW (emergency withdrawal without master_wallet) ----------
+    /// Allows admin (fee_dest) to withdraw funds from user_vault directly to user's wallet
+    /// without requiring master_wallet signature. For emergency recovery scenarios.
+    pub fn admin_force_withdraw(ctx: Context<AdminForceWithdraw>, amount_lamports: u64) -> Result<()> {
+        let pos = &mut ctx.accounts.pos;
+        let sys = &ctx.accounts.system_program;
+
+        // Check vault has enough balance
+        let vault_lamports = ctx.accounts.user_vault.lamports();
+        require!(vault_lamports >= amount_lamports, ReaderError::InsufficientBalance);
+
+        // Update position's vault balance tracking
+        let amount_e6 = lamports_to_e6(amount_lamports);
+        pos.vault_balance_e6 = pos.vault_balance_e6.saturating_sub(amount_e6);
+
+        // Transfer from user_vault PDA to user's wallet using signed PDA
+        let pos_key = pos.key();
+        let seeds: &[&[u8]] = &[
+            Position::USER_VAULT_SEED,
+            pos_key.as_ref(),
+            core::slice::from_ref(&pos.vault_bump),
+        ];
+
+        transfer_sol_signed(
+            sys,
+            &ctx.accounts.user_vault.to_account_info(),
+            &ctx.accounts.user.to_account_info(),
+            amount_lamports,
+            &[seeds],
+        )?;
+
+        msg!(
+            "🔓 ADMIN_FORCE_WITHDRAW: {} lamports ({:.9} SOL) from user_vault to user {}. Remaining vault_balance: {} e6",
+            amount_lamports,
+            (amount_lamports as f64) / 1e9,
+            ctx.accounts.user.key(),
+            pos.vault_balance_e6
+        );
+        Ok(())
+    }
 
     // ---------- CLOSE AMM (new) ----------
     pub fn close_amm(ctx: Context<CloseAmm>) -> Result<()> {
