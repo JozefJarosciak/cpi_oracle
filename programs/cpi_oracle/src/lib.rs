@@ -624,6 +624,37 @@ pub struct AdminForceWithdraw<'info> {
 }
 
 #[derive(Accounts)]
+pub struct AdminFixVaultBalance<'info> {
+    #[account(seeds = [Amm::SEED], bump = amm.bump)]
+    pub amm: Account<'info, Amm>,
+
+    /// Admin signer (must be fee_dest)
+    #[account(
+        constraint = admin.key() == amm.fee_dest @ ReaderError::NotOwner
+    )]
+    pub admin: Signer<'info>,
+
+    /// The user whose position to fix (NOT a signer)
+    /// CHECK: derived from position owner
+    pub user: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        seeds = [Position::SEED, amm.key().as_ref(), user.key().as_ref()],
+        bump,
+        constraint = pos.owner == user.key() @ ReaderError::NotOwner
+    )]
+    pub pos: Account<'info, Position>,
+
+    /// CHECK: User's vault PDA to read actual lamports from
+    #[account(
+        seeds = [Position::USER_VAULT_SEED, pos.key().as_ref()],
+        bump = pos.vault_bump
+    )]
+    pub user_vault: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
 pub struct CloseAmm<'info> {
     #[account(
         mut,
@@ -2085,6 +2116,28 @@ pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
             (amount_lamports as f64) / 1e9,
             ctx.accounts.user.key(),
             pos.vault_balance_e6
+        );
+        Ok(())
+    }
+
+    // ---------- ADMIN FIX VAULT BALANCE (sync tracking field to actual lamports) ----------
+    /// Allows admin (fee_dest) to fix the vault_balance_e6 tracking field
+    /// by syncing it to the actual lamports in the user_vault PDA.
+    pub fn admin_fix_vault_balance(ctx: Context<AdminFixVaultBalance>) -> Result<()> {
+        let pos = &mut ctx.accounts.pos;
+        let vault_lamports = ctx.accounts.user_vault.lamports();
+
+        let old_balance_e6 = pos.vault_balance_e6;
+        let new_balance_e6 = lamports_to_e6(vault_lamports);
+
+        pos.vault_balance_e6 = new_balance_e6;
+
+        msg!(
+            "🔧 ADMIN_FIX_VAULT_BALANCE: user={} old_balance={} e6 -> new_balance={} e6 (from {} lamports)",
+            ctx.accounts.user.key(),
+            old_balance_e6,
+            new_balance_e6,
+            vault_lamports
         );
         Ok(())
     }
