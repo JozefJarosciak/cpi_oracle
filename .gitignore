@@ -22,3 +22,6 @@ bal.sh
 points/*.db
 points/*.db-shm
 points/*.db-wal
+
+# Backup files
+*.backup
