@@ -2,7 +2,7 @@
 const CONFIG = {
     RPC_URL: 'https://rpc.mainnet.x1.xyz',
     PROGRAM_ID: 'EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF',
-    ORACLE_STATE: 'ErU8byy8jYDZg5NjsF7eacK2khJ7jfUjsoQZ2E28baJA',
+    ORACLE_STATE: 'CqhjUyyiQ21GHFEPB99tyu1txumWG31vNaRxKTGYdEGy',
     AMM_SEED: 'amm_btc_v6',  // v6: time-based trading lockout
     LAMPORTS_PER_E6: 100,
     STATUS_URL: '/market_status.json',
