@@ -11,7 +11,7 @@ declare_id!("EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF");
 // Oracle (foreign) settings
 // =========================
 pub const ORACLE_PROGRAM_ID: Pubkey =
-    pubkey!("LuS6XnQ3qNXqNQvAJ3akXnEJRBv9XNoUricjMgTyCxX");
+    pubkey!("CcgTMiYkgVfz7cAGkD6835BqfycG5N5Y4aPPHYW1EvKx");
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct OracleStateMirror {
@@ -3282,44 +3282,27 @@ fn median3_i64(a: i64, b: i64, c: i64) -> i64 {
 }
 
 /// Manual parser (no Borsh). Returns (price_e6, ts_used).
+/// Oracle format: 554 bytes, 64-byte blocks per asset, e8 precision.
 fn read_btc_price_e6(oracle_ai: &AccountInfo) -> Result<(i64, i64)> {
     require_keys_eq!(*oracle_ai.owner, ORACLE_PROGRAM_ID, ReaderError::WrongOwner);
 
     let data = oracle_ai.try_borrow_data()?;
-    require!(data.len() >= 8 + 32 + 48*3 + 2, ReaderError::DataTooSmall);
+    // Structure: [disc 8][pubkey 32][asset blocks 64 each]
+    // Each block: [pad 8][price1 8][price2 8][pad 16][ts1 8][ts2 8][pad 8]
+    require!(data.len() >= 104, ReaderError::DataTooSmall); // header + 1 asset block
 
-    let d = &data[8..]; // skip discriminator
-    let mut o: usize = 0;
+    // BTC is first asset, prices at offsets 48 and 56
+    let p1 = read_i64_le(&data[48..56]);
+    let p2 = read_i64_le(&data[56..64]);
+    let t1 = read_i64_le(&data[80..88]);
+    let t2 = read_i64_le(&data[88..96]);
 
-    // update_authority
-    o += 32;
+    // Average the two prices, use max timestamp
+    let p_raw = (p1 + p2) / 2;
+    let ts = if t1 > t2 { t1 } else { t2 };
 
-    // btc triplet: param1..3, ts1..3
-    let p1 = read_i64_le(&d[o..o+8]); o += 8;
-    let p2 = read_i64_le(&d[o..o+8]); o += 8;
-    let p3 = read_i64_le(&d[o..o+8]); o += 8;
-    let t1 = read_i64_le(&d[o..o+8]); o += 8;
-    let t2 = read_i64_le(&d[o..o+8]); o += 8;
-    let t3 = read_i64_le(&d[o..o+8]); o += 8;
-
-    // Skip remaining triplets - decimals is at end of data
-    // Works for both testnet (3 triplets, 186 bytes) and mainnet (6 triplets, 362 bytes)
-    // Decimals is at data.len() - 2 (after discriminator), bump at data.len() - 1
-    let decimals = data[data.len() - 2] as u32;
-
-    // robust median
-    let p_raw = median3_i64(p1, p2, p3);
-    let ts    = median3_i64(t1, t2, t3);
-
-    // Convert p_raw (10^decimals) -> 1e6 fixed
-    // Use i128 to avoid overflow, then clamp to i64.
-    let pow = 10i128.pow(decimals);
-    let num = (p_raw as i128) * 1_000_000i128;
-    let price_e6_i128 = if pow > 0 { num / pow } else { num }; // decimals should be >0, but guard anyway
-    let price_e6 = price_e6_i128.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
-
-    // (Optional) debug line you can keep until confident:
-    // msg!("DBG oracle: p_raw={} dec={} -> price=${:.6}", p_raw, decimals, (price_e6 as f64)/1e6);
+    // Oracle uses e8 format (8 decimals), convert to e6
+    let price_e6 = p_raw / 100;
 
     Ok((price_e6, ts))
 }
