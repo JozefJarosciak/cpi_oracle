@@ -31,7 +31,7 @@ function logToBuffer(message) {
 
 // Solana Oracle Configuration
 const RPC_URL = 'https://rpc.mainnet.x1.xyz';
-const ORACLE_STATE = 'ErU8byy8jYDZg5NjsF7eacK2khJ7jfUjsoQZ2E28baJA';
+const ORACLE_STATE = 'CqhjUyyiQ21GHFEPB99tyu1txumWG31vNaRxKTGYdEGy';
 const ORACLE_POLL_INTERVAL = 1000; // 1 second (for real-time UI updates)
 
 // Solana connection
@@ -254,6 +254,8 @@ function cleanupOldPrices() {
 }
 
 // Fetch BTC price from Solana oracle
+// New oracle format: 4 params + 4 timestamps per asset (64 bytes per Triplet)
+// BTC prices are stored with 8 decimals (e8)
 async function fetchOraclePrice() {
     try {
         const accountInfo = await connection.getAccountInfo(oracleKey);
@@ -264,47 +266,64 @@ async function fetchOraclePrice() {
         }
 
         const d = accountInfo.data;
-        if (d.length < 8 + 32 + 48*3 + 2) {
-            console.error('Oracle data invalid');
+        // New format: 8 (discriminator) + 32 (authority) + 64*3 (triplets) + 2 (decimals+bump) = 234 min
+        // Actual size is 554 bytes
+        if (d.length < 234) {
+            console.error('Oracle data invalid, length:', d.length);
             return null;
         }
 
         let o = 8; // Skip discriminator
         o += 32; // Skip update_authority
 
-        // Read triplet (price values and timestamps)
+        // Read BTC triplet (4 price params + 4 timestamps = 64 bytes)
         const readI64 = () => {
             const v = d.readBigInt64LE(o);
             o += 8;
             return v;
         };
 
-        const p1 = readI64();
-        const p2 = readI64();
-        const p3 = readI64();
-        const t1 = readI64();
-        const t2 = readI64();
-        const t3 = readI64();
+        const p1 = readI64(); // param1
+        const p2 = readI64(); // param2
+        const p3 = readI64(); // param3
+        const p4 = readI64(); // param4
+        const t1 = readI64(); // ts1
+        const t2 = readI64(); // ts2
+        const t3 = readI64(); // ts3
+        const t4 = readI64(); // ts4
 
-        // Decimals byte is at end of oracle data (works for both testnet 186 bytes and mainnet 362 bytes)
-        const decimals = d.readUInt8(d.length - 2);
+        // Filter out zero values and calculate median of non-zero prices
+        const prices = [p1, p2, p3, p4].filter(p => p !== 0n);
+        const timestamps = [t1, t2, t3, t4].filter(t => t !== 0n);
 
-        // Calculate median price
-        const median3 = (a, b, c) => {
-            const arr = [a, b, c].sort((x, y) => (x < y ? -1 : (x > y ? 1 : 0)));
-            return arr[1];
-        };
+        if (prices.length === 0) {
+            console.error('No valid oracle prices');
+            return null;
+        }
 
-        const priceRaw = median3(p1, p2, p3);
-        const scale = 10n ** BigInt(decimals);
-        const price_e6 = (priceRaw * 1_000_000n) / scale;
-        const btcPrice = Number(price_e6) / 1_000_000;
+        // Sort prices and take median
+        const sortedPrices = [...prices].sort((a, b) => (a < b ? -1 : (a > b ? 1 : 0)));
+        let priceRaw;
+        if (sortedPrices.length === 1) {
+            priceRaw = sortedPrices[0];
+        } else if (sortedPrices.length === 2) {
+            priceRaw = (sortedPrices[0] + sortedPrices[1]) / 2n;
+        } else {
+            // For 3+ values, take middle value(s)
+            const mid = Math.floor(sortedPrices.length / 2);
+            if (sortedPrices.length % 2 === 0) {
+                priceRaw = (sortedPrices[mid - 1] + sortedPrices[mid]) / 2n;
+            } else {
+                priceRaw = sortedPrices[mid];
+            }
+        }
 
-        // Calculate age
-        const maxTs = [t1, t2, t3].reduce((a, b) => a > b ? a : b);
-        const age = Math.floor(Date.now() / 1000) - Number(maxTs);
+        // New oracle uses 8 decimals (e8)
+        const btcPrice = Number(priceRaw) / 1e8;
 
-        // Debug log removed
+        // Calculate age from most recent timestamp (timestamps are in milliseconds)
+        const maxTs = timestamps.reduce((a, b) => a > b ? a : b, 0n);
+        const age = Math.floor((Date.now() - Number(maxTs)) / 1000);
 
         return {
             price: btcPrice,
@@ -2099,6 +2118,32 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // API: Get bot logs from pm2
+    if (req.url === '/api/bot-logs' && req.method === 'GET') {
+        const { execSync } = require('child_process');
+        try {
+            let logs = execSync('pm2 logs trade-manager --lines 500 --nostream --raw 2>&1', {
+                encoding: 'utf8',
+                timeout: 5000
+            });
+            // Strip ANSI color codes
+            logs = logs.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+            res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify({ logs }));
+        } catch (err) {
+            res.writeHead(500, {
+                'Content-Type': 'application/json',
+                ...SECURITY_HEADERS
+            });
+            res.end(JSON.stringify({ error: 'Failed to fetch bot logs', logs: '' }));
+        }
+        return;
+    }
+
     // API: Get user stats (combined wins/losses)
     if (req.url.startsWith('/api/user-stats/') && req.method === 'GET') {
         const userPrefix = req.url.split('/api/user-stats/')[1];
@@ -2522,6 +2567,8 @@ const server = http.createServer((req, res) => {
         filePath = '/proto2.html';
     } else if (urlPath === '/logs') {
         filePath = '/logs.html';
+    } else if (urlPath === '/bot') {
+        filePath = '/bot.html';
     } else if (urlPath === '/deposit') {
         filePath = '/deposit.html';
     } else if (urlPath.startsWith('/leaderboard/') && !urlPath.includes('.')) {

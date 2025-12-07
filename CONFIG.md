@@ -16,8 +16,8 @@
 |----------|---------|
 | RPC URL | `https://rpc.mainnet.x1.xyz` |
 | Program ID | `EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF` |
-| Oracle Program | `LuS6XnQ3qNXqNQvAJ3akXnEJRBv9XNoUricjMgTyCxX` |
-| Oracle State | `ErU8byy8jYDZg5NjsF7eacK2khJ7jfUjsoQZ2E28baJA` |
+| Oracle Program | `CcgTMiYkgVfz7cAGkD6835BqfycG5N5Y4aPPHYW1EvKx` |
+| Oracle State | `CqhjUyyiQ21GHFEPB99tyu1txumWG31vNaRxKTGYdEGy` |
 | AMM Seed | `amm_btc_v6` |
 
 ## PDAs (Derived)
