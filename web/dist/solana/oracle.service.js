@@ -70,13 +70,12 @@ class OracleService {
             const ts1 = readI64();
             const ts2 = readI64();
             const ts3 = readI64();
-            // Decimals byte is at end of oracle data (works for both testnet 186 bytes and mainnet 362 bytes)
-            const decimals = d.readUInt8(d.length - 2);
+            // Mainnet oracle uses 8 decimals (1e8 scaling)
+            const decimals = 8;
             // Calculate median price from triplet
             const medianPrice = this.median3(param1, param2, param3);
             const scale = 10n ** BigInt(decimals);
-            const price_e6 = (medianPrice * 1000000n) / scale;
-            const btcPrice = Number(price_e6) / 1000000;
+            const btcPrice = Number(medianPrice) / Number(scale);
             // Calculate age from most recent timestamp
             // Timestamps are in milliseconds, convert to seconds for age calculation
             const maxTimestamp = this.max3(ts1, ts2, ts3);

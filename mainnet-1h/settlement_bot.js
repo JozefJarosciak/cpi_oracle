@@ -13,7 +13,7 @@ const {
 } = require("@solana/web3.js");
 
 /* ---------------- CONFIG ---------------- */
-const RPC = process.env.ANCHOR_PROVIDER_URL || "http://127.0.0.1:8899";
+const RPC = process.env.ANCHOR_PROVIDER_URL || "https://rpc.mainnet.x1.xyz";
 const WALLET = process.env.ANCHOR_WALLET || "./operator.json"; // Default to operator.json (fee_dest)
 const DEFAULT_ORACLE_STATE = "ErU8byy8jYDZg5NjsF7eacK2khJ7jfUjsoQZ2E28baJA"; // Mainnet BTC oracle
 const ORACLE_STATE = process.env.ORACLE_STATE
@@ -1094,7 +1094,7 @@ async function wipeAllPositions(conn, kp, ammPda) {
 /* ---------------- Main ---------------- */
 async function main() {
   console.log(C.bold("\n╔═══════════════════════════════════════════════╗"));
-  console.log(C.bold("║     AUTOMATED SETTLEMENT BOT - 15 MIN CYCLES  ║"));
+  console.log(C.bold("║     AUTOMATED SETTLEMENT BOT - 1 HOUR CYCLES  ║"));
   console.log(C.bold("╚═══════════════════════════════════════════════╝\n"));
 
   logInfo(`Oracle: ${ORACLE_STATE.toString()}`);
