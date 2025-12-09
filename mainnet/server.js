@@ -590,14 +590,15 @@ function getSettlementHistory(limit = 100) {
 function getUserStats(userPrefix) {
     try {
         // Get settlement stats (wins/losses)
+        // A "win" = made profit (payout > cost), "loss" = lost money (payout <= cost)
         const settlementStmt = db.prepare(`
             SELECT
                 COUNT(*) as total_rounds,
-                SUM(CASE WHEN result = 'WIN' THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN 1 ELSE 0 END) as losses,
-                SUM(CASE WHEN result = 'WIN' THEN amount ELSE 0 END) as total_won,
-                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN COALESCE(net_spent, 0) ELSE 0 END) as total_lost,
-                SUM(CASE WHEN result = 'WIN' THEN amount ELSE -COALESCE(net_spent, 0) END) as net_pnl
+                SUM(CASE WHEN (amount - COALESCE(net_spent, 0)) > 0 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN (amount - COALESCE(net_spent, 0)) <= 0 THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN (amount - COALESCE(net_spent, 0)) > 0 THEN (amount - COALESCE(net_spent, 0)) ELSE 0 END) as total_won,
+                SUM(CASE WHEN (amount - COALESCE(net_spent, 0)) <= 0 THEN ABS(amount - COALESCE(net_spent, 0)) ELSE 0 END) as total_lost,
+                SUM(amount - COALESCE(net_spent, 0)) as net_pnl
             FROM settlement_history
             WHERE user_prefix = ?
         `);
@@ -661,15 +662,16 @@ function getUserStats(userPrefix) {
 function getSettlementLeaderboard(limit = 100) {
     try {
         // Get settlement stats
+        // A "win" = made profit (payout > cost), "loss" = lost money (payout <= cost)
         const stmt = db.prepare(`
             SELECT
                 user_prefix,
                 COUNT(*) as total_rounds,
-                SUM(CASE WHEN result = 'WIN' THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN 1 ELSE 0 END) as losses,
-                SUM(CASE WHEN result = 'WIN' THEN amount ELSE 0 END) as total_won,
-                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN COALESCE(net_spent, 0) ELSE 0 END) as total_lost,
-                SUM(CASE WHEN result = 'WIN' THEN amount ELSE -COALESCE(net_spent, 0) END) as net_pnl
+                SUM(CASE WHEN (amount - COALESCE(net_spent, 0)) > 0 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN (amount - COALESCE(net_spent, 0)) <= 0 THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN (amount - COALESCE(net_spent, 0)) > 0 THEN (amount - COALESCE(net_spent, 0)) ELSE 0 END) as total_won,
+                SUM(CASE WHEN (amount - COALESCE(net_spent, 0)) <= 0 THEN ABS(amount - COALESCE(net_spent, 0)) ELSE 0 END) as total_lost,
+                SUM(amount - COALESCE(net_spent, 0)) as net_pnl
             FROM settlement_history
             GROUP BY user_prefix
         `);
