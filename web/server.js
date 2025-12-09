@@ -530,15 +530,16 @@ function getSettlementHistory(limit = 100) {
 
 function getUserStats(userPrefix) {
     try {
-        // Get settlement stats (wins/losses)
+        // Get settlement stats - calculate based on actual P&L (amount - net_spent), not WIN/LOSS result
+        // A "WIN" just means prediction was correct, but user can still lose money if amount < net_spent
         const settlementStmt = db.prepare(`
             SELECT
                 COUNT(*) as total_rounds,
-                SUM(CASE WHEN result = 'WIN' THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN 1 ELSE 0 END) as losses,
-                SUM(CASE WHEN result = 'WIN' THEN amount ELSE 0 END) as total_won,
-                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN COALESCE(net_spent, 0) ELSE 0 END) as total_lost,
-                SUM(CASE WHEN result = 'WIN' THEN amount ELSE -COALESCE(net_spent, 0) END) as net_pnl
+                SUM(CASE WHEN (COALESCE(amount, 0) - COALESCE(net_spent, 0)) > 0 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN (COALESCE(amount, 0) - COALESCE(net_spent, 0)) <= 0 THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN (COALESCE(amount, 0) - COALESCE(net_spent, 0)) > 0 THEN (COALESCE(amount, 0) - COALESCE(net_spent, 0)) ELSE 0 END) as total_won,
+                SUM(CASE WHEN (COALESCE(amount, 0) - COALESCE(net_spent, 0)) <= 0 THEN ABS(COALESCE(amount, 0) - COALESCE(net_spent, 0)) ELSE 0 END) as total_lost,
+                SUM(COALESCE(amount, 0) - COALESCE(net_spent, 0)) as net_pnl
             FROM settlement_history
             WHERE user_prefix = ?
         `);
@@ -569,8 +570,21 @@ function getUserStats(userPrefix) {
         const countResult = countStmt.get(userPrefix);
         const totalSettlements = countResult ? countResult.total : 0;
 
+        // Get rank and total points from leaderboard
+        const leaderboard = getSettlementLeaderboard(100);
+        let rank = '-';
+        let totalPoints = 0;
+        for (let i = 0; i < leaderboard.length; i++) {
+            if (leaderboard[i].user_prefix === userPrefix) {
+                rank = i + 1;
+                totalPoints = leaderboard[i].total_points || 0;
+                break;
+            }
+        }
+
         return {
             userPrefix,
+            rank,
             settlement: {
                 totalRounds: settlementStats.total_rounds || 0,
                 wins: settlementStats.wins || 0,
@@ -580,7 +594,8 @@ function getUserStats(userPrefix) {
                     : '0.0',
                 totalWon: settlementStats.total_won || 0,
                 totalLost: settlementStats.total_lost || 0,
-                netPnl: settlementStats.net_pnl || 0
+                netPnl: settlementStats.net_pnl || 0,
+                totalPoints: totalPoints
             },
             trading: {
                 totalTrades: tradingStats.total_trades || 0,
@@ -601,16 +616,17 @@ function getUserStats(userPrefix) {
 
 function getSettlementLeaderboard(limit = 100) {
     try {
-        // Get settlement stats
+        // Get settlement stats - calculate based on actual P&L (amount - net_spent), not WIN/LOSS result
+        // A "WIN" just means prediction was correct, but user can still lose money if amount < net_spent
         const stmt = db.prepare(`
             SELECT
                 user_prefix,
                 COUNT(*) as total_rounds,
-                SUM(CASE WHEN result = 'WIN' THEN 1 ELSE 0 END) as wins,
-                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN 1 ELSE 0 END) as losses,
-                SUM(CASE WHEN result = 'WIN' THEN amount ELSE 0 END) as total_won,
-                SUM(CASE WHEN result = 'LOSS' OR result = 'LOSE' THEN COALESCE(net_spent, 0) ELSE 0 END) as total_lost,
-                SUM(CASE WHEN result = 'WIN' THEN amount ELSE -COALESCE(net_spent, 0) END) as net_pnl
+                SUM(CASE WHEN (COALESCE(amount, 0) - COALESCE(net_spent, 0)) > 0 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN (COALESCE(amount, 0) - COALESCE(net_spent, 0)) <= 0 THEN 1 ELSE 0 END) as losses,
+                SUM(CASE WHEN (COALESCE(amount, 0) - COALESCE(net_spent, 0)) > 0 THEN (COALESCE(amount, 0) - COALESCE(net_spent, 0)) ELSE 0 END) as total_won,
+                SUM(CASE WHEN (COALESCE(amount, 0) - COALESCE(net_spent, 0)) <= 0 THEN ABS(COALESCE(amount, 0) - COALESCE(net_spent, 0)) ELSE 0 END) as total_lost,
+                SUM(COALESCE(amount, 0) - COALESCE(net_spent, 0)) as net_pnl
             FROM settlement_history
             GROUP BY user_prefix
         `);
@@ -636,9 +652,9 @@ function getSettlementLeaderboard(limit = 100) {
 
         // Try to get points data and merge
         try {
-            const { PointsDB } = require('../points/points.js');
-            const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
-            const pointsLeaderboard = pointsDb.getLeaderboard(500);
+            const pointsDbPath = path.join(__dirname, '../points/points.db');
+            const pointsDb = new Database(pointsDbPath, { readonly: true });
+            const pointsLeaderboard = pointsDb.prepare('SELECT master_pubkey, total_points FROM users ORDER BY total_points DESC LIMIT 500').all();
             pointsDb.close();
 
             // Merge points into existing users by matching prefix
@@ -1457,8 +1473,8 @@ const server = http.createServer((req, res) => {
     // API: Get points leaderboard
     if (req.url.startsWith('/api/points/leaderboard') && req.method === 'GET') {
         try {
-            const { PointsDB } = require('../points/points.js');
-            const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
+            const pointsDbPath = path.join(__dirname, '../points/points.db');
+            const pointsDb = new Database(pointsDbPath, { readonly: true });
             const urlParams = new URL(req.url, `http://${req.headers.host}`);
             const limit = parseInt(urlParams.searchParams.get('limit')) || 100;
             const leaderboard = pointsDb.getLeaderboard(limit);
@@ -1481,8 +1497,8 @@ const server = http.createServer((req, res) => {
     // API: Get user points
     if (req.url.startsWith('/api/points/user/') && req.method === 'GET') {
         try {
-            const { PointsDB } = require('../points/points.js');
-            const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
+            const pointsDbPath = path.join(__dirname, '../points/points.db');
+            const pointsDb = new Database(pointsDbPath, { readonly: true });
             const pubkeyParam = req.url.split('/api/points/user/')[1];
 
             if (!pubkeyParam || pubkeyParam.length < 6) {
@@ -1522,8 +1538,8 @@ const server = http.createServer((req, res) => {
     // API: Get points stats
     if (req.url === '/api/points/stats' && req.method === 'GET') {
         try {
-            const { PointsDB } = require('../points/points.js');
-            const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
+            const pointsDbPath = path.join(__dirname, '../points/points.db');
+            const pointsDb = new Database(pointsDbPath, { readonly: true });
             const stats = pointsDb.getStats();
             pointsDb.close();
 
@@ -2290,6 +2306,8 @@ const server = http.createServer((req, res) => {
         filePath = '/proto2.html';
     } else if (req.url === '/logs') {
         filePath = '/logs.html';
+    } else if (req.url === '/leaderboard' || req.url.startsWith('/leaderboard/')) {
+        filePath = '/leaderboard.html';
     } else {
         filePath = req.url;
     }
