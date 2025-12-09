@@ -15,7 +15,7 @@ const {
 /* ---------------- CONFIG ---------------- */
 const RPC = process.env.ANCHOR_PROVIDER_URL || "http://127.0.0.1:8899";
 const WALLET = process.env.ANCHOR_WALLET || "./operator.json"; // Default to operator.json (fee_dest)
-const DEFAULT_ORACLE_STATE = "ErU8byy8jYDZg5NjsF7eacK2khJ7jfUjsoQZ2E28baJA"; // Mainnet BTC oracle
+const DEFAULT_ORACLE_STATE = "CqhjUyyiQ21GHFEPB99tyu1txumWG31vNaRxKTGYdEGy"; // Mainnet BTC oracle
 const ORACLE_STATE = process.env.ORACLE_STATE
   ? new PublicKey(process.env.ORACLE_STATE)
   : new PublicKey(DEFAULT_ORACLE_STATE);
@@ -345,7 +345,7 @@ async function closeMarket(conn, kp, ammPda) {
 
 async function initMarket(conn, kp, ammPda, vaultPda) {
   log(C.bold("Initializing new market..."));
-  const b = 5_000_000_000; // 5,000.00 XNT liquidity (5B in e6 scale, where 1 XNT = 10M e6)
+  const b = 2_500_000_000; // 2,500.00 XNT liquidity (2.5B in e6 scale, where 1 XNT = 10M e6)
   const feeBps = 25;
 
   // Display market parameters
@@ -686,28 +686,13 @@ async function readOraclePrice(conn) {
     if (!accountInfo) return null;
 
     const d = accountInfo.data;
-    if (d.length < 8 + 32 + 48*3) return null;
+    // New oracle format: 554 bytes, 64-byte blocks per asset
+    // BTC prices at offsets 48 and 56, e8 format
+    if (d.length < 64) return null;
 
-    let o = 8; // Skip discriminator
-    o += 32; // Skip update_authority
-
-    // Read triplet - format is [p1, p2, p3, t1, t2, t3] (prices first, then timestamps)
-    const p1 = Number(d.readBigInt64LE(o)); o += 8;
-    const p2 = Number(d.readBigInt64LE(o)); o += 8;
-    const p3 = Number(d.readBigInt64LE(o)); o += 8;
-    // Skip timestamps (t1, t2, t3)
-    o += 24;
-
-    // Get decimals from end of data (same as on-chain)
-    const decimals = d[d.length - 2];
-
-    // Use median of the three prices
-    const sorted = [p1, p2, p3].sort((a, b) => a - b);
-    const medianRaw = sorted[1];
-
-    // Convert from raw (10^decimals) to standard price format
-    const pow = Math.pow(10, decimals);
-    const btcPrice = medianRaw / pow;
+    const p1 = Number(d.readBigInt64LE(48));
+    const p2 = Number(d.readBigInt64LE(56));
+    const btcPrice = ((p1 + p2) / 2) / 1e8;
 
     return btcPrice;
   } catch (err) {

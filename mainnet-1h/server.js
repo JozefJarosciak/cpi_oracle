@@ -5,7 +5,7 @@ const Database = require('better-sqlite3');
 const { Connection, PublicKey } = require('@solana/web3.js');
 const WebSocket = require('ws');
 
-const PORT = 3536; // 1-hour market server (3535 is 15m market)
+const PORT = 3536; // 1h market (3535 is 15m market)
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const STATUS_FILE = path.join(__dirname, '..', 'market_status.json');
 const DB_FILE = path.join(__dirname, 'price_history.db');
@@ -629,8 +629,21 @@ function getUserStats(userPrefix) {
         const countResult = countStmt.get(userPrefix);
         const totalSettlements = countResult ? countResult.total : 0;
 
+        // Get rank and total points from leaderboard
+        const leaderboard = getSettlementLeaderboard(100);
+        let rank = '-';
+        let totalPoints = 0;
+        for (let i = 0; i < leaderboard.length; i++) {
+            if (leaderboard[i].user_prefix === userPrefix) {
+                rank = i + 1;
+                totalPoints = leaderboard[i].total_points || 0;
+                break;
+            }
+        }
+
         return {
             userPrefix,
+            rank,
             settlement: {
                 totalRounds: settlementStats.total_rounds || 0,
                 wins: settlementStats.wins || 0,
@@ -640,7 +653,8 @@ function getUserStats(userPrefix) {
                     : '0.0',
                 totalWon: settlementStats.total_won || 0,
                 totalLost: settlementStats.total_lost || 0,
-                netPnl: settlementStats.net_pnl || 0
+                netPnl: settlementStats.net_pnl || 0,
+                totalPoints: totalPoints
             },
             trading: {
                 totalTrades: tradingStats.total_trades || 0,
@@ -697,9 +711,9 @@ function getSettlementLeaderboard(limit = 100) {
 
         // Try to get points data and merge
         try {
-            const { PointsDB } = require('../points/points.js');
-            const pointsDb = new PointsDB(path.join(__dirname, '../points/points.db'));
-            const pointsLeaderboard = pointsDb.getLeaderboard(500);
+            const pointsDbPath = path.join(__dirname, '../points/points.db');
+            const pointsDb = new Database(pointsDbPath, { readonly: true });
+            const pointsLeaderboard = pointsDb.prepare('SELECT master_pubkey, total_points FROM users ORDER BY total_points DESC LIMIT 500').all();
             pointsDb.close();
 
             // Merge points into existing users by matching prefix
@@ -2569,6 +2583,8 @@ const server = http.createServer((req, res) => {
         filePath = '/proto2.html';
     } else if (urlPath === '/logs') {
         filePath = '/logs.html';
+    } else if (urlPath === '/leaderboard') {
+        filePath = '/leaderboard.html';
     } else if (urlPath === '/bot') {
         filePath = '/bot.html';
     } else if (urlPath === '/deposit') {

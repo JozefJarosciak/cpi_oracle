@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>X1 Markets - Pro</title>
+    <title>Vero BTC/1h</title>
     <link rel="stylesheet" href="index.css">
     <script src="chart.min.js"></script>
 </head>
@@ -706,8 +706,10 @@
     <script src="solana-web3.min.js"></script>
     <script>
         // Configure proto2 to use TypeScript backend
-        window.API_BASE = '/api/ts';
-        console.log('🔷 Proto2: Using TypeScript API endpoints (/api/ts/*)');
+        // Detect base path for proxy routing
+        const baseHref = document.querySelector('base')?.getAttribute('href')?.replace(/\/$/, '') || '';
+        window.API_BASE = `${baseHref}/api/ts`;
+        console.log('🔷 Proto2: Using TypeScript API endpoints (' + window.API_BASE + '/*)');
     </script>
     <script src="app.js"></script>
     <script>
@@ -975,7 +977,7 @@
         // Fetch and update cumulative volume from server (confirmation)
         async function updateCumulativeVolume() {
             try {
-                const response = await fetch('/api/ts/volume');
+                const response = await fetch(`${window.API_BASE}/volume`);
                 if (!response.ok) {
                     console.error('Failed to fetch volume:', response.status);
                     return;
@@ -1008,7 +1010,7 @@
         // TypeScript Services Integration - Fetch from compiled TypeScript backend
         async function fetchTypeScriptServices() {
             try {
-                const response = await fetch('/api/ts/market-data');
+                const response = await fetch(`${window.API_BASE}/market-data`);
                 if (!response.ok) {
                     console.error('TypeScript API error:', response.status);
                     return;
@@ -1192,7 +1194,7 @@
             console.log('Connecting to trade stream via SSE');
             updateWsStatus('connecting');
 
-            tradeStream = new EventSource('/api/trades-stream');
+            tradeStream = new EventSource(`${baseHref}/api/trades-stream`);
 
             tradeStream.addEventListener('open', () => {
                 console.log('✅ Connected to live trade feed (SSE)');
@@ -1265,7 +1267,7 @@
                             // Wait a moment for the trade to be saved to DB, then fetch it
                             setTimeout(async () => {
                                 try {
-                                    const response = await fetch(`/api/trading-history/${userPrefix}`);
+                                    const response = await fetch(`${baseHref}/api/trading-history/${userPrefix}`);
                                     if (response.ok) {
                                         const data = await response.json();
                                         if (data.history && data.history.length > 0) {
@@ -1308,8 +1310,8 @@
         function connectOrderStream() {
             console.log('Connecting to order updates stream via SSE');
 
-            const API_BASE = `${window.location.protocol}//${window.location.host}/orderbook-api`;
-            orderStream = new EventSource(`${API_BASE}/api/orders-stream`);
+            const ORDER_API_BASE = `${window.location.protocol}//${window.location.host}${baseHref}/orderbook-api`;
+            orderStream = new EventSource(`${ORDER_API_BASE}/api/orders-stream`);
 
             orderStream.addEventListener('connected', (event) => {
                 const data = JSON.parse(event.data);
@@ -2052,7 +2054,7 @@
         // Load recent cycles into dropdown
         async function loadRecentCycles() {
             try {
-                const response = await fetch('/api/ts/recent-cycles');
+                const response = await fetch(`${window.API_BASE}/recent-cycles`);
                 if (!response.ok) return;
 
                 const data = await response.json();
@@ -2093,7 +2095,7 @@
         // Fetch and display quote history
         async function fetchQuoteHistory(cycleId) {
             try {
-                const response = await fetch(`/api/quote-history/${cycleId}`);
+                const response = await fetch(`${baseHref}/api/quote-history/${cycleId}`);
                 if (!response.ok) {
                     console.error('Failed to fetch quote history');
                     return;

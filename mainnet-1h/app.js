@@ -1,19 +1,21 @@
 // Configuration - Updated for v5 market
+// Detect base path from <base> tag for proper API routing through proxy
+const BASE_HREF = document.querySelector('base')?.getAttribute('href')?.replace(/\/$/, '') || '';
 const CONFIG = {
     RPC_URL: 'https://rpc.mainnet.x1.xyz',
     PROGRAM_ID: 'GK9BejLw2JoRXdJfZmSJzsTvn3JGKDbZzhBChZr7ewvz',
     ORACLE_STATE: 'CqhjUyyiQ21GHFEPB99tyu1txumWG31vNaRxKTGYdEGy',
     AMM_SEED: 'amm_btc_1h',  // v6: time-based trading lockout
     LAMPORTS_PER_E6: 100,
-    STATUS_URL: '/market_status.json',
+    STATUS_URL: `${BASE_HREF}/market_status.json`,
     // API prefix - Use TypeScript endpoints if window.API_BASE is set (proto2)
-    API_PREFIX: window.API_BASE || '/api'
+    API_PREFIX: window.API_BASE || `${BASE_HREF}/api`
 };
 
 // Remote logging function for mobile debugging
 function remoteLog(msg) {
     console.log(msg); // Also log locally
-    fetch('/api/client-log', {
+    fetch(`${CONFIG.API_PREFIX}/client-log`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: msg })
@@ -1571,7 +1573,7 @@ async function loadPriceHistory(seconds = null) {
     try {
         console.log(`📊 LOAD HISTORY - Requesting ${seconds || 'all'} seconds of data`);
         // Build URL with optional time range parameter
-        const url = seconds ? `/api/price-history?seconds=${seconds}` : '/api/price-history';
+        const url = seconds ? `${CONFIG.API_PREFIX}/price-history?seconds=${seconds}` : `${CONFIG.API_PREFIX}/price-history`;
         const response = await fetch(url);
         if (!response.ok) {
             console.warn('Failed to load price history from server:', response.status);
@@ -7474,7 +7476,7 @@ async function loadAllPositions() {
     if (!feed) return;
 
     try {
-        const response = await fetch('/api/cycle-positions');
+        const response = await fetch(`${CONFIG.API_PREFIX}/cycle-positions`);
         if (!response.ok) throw new Error('Failed to fetch all positions');
 
         const data = await response.json();
@@ -7679,7 +7681,7 @@ function switchFeedTab(tab) {
 
 // Auto-refresh settlement history if tab is active
 // Only poll when using JavaScript API (/api) - TypeScript API uses SSE streams
-if (CONFIG.API_PREFIX === '/api') {
+if (CONFIG.API_PREFIX.endsWith('/api')) {
     setInterval(() => {
         if (currentFeedTab === 'settlement') {
             loadSettlementHistory();

@@ -15,7 +15,7 @@ const {
 /* ---------------- CONFIG ---------------- */
 const RPC = process.env.ANCHOR_PROVIDER_URL || "https://rpc.mainnet.x1.xyz";
 const WALLET = process.env.ANCHOR_WALLET || "./operator.json"; // Default to operator.json (fee_dest)
-const DEFAULT_ORACLE_STATE = "ErU8byy8jYDZg5NjsF7eacK2khJ7jfUjsoQZ2E28baJA"; // Mainnet BTC oracle
+const DEFAULT_ORACLE_STATE = "CqhjUyyiQ21GHFEPB99tyu1txumWG31vNaRxKTGYdEGy"; // Mainnet BTC oracle (owned by CcgTMiYkgVfz7cAGkD6835BqfycG5N5Y4aPPHYW1EvKx)
 const ORACLE_STATE = process.env.ORACLE_STATE
   ? new PublicKey(process.env.ORACLE_STATE)
   : new PublicKey(DEFAULT_ORACLE_STATE);
@@ -38,7 +38,7 @@ const E6_PER_XNT = 10_000_000;                 // 1 XNT = 10M e6 units
 const LAMPORTS_PER_XNT = E6_PER_XNT * LAMPORTS_PER_E6; // 1 XNT = 1 billion lamports
 
 // === STATUS FILE ===
-const STATUS_FILE = "./market_status.json";
+const STATUS_FILE = "../market_status.json";
 
 // === LOG FILE ===
 const LOG_FILE = "./settlement_bot.log";
@@ -782,22 +782,23 @@ function getNextStartTime() {
   logInfo(C.bold("📅 Calculating next market cycle start time:"));
   logInfo(`  Current time: ${formatTime(now)}`);
 
-  // Round to next 15-minute boundary (:00, :15, :30, :45)
+  // Round to next hour boundary (:00) for 1-hour markets
   const nextStart = new Date(now);
   const currentMinute = nextStart.getMinutes();
   const currentSecond = nextStart.getSeconds();
 
-  // Find next 15-minute boundary
-  const nextMinute = Math.ceil((currentMinute + (currentSecond > 0 ? 1 : 0)) / 15) * 15;
-  if (nextMinute >= 60) {
+  // Find next hour boundary (top of the hour)
+  if (currentMinute > 0 || currentSecond > 0) {
+    // Not at top of hour, go to next hour
     nextStart.setHours(nextStart.getHours() + 1, 0, 0, 0);
   } else {
-    nextStart.setMinutes(nextMinute, 0, 0);
+    // Already at top of hour
+    nextStart.setMinutes(0, 0, 0);
   }
 
-  // If we're already past the calculated time (race condition), add 15 minutes
+  // If we're already past the calculated time (race condition), add 1 hour
   if (nextStart.getTime() <= now.getTime()) {
-    nextStart.setTime(nextStart.getTime() + 15 * 60 * 1000);
+    nextStart.setTime(nextStart.getTime() + 60 * 60 * 1000);
   }
 
   const waitTime = nextStart.getTime() - now.getTime();
@@ -819,15 +820,13 @@ function formatCountdown(ms) {
 
 /* ---------------- Main Cycle Loop ---------------- */
 async function runCycle(conn, kp, ammPda, vaultPda) {
-  // Get current 15-minute window (:00, :15, :30, :45)
+  // Get current hour window (:00) for 1-hour markets
   // This ensures markets stay aligned to clock boundaries
   const now = new Date();
-  const currentMinute = now.getMinutes();
 
-  // Calculate the start of the current 15-minute window
+  // Calculate the start of the current hour window
   const cycleStart = new Date(now);
-  const windowStart = Math.floor(currentMinute / 15) * 15;
-  cycleStart.setMinutes(windowStart, 0, 0);
+  cycleStart.setMinutes(0, 0, 0); // Start of current hour
 
   const cycleStartTime = cycleStart.getTime();
   const snapshotTime = cycleStartTime + PREMARKET_DURATION_MS;
@@ -1370,7 +1369,7 @@ if (command === 'force-settle') {
 ${C.bold('Settlement Bot Commands:')}
 
   ${C.y('node app/settlement_bot.js')}
-    Run the automated settlement bot (15-minute cycles starting at :00, :15, :30, :45)
+    Run the automated settlement bot (1-hour cycles starting at :00 each hour)
 
   ${C.y('node app/settlement_bot.js force-settle')}
     Manually trigger settlement for a stopped market

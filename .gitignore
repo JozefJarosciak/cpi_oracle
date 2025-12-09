@@ -25,3 +25,14 @@ points/*.db-wal
 
 # Backup files
 *.backup
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Build output
+dist/
+
+# Runtime state
+market_status.json
