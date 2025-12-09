@@ -7,6 +7,11 @@ skip-lint = false
 
 [programs.localnet]
 cpi_oracle = "EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF"
+cpi_oracle_1h = "GK9BejLw2JoRXdJfZmSJzsTvn3JGKDbZzhBChZr7ewvz"
+
+[programs.mainnet]
+cpi_oracle = "EeQNdiGDUVj4jzPMBkx59J45p1y93JpKByTWifWtuxjF"
+cpi_oracle_1h = "GK9BejLw2JoRXdJfZmSJzsTvn3JGKDbZzhBChZr7ewvz"
 
 [registry]
 url = "https://api.apr.dev"
