@@ -630,30 +630,37 @@ function getUserStats(userPrefix) {
         const totalSettlements = countResult ? countResult.total : 0;
 
         // Get rank and total points from leaderboard
-        const leaderboard = getSettlementLeaderboard(100);
+        const leaderboard = getSettlementLeaderboard(500);
         let rank = '-';
         let totalPoints = 0;
+        let leaderboardData = null;
         for (let i = 0; i < leaderboard.length; i++) {
-            if (leaderboard[i].user_prefix === userPrefix) {
+            if (leaderboard[i].user_prefix === userPrefix ||
+                (leaderboard[i].full_pubkey && leaderboard[i].full_pubkey.startsWith(userPrefix))) {
                 rank = i + 1;
                 totalPoints = leaderboard[i].total_points || 0;
+                leaderboardData = leaderboard[i];
                 break;
             }
         }
+
+        // Use leaderboard data as fallback if no settlement_history records
+        const hasSettlementData = settlementStats.total_rounds > 0;
+        const finalStats = hasSettlementData ? settlementStats : (leaderboardData || settlementStats);
 
         return {
             userPrefix,
             rank,
             settlement: {
-                totalRounds: settlementStats.total_rounds || 0,
-                wins: settlementStats.wins || 0,
-                losses: settlementStats.losses || 0,
-                winRate: settlementStats.total_rounds > 0
-                    ? ((settlementStats.wins / settlementStats.total_rounds) * 100).toFixed(1)
+                totalRounds: finalStats.total_rounds || 0,
+                wins: finalStats.wins || 0,
+                losses: finalStats.losses || 0,
+                winRate: finalStats.total_rounds > 0
+                    ? ((finalStats.wins / finalStats.total_rounds) * 100).toFixed(1)
                     : '0.0',
-                totalWon: settlementStats.total_won || 0,
-                totalLost: settlementStats.total_lost || 0,
-                netPnl: settlementStats.net_pnl || 0,
+                totalWon: finalStats.total_won || 0,
+                totalLost: finalStats.total_lost || 0,
+                netPnl: finalStats.net_pnl || 0,
                 totalPoints: totalPoints
             },
             trading: {
@@ -736,13 +743,16 @@ function getSettlementLeaderboard(limit = 100) {
                 }
 
                 if (!matched) {
-                    // New user with only points, no settlements
+                    // New user with only points, no settlements in price_history.db
+                    // Use win_count from points db as fallback
+                    const winCount = p.win_count || 0;
+                    const tradeCount = p.trade_count || 0;
                     usersMap[prefix] = {
                         user_prefix: prefix,
-                        total_rounds: 0,
-                        wins: 0,
-                        losses: 0,
-                        total_won: 0,
+                        total_rounds: winCount + (tradeCount > winCount ? tradeCount - winCount : 0),
+                        wins: winCount,
+                        losses: tradeCount > winCount ? tradeCount - winCount : 0,
+                        total_won: 0,  // No XNT data available from points db
                         total_lost: 0,
                         net_pnl: 0,
                         total_points: p.total_points || 0,
