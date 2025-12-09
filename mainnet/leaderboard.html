@@ -2213,13 +2213,25 @@
         let currentChartView = 'hourly';
         let hiddenDatasets = { 0: false, 1: false, 2: false }; // Track hidden state for Wins, Losses, Cumulative
 
-        // Fetch all settlements for chart
+        // Fetch ALL settlements for chart by paginating through results
         async function fetchAllSettlements(userPrefix) {
             try {
-                const res = await fetch(`/api/user-settlements/${userPrefix}?offset=0&limit=200`);
-                if (!res.ok) return [];
-                const data = await res.json();
-                return data.settlements || [];
+                let allData = [];
+                let offset = 0;
+                const batchSize = 100;
+                let hasMore = true;
+
+                while (hasMore) {
+                    const res = await fetch(`/api/user-settlements/${userPrefix}?offset=${offset}&limit=${batchSize}`);
+                    if (!res.ok) break;
+                    const data = await res.json();
+                    const settlements = data.settlements || [];
+                    allData = allData.concat(settlements);
+                    hasMore = data.hasMore && settlements.length === batchSize;
+                    offset += batchSize;
+                }
+
+                return allData;
             } catch (err) {
                 console.error('Failed to fetch settlements for chart:', err);
                 return [];
