@@ -600,13 +600,13 @@ function getUserStats(userPrefix) {
                 SUM(CASE WHEN (amount - COALESCE(net_spent, 0)) <= 0 THEN ABS(amount - COALESCE(net_spent, 0)) ELSE 0 END) as total_lost,
                 SUM(amount - COALESCE(net_spent, 0)) as net_pnl
             FROM settlement_history
-            WHERE user_prefix = ?
+            WHERE user_prefix = ? COLLATE NOCASE
         `);
         const settlementStats = settlementStmt.get(userPrefix) || {
             total_rounds: 0, wins: 0, losses: 0, total_won: 0, total_lost: 0, net_pnl: 0
         };
 
-        // Get trading stats
+        // Get trading stats (case-insensitive)
         const tradingStmt = db.prepare(`
             SELECT
                 COUNT(*) as total_trades,
@@ -616,15 +616,15 @@ function getUserStats(userPrefix) {
                 SUM(CASE WHEN action = 'SELL' THEN cost_usd ELSE 0 END) as total_sold,
                 SUM(shares) as total_shares
             FROM trading_history
-            WHERE user_prefix = ?
+            WHERE user_prefix = ? COLLATE NOCASE
         `);
         const tradingStats = tradingStmt.get(userPrefix) || {
             total_trades: 0, buys: 0, sells: 0, total_bought: 0, total_sold: 0, total_shares: 0
         };
 
-        // Get total settlement count for this user
+        // Get total settlement count for this user (case-insensitive)
         const countStmt = db.prepare(`
-            SELECT COUNT(*) as total FROM settlement_history WHERE user_prefix = ?
+            SELECT COUNT(*) as total FROM settlement_history WHERE user_prefix = ? COLLATE NOCASE
         `);
         const countResult = countStmt.get(userPrefix);
         const totalSettlements = countResult ? countResult.total : 0;
@@ -2221,15 +2221,15 @@ const server = http.createServer((req, res) => {
                 return;
             }
 
-            // Get total count
-            const countStmt = db.prepare('SELECT COUNT(*) as total FROM settlement_history WHERE user_prefix = ?');
+            // Get total count (case-insensitive)
+            const countStmt = db.prepare('SELECT COUNT(*) as total FROM settlement_history WHERE user_prefix = ? COLLATE NOCASE');
             const countResult = countStmt.get(userPrefix);
             const total = countResult ? countResult.total : 0;
 
-            // Get paginated settlements
+            // Get paginated settlements (case-insensitive)
             const stmt = db.prepare(`
                 SELECT * FROM settlement_history
-                WHERE user_prefix = ?
+                WHERE user_prefix = ? COLLATE NOCASE
                 ORDER BY timestamp DESC
                 LIMIT ? OFFSET ?
             `);
