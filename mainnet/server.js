@@ -629,8 +629,21 @@ function getUserStats(userPrefix) {
         const countResult = countStmt.get(userPrefix);
         const totalSettlements = countResult ? countResult.total : 0;
 
+        // Get rank and total points from leaderboard
+        const leaderboard = getSettlementLeaderboard(100);
+        let rank = '-';
+        let totalPoints = 0;
+        for (let i = 0; i < leaderboard.length; i++) {
+            if (leaderboard[i].user_prefix === userPrefix) {
+                rank = i + 1;
+                totalPoints = leaderboard[i].total_points || 0;
+                break;
+            }
+        }
+
         return {
             userPrefix,
+            rank,
             settlement: {
                 totalRounds: settlementStats.total_rounds || 0,
                 wins: settlementStats.wins || 0,
@@ -640,7 +653,8 @@ function getUserStats(userPrefix) {
                     : '0.0',
                 totalWon: settlementStats.total_won || 0,
                 totalLost: settlementStats.total_lost || 0,
-                netPnl: settlementStats.net_pnl || 0
+                netPnl: settlementStats.net_pnl || 0,
+                totalPoints: totalPoints
             },
             trading: {
                 totalTrades: tradingStats.total_trades || 0,
@@ -816,6 +830,10 @@ function updateCyclePosition(userPrefix, walletPubkey, cycleId, action, side, sh
             downShares += sharesDelta;
             downCost += costDelta;
         }
+
+        // Clamp shares to 0 minimum (sells from previous cycles can cause negative)
+        upShares = Math.max(0, upShares);
+        downShares = Math.max(0, downShares);
 
         // Upsert position
         const upsertStmt = db.prepare(`
@@ -2569,6 +2587,8 @@ const server = http.createServer((req, res) => {
         filePath = '/proto2.html';
     } else if (urlPath === '/logs') {
         filePath = '/logs.html';
+    } else if (urlPath === '/leaderboard') {
+        filePath = '/leaderboard.html';
     } else if (urlPath === '/bot') {
         filePath = '/bot.html';
     } else if (urlPath === '/deposit') {
