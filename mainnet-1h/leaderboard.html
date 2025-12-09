@@ -1576,18 +1576,17 @@
                     }
                 }
 
-                const res = await fetch(`/api/user-settlements/${currentUserPrefix}?offset=${offset}&limit=${SETTLEMENTS_PER_PAGE}`);
-                if (!res.ok) throw new Error('Failed to fetch settlements');
+                // Use cached data for table pagination (no additional API call needed)
+                const pageSettlements = allSettlementsData.slice(offset, offset + SETTLEMENTS_PER_PAGE);
 
-                const data = await res.json();
                 currentOffset = offset;
-                currentTotal = data.total;
+                currentTotal = allSettlementsData.length;
 
                 if (tradesCount) {
-                    tradesCount.textContent = `(${data.total})`;
+                    tradesCount.textContent = `(${allSettlementsData.length})`;
                 }
 
-                if (data.settlements && data.settlements.length > 0) {
+                if (pageSettlements.length > 0) {
                     // Calculate cumulative PnL for this page (need all data sorted by time)
                     const allSorted = [...allSettlementsData].sort((a, b) => b.timestamp - a.timestamp);
                     const cumulativeMap = {};
@@ -1603,7 +1602,7 @@
                         cumulativeMap[s.timestamp] = runningTotal;
                     });
 
-                    tradesBody.innerHTML = data.settlements.map(s => {
+                    tradesBody.innerHTML = pageSettlements.map(s => {
                         const isWin = s.result === 'WIN';
                         const side = s.side === 'YES' ? 'UP' : 'DOWN';
                         const payout = s.amount || 0;
@@ -1665,14 +1664,14 @@
                     }).join('');
 
                     const startNum = offset + 1;
-                    const endNum = offset + data.settlements.length;
+                    const endNum = offset + pageSettlements.length;
                     const hasPrev = offset > 0;
-                    const hasNext = data.hasMore;
+                    const hasNext = offset + SETTLEMENTS_PER_PAGE < allSettlementsData.length;
 
                     if (tradesPagination) {
                         tradesPagination.innerHTML = `
                             <div class="trades-pagination">
-                                <div class="trades-pagination-info">${startNum}-${endNum} of ${data.total}</div>
+                                <div class="trades-pagination-info">${startNum}-${endNum} of ${allSettlementsData.length}</div>
                                 <div class="trades-pagination-btns">
                                     <button class="trades-pagination-btn" onclick="loadUserSettlements(0)" ${!hasPrev ? 'disabled' : ''}>First</button>
                                     <button class="trades-pagination-btn" onclick="loadUserSettlements(${offset - SETTLEMENTS_PER_PAGE})" ${!hasPrev ? 'disabled' : ''}>Prev</button>
@@ -1977,7 +1976,6 @@
         async function loadVolumeStats() {
             try {
                 const res = await fetch('/api/volume-stats');
-                const data = await res.json();
 
                 document.getElementById('totalTrades').textContent = formatNumber(data.total_trades || 0) + ' trades';
                 document.getElementById('totalVolume').textContent = formatXnt(data.total_volume || 0);
@@ -2224,7 +2222,6 @@
                 while (hasMore) {
                     const res = await fetch(`/api/user-settlements/${userPrefix}?offset=${offset}&limit=${batchSize}`);
                     if (!res.ok) break;
-                    const data = await res.json();
                     const settlements = data.settlements || [];
                     allData = allData.concat(settlements);
                     hasMore = data.hasMore && settlements.length === batchSize;
